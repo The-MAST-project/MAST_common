@@ -6,14 +6,15 @@ import platform
 import os
 import io
 
-from config import Config
+from common.config import Config
 import datetime
 from typing import List
 
 default_log_level = logging.DEBUG
 default_encoding = "utf-8"
 
-BASE_SPEC_PATH = '/spec/'
+BASE_SPEC_API_PATH = '/mast/spec/'
+BASE_UNIT_API_PATH = '/mast/unit/'
 
 
 class Timing:
@@ -27,13 +28,6 @@ class Timing:
     def end(self):
         self.end_time = datetime.datetime.now()
         self.duration = self.end_time - self.start_time
-
-
-# class classproperty(property):
-#     def __get__(self, obj, cls=None):
-#         if cls is None:
-#             cls = type(obj)
-#         return super().__get__(cls)
 
 
 class Activities:
@@ -76,16 +70,16 @@ class RepeatTimer(Timer):
             self.function(*self.args, **self.kwargs)
 
 
-class SingletonFactory:
-    _instances = {}
-    _lock = Lock()
-
-    @staticmethod
-    def get_instance(class_type):
-        with SingletonFactory._lock:
-            if class_type not in SingletonFactory._instances:
-                SingletonFactory._instances[class_type] = class_type()
-        return SingletonFactory._instances[class_type]
+# class SingletonFactory:
+#     _instances = {}
+#     _lock = Lock()
+#
+#     @staticmethod
+#     def get_instance(class_type):
+#         with SingletonFactory._lock:
+#             if class_type not in SingletonFactory._instances:
+#                 SingletonFactory._instances[class_type] = class_type()
+#         return SingletonFactory._instances[class_type]
 
 
 class DailyFileHandler(logging.FileHandler):
@@ -148,7 +142,12 @@ class DailyFileHandler(logging.FileHandler):
 
 
 class PathMaker:
-    top_folder: str
+    _instance = None
+
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            cls._instance = super(PathMaker, cls).__new__(cls)
+        return cls._instance
 
     def __init__(self):
         cfg = Config()
@@ -214,7 +213,7 @@ class PathMaker:
         return os.path.join(daily_folder, 'log.txt')
 
 
-path_maker = SingletonFactory.get_instance(PathMaker)
+path_maker = PathMaker()
 
 
 def init_log(logger: logging.Logger, level: int | None = None):
@@ -228,7 +227,6 @@ def init_log(logger: logging.Logger, level: int | None = None):
     handler.setFormatter(formatter)
     logger.addHandler(handler)
 
-    # path_maker = SingletonFactory.get_instance(PathMaker)
     handler = DailyFileHandler(path=os.path.join(path_maker.make_daily_folder_name(), 'log.txt'), mode='a')
     handler.setLevel(level)
     handler.setFormatter(formatter)

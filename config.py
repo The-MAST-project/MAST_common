@@ -25,7 +25,7 @@ class Config:
         if project is None:
             raise(Exception(f"Missing 'MAST_PROJECT' environment variable"))
 
-        self.file = os.path.join(os.path.dirname(__file__), f'config/{project}.toml')
+        self.file = os.path.join(os.path.dirname(os.path.dirname(__file__)), f'config/{project}.toml')
         if not os.path.exists(self.file):
             raise(Exception(f"Missing config file '{self.file}'"))
 
