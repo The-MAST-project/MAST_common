@@ -1,5 +1,5 @@
 import datetime
-import sys
+import socket
 
 import tomlkit
 import os
@@ -8,7 +8,7 @@ import git
 
 
 class Config:
-    file: str
+    global_file: str
     toml: tomlkit.TOMLDocument = None
     _instance = None
     _initialized: bool = False
@@ -25,9 +25,14 @@ class Config:
         if project is None:
             raise(Exception(f"Missing 'MAST_PROJECT' environment variable"))
 
-        self.file = os.path.join(os.path.dirname(__file__), f'config/{project}.toml')
-        if not os.path.exists(self.file):
-            raise(Exception(f"Missing config file '{self.file}'"))
+        if project == 'unit':
+            folder = os.path.dirname(os.path.dirname(__file__))
+        else:
+            folder = os.path.dirname(__file__)
+        self.global_file = os.path.join(folder, f'config/{project}.toml')
+        self.specific_file = os.path.join(folder, f'config/{socket.gethostname()}.toml')
+        if not os.path.exists(self.global_file):
+            raise(Exception(f"Missing global config file '{self.global_file}'"))
 
         self.toml = tomlkit.TOMLDocument()
         self.reload()
@@ -35,21 +40,22 @@ class Config:
 
     def reload(self):
         self.toml.clear()
-        with open(self.file, 'r') as f:
+        file = self.specific_file if os.path.exists(self.specific_file) else self.global_file
+        with open(file, 'r') as f:
             self.toml = tomlkit.load(f)
 
     def save(self):
         self.toml['global']['saved_at'] = datetime.datetime.now()
-        with open(self.file, 'w') as f:
+        with open(self.specific_file, 'w') as f:
             tomlkit.dump(self.toml, f)
 
-        repo_path = os.path.dirname(os.path.dirname(self.file))
-        file_path = self.file.removeprefix(repo_path + os.path.sep)
+        repo_path = os.path.dirname(os.path.dirname(self.global_file))
+        file_path = self.global_file.removeprefix(repo_path + os.path.sep)
         repo = git.Repo(repo_path)
         if file_path in repo.git.diff(None, name_only=True):
             try:
                 repo.git.add(file_path)
-                repo.index.commit('Saved changes')
+                repo.index.commit(f"Saved changes to '{self.specific_file}'")
                 origin = repo.remotes['origin']
                 origin.push(str(repo.active_branch))
             except Exception as e:
