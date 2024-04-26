@@ -5,8 +5,15 @@ import logging
 import platform
 import os
 import io
+import fits
+from multiprocessing import shared_memory
+import psutil
+import subprocess
+import re
+import time
+from abc import ABC
 
-from config import Config
+from common.config import Config
 import datetime
 from typing import List
 
@@ -14,6 +21,7 @@ default_log_level = logging.DEBUG
 default_encoding = "utf-8"
 
 BASE_SPEC_PATH = '/spec/'
+BASE_UNIT_PATH = '/mast/api/v1/unit'
 
 
 class Timing:
@@ -36,16 +44,17 @@ class Timing:
 #         return super().__get__(cls)
 
 
-class Activities:
-    activities: IntFlag = 0
-    timings: dict
-    Idle = 0
+class Activities(ABC):
 
-    # @classproperty
-    # def Idle(cls):
-    #     return cls._idle
+    Idle: IntFlag = 0
+
+    @property
+    @abstractmethod
+    def logger(self) -> logging.Logger:
+        pass
 
     def __init__(self):
+        self.activities: IntFlag = Activities.Idle
         self.timings = dict()
 
     def start_activity(self, activity: IntFlag):
@@ -235,30 +244,6 @@ def init_log(logger: logging.Logger, level: int | None = None):
     logger.addHandler(handler)
 
 
-# class CustomJSONEncoder(json.JSONEncoder):
-#     def default(self, obj: Any) -> Any:
-#         if isinstance(obj, float) and obj != obj:  # Check for NaN
-#             return "NaN"  # or use None
-#         elif isinstance(obj, datetime.datetime):
-#             return obj.isoformat()  # Format datetime as ISO8601 string
-#         # Add more custom handling cases here if needed
-#         return super().default(obj)
-
-
-# class CustomJSONResponse(JSONResponse):
-#     media_type = "application/json"
-#
-#     def render(self, content: Any) -> bytes:
-#         return json.dumps(
-#             content,
-#             ensure_ascii=False,
-#             allow_nan=False,
-#             indent=4,
-#             separators=(", ", ": "),
-#             cls=CustomJSONEncoder,
-#         ).encode(default_encoding)
-
-
 def deep_update(original: dict, update: dict):
     """
     Recursively update a dictionary with nested dictionaries.
@@ -338,3 +323,236 @@ class Component(ABC, Activities):
     @abstractmethod
     def why_not_operational(self) -> List[str]:
         pass
+
+    @property
+    @abstractmethod
+    def detected(self) -> bool:
+        pass
+
+    @property
+    @abstractmethod
+    def connected(self) -> bool:
+        pass
+
+
+def quote(s: str):
+    # return 'abc'
+    return "'" + s.replace("'", "\\'") + "'"
+
+
+class HelpResponse:
+    method: str
+    description: str
+
+    def __init__(self, method: str, doc: str):
+        self.method = method
+        self.description = doc
+
+
+class Subsystem:
+    path: str
+    obj: object
+    obj_name: str
+    method_objects: list[object]
+    method_names: list[str]
+    method_docs: list[str]
+
+    def __init__(self, path: str, obj: object, obj_name: str):
+        self.path = path
+        self.obj = obj
+        self.obj_name = obj_name
+
+
+def image_to_fits(image, path: str, header: dict, logger):
+    """
+
+    Parameters
+    ----------
+    image
+        an ASCOM ImageArray
+    path
+        name of the created file
+    header
+        a dictionary of FITS header key/values
+    logger
+        a logger for logging :-)
+
+    Returns
+    -------
+
+    """
+    if not path:
+        raise 'Must supply a path to the file'
+    if not path.endswith('.fits'):
+        path += '.fits'
+
+    hdu = fits.PrimaryHDU(image)
+    for k, v in header.items():
+        hdu.header[k] = v
+    hdu_list = fits.HDUList([hdu])
+    logger.info(f'saving image to {path} ...')
+    hdu_list.writeto(path)
+
+
+def parse_params(memory: shared_memory.SharedMemory, logger: logging.Logger) -> dict:
+    bytes_array = bytearray(memory.buf)
+    string_array = bytes_array.decode(encoding='utf-8')
+    data = string_array[:string_array.find('\x00')]
+    logger.info(f"data: '{data}'")
+
+    matches = re.findall(r'(\w+(?:\(\d+\))?)\s*=\s*(.*?)(?=(!|$|\w+(\(\d+\))?\s*=))', data)
+    d = {}
+    for match in matches:
+        key = match[0]
+        value = match[1].strip()
+        logger.info(f"key={match[0]}, value='{value}'")
+        d[key] = value
+    return d
+
+
+def store_params(memory: shared_memory.SharedMemory, d: dict):
+    params = []
+    for k, v in d.items():
+        params.append(f'{k}={v}')
+    data = ' '.join(params)
+    memory.buf[:memory.size] = bytearray(memory.size)  # wipe it clean
+    memory.buf[:len(data)] = bytearray(data.encode(encoding='utf-8'))
+
+
+def find_process(patt: str = None, pid: int | None = None) -> psutil.Process:
+    """
+    Searches for a running process either by a pattern in the command line or by pid
+
+    Parameters
+    ----------
+    patt
+    pid
+
+    Returns
+    -------
+
+    """
+    ret = None
+    if patt:
+        patt = re.compile(patt, re.IGNORECASE)
+        for proc in psutil.process_iter():
+            try:
+                argv = proc.cmdline()
+                for arg in argv:
+                    if patt.search(arg) and proc.status() == psutil.STATUS_RUNNING:
+                        ret = proc
+                        break
+            except psutil.AccessDenied:
+                continue
+    elif pid:
+        proc = [(x.pid == pid and x.status() == psutil.STATUS_RUNNING) for x in psutil.process_iter()]
+        ret = proc[0]
+
+    return ret
+
+
+def ensure_process_is_running(pattern: str, cmd: str, logger: logging.Logger, env: dict = None,
+                              cwd: str = None, shell: bool = False) -> psutil.Process:
+    """
+    Makes sure a process containing 'pattern' in the command line exists.
+    If it's not running, it starts one using 'cmd' and waits till it is running
+
+    Parameters
+    ----------
+    pattern: str The pattern to lookup in the command line of processes
+    cmd: str - The command to use to start a new process
+    env: dict - An environment dictionary
+    cwd: str - Current working directory
+    shell: bool - Run the cmd in a shell
+    logger
+
+    Returns
+    -------
+
+    """
+    p = find_process(pattern)
+    if p is not None:
+        logger.debug(f'A process with pattern={pattern} in the commandline exists, pid={p.pid}')
+        return p
+
+    # It's not running, start it
+    if shell:
+        process = subprocess.Popen(args=cmd, env=env, shell=True, cwd=cwd, stderr=None, stdout=None)
+    else:
+        args = cmd.split()
+        process = subprocess.Popen(args, env=env, executable=args[0], cwd=cwd, stderr=None, stdout=None)
+    logger.info(f"started process (pid={process.pid}) with cmd: '{cmd}'")
+
+    p = None
+    while not p:
+        p = find_process(pattern)
+        if p:
+            return p
+        logger.info(f"waiting for proces with pattern='{pattern}' to run")
+        time.sleep(1)
+
+
+def time_stamp(d: dict):
+    d['time_stamp'] = datetime.datetime.now().isoformat()
+
+
+class CanonicalResponse:
+
+    ok: dict = {'value': 'ok'}
+
+    def __init__(self,
+                 value: str | None = None,
+                 error: str | None = None,
+                 errors: List[str] | None = None,
+                 exception: Exception | None = None
+                 ):
+        if exception:
+            self.response = {'exception': f"{exception}"}
+        elif errors:
+            self.response = {'errors': errors}
+        elif error:
+            self.response = {'error': error}
+        else:
+            self.response = {'value': value}
+
+    @property
+    def is_error(self):
+        return 'errors' in self.response or 'error' in self.response
+
+    @property
+    def is_exception(self):
+        return 'exception' in self.response
+
+    @property
+    def succeeded(self):
+        return 'value' in self.response
+
+    @property
+    def failed(self):
+        return self.is_error or self.is_exception
+
+    @property
+    def failure(self) -> List[str] | str | None:
+        if not self.failed:
+            return None
+        if self.is_exception:
+            return self.exception
+        if self.is_error:
+            return self.errors if 'errors' in self.response else self.error
+
+    @property
+    def value(self):
+        return self.response['value'] if self.succeeded else None
+
+    @property
+    def error(self) -> str | None:
+        return self.response['error'] if self.is_error else None
+
+    @property
+    def errors(self) -> List[str] | None:
+        return self.response['errors'] if 'errors' in self.response else None
+
+    @property
+    def exception(self):
+        return self.response['exception'] if self.is_exception else None
+
