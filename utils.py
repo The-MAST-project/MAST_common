@@ -1,4 +1,4 @@
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 from enum import IntFlag
 from threading import Timer, Lock
 import logging
@@ -7,10 +7,7 @@ import os
 import io
 import fits
 from multiprocessing import shared_memory
-import psutil
-import subprocess
 import re
-import time
 from abc import ABC
 
 from common.config import Config
@@ -37,21 +34,9 @@ class Timing:
         self.duration = self.end_time - self.start_time
 
 
-# class classproperty(property):
-#     def __get__(self, obj, cls=None):
-#         if cls is None:
-#             cls = type(obj)
-#         return super().__get__(cls)
-
-
-class Activities(ABC):
+class Activities:
 
     Idle: IntFlag = 0
-
-    @property
-    @abstractmethod
-    def logger(self) -> logging.Logger:
-        pass
 
     def __init__(self):
         self.activities: IntFlag = Activities.Idle
@@ -334,6 +319,11 @@ class Component(ABC, Activities):
     def connected(self) -> bool:
         pass
 
+    @property
+    @abstractmethod
+    def shut_down(self) -> bool:
+        pass
+
 
 def quote(s: str):
     # return 'abc'
@@ -419,79 +409,6 @@ def store_params(memory: shared_memory.SharedMemory, d: dict):
     memory.buf[:len(data)] = bytearray(data.encode(encoding='utf-8'))
 
 
-def find_process(patt: str = None, pid: int | None = None) -> psutil.Process:
-    """
-    Searches for a running process either by a pattern in the command line or by pid
-
-    Parameters
-    ----------
-    patt
-    pid
-
-    Returns
-    -------
-
-    """
-    ret = None
-    if patt:
-        patt = re.compile(patt, re.IGNORECASE)
-        for proc in psutil.process_iter():
-            try:
-                argv = proc.cmdline()
-                for arg in argv:
-                    if patt.search(arg) and proc.status() == psutil.STATUS_RUNNING:
-                        ret = proc
-                        break
-            except psutil.AccessDenied:
-                continue
-    elif pid:
-        proc = [(x.pid == pid and x.status() == psutil.STATUS_RUNNING) for x in psutil.process_iter()]
-        ret = proc[0]
-
-    return ret
-
-
-def ensure_process_is_running(pattern: str, cmd: str, logger: logging.Logger, env: dict = None,
-                              cwd: str = None, shell: bool = False) -> psutil.Process:
-    """
-    Makes sure a process containing 'pattern' in the command line exists.
-    If it's not running, it starts one using 'cmd' and waits till it is running
-
-    Parameters
-    ----------
-    pattern: str The pattern to lookup in the command line of processes
-    cmd: str - The command to use to start a new process
-    env: dict - An environment dictionary
-    cwd: str - Current working directory
-    shell: bool - Run the cmd in a shell
-    logger
-
-    Returns
-    -------
-
-    """
-    p = find_process(pattern)
-    if p is not None:
-        logger.debug(f'A process with pattern={pattern} in the commandline exists, pid={p.pid}')
-        return p
-
-    # It's not running, start it
-    if shell:
-        process = subprocess.Popen(args=cmd, env=env, shell=True, cwd=cwd, stderr=None, stdout=None)
-    else:
-        args = cmd.split()
-        process = subprocess.Popen(args, env=env, executable=args[0], cwd=cwd, stderr=None, stdout=None)
-    logger.info(f"started process (pid={process.pid}) with cmd: '{cmd}'")
-
-    p = None
-    while not p:
-        p = find_process(pattern)
-        if p:
-            return p
-        logger.info(f"waiting for proces with pattern='{pattern}' to run")
-        time.sleep(1)
-
-
 def time_stamp(d: dict):
     d['time_stamp'] = datetime.datetime.now().isoformat()
 
@@ -502,22 +419,19 @@ class CanonicalResponse:
 
     def __init__(self,
                  value: str | None = None,
-                 error: str | None = None,
-                 errors: List[str] | None = None,
+                 errors: List[str] | str | None = None,
                  exception: Exception | None = None
                  ):
         if exception:
             self.response = {'exception': f"{exception}"}
         elif errors:
             self.response = {'errors': errors}
-        elif error:
-            self.response = {'error': error}
         else:
             self.response = {'value': value}
 
     @property
     def is_error(self):
-        return 'errors' in self.response or 'error' in self.response
+        return 'errors' in self.response
 
     @property
     def is_exception(self):
@@ -538,15 +452,11 @@ class CanonicalResponse:
         if self.is_exception:
             return self.exception
         if self.is_error:
-            return self.errors if 'errors' in self.response else self.error
+            return self.errors if 'errors' in self.response else None
 
     @property
     def value(self):
         return self.response['value'] if self.succeeded else None
-
-    @property
-    def error(self) -> str | None:
-        return self.response['error'] if self.is_error else None
 
     @property
     def errors(self) -> List[str] | None:
@@ -555,4 +465,3 @@ class CanonicalResponse:
     @property
     def exception(self):
         return self.response['exception'] if self.is_exception else None
-

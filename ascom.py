@@ -2,7 +2,7 @@ import re
 import pywintypes
 import win32com.client
 
-from utils import CanonicalResponse
+from common.utils import CanonicalResponse
 from abc import ABC, abstractmethod
 from logging import Logger
 
@@ -27,10 +27,10 @@ class AscomDispatcher(ABC):
     def ascom(self) -> win32com.client.Dispatch:
         pass
 
-    @property
-    @abstractmethod
-    def logger(self) -> Logger:
-        pass
+    # @property
+    # @abstractmethod
+    # def logger(self) -> Logger:
+    #     pass
 
 
 def ascom_run(o: AscomDispatcher, sentence: str, no_entry_log=True) -> CanonicalResponse:
