@@ -17,7 +17,7 @@ from typing import List
 default_log_level = logging.DEBUG
 default_encoding = "utf-8"
 
-BASE_SPEC_PATH = '/spec/'
+BASE_SPEC_PATH = '/mast/api/v1/spec/'
 BASE_UNIT_PATH = '/mast/api/v1/unit'
 
 
