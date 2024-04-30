@@ -23,16 +23,20 @@ class Config:
             return
         project = os.getenv('MAST_PROJECT')
         if project is None:
-            raise(Exception(f"Missing 'MAST_PROJECT' environment variable"))
+            raise Exception(f"Missing 'MAST_PROJECT' environment variable")
 
-        if project == 'unit':
+        if project == 'unit' or project == 'control':
             folder = os.path.dirname(os.path.dirname(__file__))
-        else:
+        elif project == 'spec':
             folder = os.path.dirname(__file__)
-        self.global_file = os.path.join(folder, f'config/{project}.toml')
-        self.specific_file = os.path.join(folder, f'config/{socket.gethostname()}.toml')
+        else:
+            raise Exception(f"Bad MAST_PROJECT environment variable ('{project}') " +
+                            f"must be one of 'unit', 'spec' or 'control'")
+
+        self.global_file = os.path.join(folder, 'config', f'{project}.toml')
+        self.specific_file = os.path.join(folder, 'config', f'{socket.gethostname()}.toml')
         if not os.path.exists(self.global_file):
-            raise(Exception(f"Missing global config file '{self.global_file}'"))
+            raise Exception(f"missing global config file '{self.global_file}'")
 
         self.toml = tomlkit.TOMLDocument()
         self.reload()
@@ -41,8 +45,9 @@ class Config:
     def reload(self):
         self.toml.clear()
         file = self.specific_file if os.path.exists(self.specific_file) else self.global_file
-        with open(file, 'r') as f:
-            self.toml = tomlkit.load(f)
+        if os.path.exists(file):
+            with open(file, 'r') as f:
+                self.toml = tomlkit.load(f)
 
     def save(self):
         self.toml['global']['saved_at'] = datetime.datetime.now()
@@ -69,7 +74,7 @@ class DeepSearchResult:
         self.value = value
 
 
-def deep_search(d:dict, what:str, path: str = None, found: list = None) -> List[DeepSearchResult]:
+def deep_search(d: dict, what: str, path: str = None, found: list = None) -> List[DeepSearchResult]:
     """
     Performs a deep search of a keyword in a dictionary
     :param d: The dictionary to be searched
