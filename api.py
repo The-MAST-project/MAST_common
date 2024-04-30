@@ -24,6 +24,19 @@ api_devices = {
 
 
 class ApiClient:
+    """
+    Creates an API interface to a MAST entity living on a remote host.
+    Currently supported entities are 'spec' and 'unit'
+    Parameters:
+     - hostname (str): The host name or address
+     - device (str) | None: A specific device.  If not specified, either 'spec' or 'unit' will be accessed
+
+    Examples:
+        - spec = ApiClient(hostname='spec')
+        - focuser01 = ApiClient(hostname='mast01', device='focuser')
+        - unit17 = ApiClient(hostname='mast17')
+
+    """
 
     def __init__(self, hostname: str, device: str | None = None):
 
@@ -40,7 +53,11 @@ class ApiClient:
 
         self.base_url = f"http://{hostname}:{api_ports[self.domain]}/{domain_base}"
         if device:
-            self.base_url += f"/{device}"
+            if device in api_devices[self.domain]:
+                self.base_url += f"/{device}"
+            else:
+                raise Exception(f"Bad {device=} for domain {self.domain}.  Allowed: {api_devices[self.domain]}")
+
         self.logger = logging.getLogger(f"api-client")
         init_log(self.logger)
 
@@ -97,6 +114,8 @@ async def main():
     response = await focuser.get('status')
     if response:
         print(response)
+
+    bad = ApiClient(hostname='mast01', device='screwdriver')
 
 if __name__ == '__main__':
     asyncio.run(main())
