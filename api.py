@@ -105,17 +105,26 @@ class ApiClient:
 
 
 async def main():
-    unit = ApiClient(hostname='mast01')
-    response = await unit.get('status')
-    if response:
-        print(response)
+    try:
+        unit = ApiClient(hostname='mast01')
+        response = await unit.get('status')
+        if response:
+            print(response)
+    except:
+        pass
 
-    focuser = ApiClient(hostname='mast01', device='focuser')
-    response = await focuser.get('status')
-    if response:
-        print(response)
+    try:
+        focuser = ApiClient(hostname='mast01', device='focuser')
+        response = await focuser.get('status')
+        if response:
+            print(response)
+    except:
+        pass
 
-    bad = ApiClient(hostname='mast01', device='screwdriver')
+    try:
+        bad = ApiClient(hostname='mast01', device='screwdriver')
+    except Exception as ex:
+        print(f"exception: {ex}")
 
 if __name__ == '__main__':
     asyncio.run(main())
