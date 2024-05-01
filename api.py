@@ -47,54 +47,41 @@ class ApiClient:
         elif hostname == "spec":
             self.domain = ApiDomain.Spec
         else:
-            raise Exception(f"Bad {hostname=}.  Allowed hostnames are [mast01..mast20] or spec")
+            raise Exception(f"bad {hostname=}.  Allowed hostnames are [mast01..mast20] or spec")
 
         domain_base = BASE_UNIT_PATH if self.domain == ApiDomain.Unit else BASE_SPEC_PATH
 
-        self.base_url = f"http://{hostname}:{api_ports[self.domain]}/{domain_base}"
+        self.base_url = f"http://{hostname}:{api_ports[self.domain]}{domain_base}"
         if device:
             if device in api_devices[self.domain]:
                 self.base_url += f"/{device}"
             else:
-                raise Exception(f"Bad {device=} for domain {self.domain}.  Allowed: {api_devices[self.domain]}")
+                raise Exception(f"bad {device=} for domain {self.domain}, allowed: {api_devices[self.domain]}")
 
         self.logger = logging.getLogger(f"api-client")
         init_log(self.logger)
 
     async def get(self, method: str, params: dict | None = None):
-        try:
-            async with httpx.AsyncClient() as client:
-                response = await client.get(url=f"{self.base_url}/{method}", params=params)
-                response.raise_for_status()
-                canonical_response = response.json()
-                if 'exception' in canonical_response:
-                    self.logger.error(f"Remote exception: {canonical_response['exception']}")
-                elif 'errors' in canonical_response:
-                    for err in canonical_response['errors']:
-                        self.logger.error(f"Remote error: {err}")
-                else:
-                    return json.loads(canonical_response['value'])
-
-        except httpx.HTTPStatusError as e:
-            self.logger.error(f"HTTP error (url={e.request.url}): {e.response.status_code} - {e.response.text}")
-        except httpx.RequestError as e:
-            self.logger.error(f"Request error (url={e.request.url}): {e}")
-        except Exception as e:
-            self.logger.error(f"An error occurred: {e}")
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url=f"{self.base_url}/{method}", params=params)
+        return self.common_get_put(response)
 
     async def put(self, method: str, params: dict | None = None):
+        async with httpx.AsyncClient() as client:
+            response = await client.put(url=f"{self.base_url}/{method}", params=params)
+        return self.common_get_put(response)
+
+    def common_get_put(self, response):
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.put(url=f"{self.base_url}/{method}", params=params)
-                response.raise_for_status()
-                canonical_response = response.json()
-                if 'exception' in canonical_response:
-                    self.logger.error(f"Remote exception: {canonical_response['exception']}")
-                elif 'errors' in canonical_response:
-                    for err in canonical_response['errors']:
-                        self.logger.error(f"Remote error: {err}")
-                else:
-                    return json.loads(canonical_response['value'])
+            response.raise_for_status()
+            canonical_response = response.json()['response']
+            if 'exception' in canonical_response:
+                self.logger.error(f"Remote exception: {canonical_response['exception']}")
+            elif 'errors' in canonical_response:
+                for err in canonical_response['errors']:
+                    self.logger.error(f"Remote error: {err}")
+            else:
+                return ApiResponse(canonical_response['value'])
 
         except httpx.HTTPStatusError as e:
             self.logger.error(f"HTTP error (url={e.request.url}): {e.response.status_code} - {e.response.text}")
@@ -102,6 +89,24 @@ class ApiClient:
             self.logger.error(f"Request error (url={e.request.url}): {e}")
         except Exception as e:
             self.logger.error(f"An error occurred: {e}")
+
+
+class ApiResponse:
+    """
+    Converts a hierarchical dictionary (received as an API response) into a hierarchical object
+    """
+    def __init__(self, dictionary: dict):
+        for key, value in dictionary.items():
+            if isinstance(value, dict):
+                value = ApiResponse(value)
+            elif isinstance(value, list):
+                # Convert each item in the list if it's a dictionary
+                value = [ApiResponse(item) if isinstance(item, dict) else item for item in value]
+            setattr(self, key, value)
+
+    def __repr__(self):
+        attrs = ', '.join(f"{key}={value!r}" for key, value in self.__dict__.items())
+        return f"{self.__class__.__name__}({attrs})"
 
 
 async def main():
@@ -109,7 +114,7 @@ async def main():
         unit = ApiClient(hostname='mast01')
         response = await unit.get('status')
         if response:
-            print(response)
+            print(f"unit.status(): {response=}")
     except:
         pass
 
@@ -117,7 +122,7 @@ async def main():
         focuser = ApiClient(hostname='mast01', device='focuser')
         response = await focuser.get('status')
         if response:
-            print(response)
+            print(f"focuser.status(): {response=}")
     except:
         pass
 
