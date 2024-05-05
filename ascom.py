@@ -4,7 +4,6 @@ import win32com.client
 
 from common.utils import CanonicalResponse
 from abc import ABC, abstractmethod
-from logging import Logger
 
 
 def ascom_driver_info(driver):
@@ -26,6 +25,14 @@ class AscomDispatcher(ABC):
     @abstractmethod
     def ascom(self) -> win32com.client.Dispatch:
         pass
+
+    def ascom_status(self) -> dict:
+        ret = {
+            'ascom': ascom_driver_info(self.ascom)
+        }
+        response = ascom_run(self, 'Connected')
+        ret['ascom']['connected'] = response.value if response.succeeded else 'unknown'
+        return ret
 
     # @property
     # @abstractmethod

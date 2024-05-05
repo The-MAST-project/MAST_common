@@ -321,8 +321,18 @@ class Component(ABC, Activities):
 
     @property
     @abstractmethod
-    def shut_down(self) -> bool:
+    def was_shut_down(self) -> bool:
         pass
+
+    def component_status(self) -> dict:
+        return {
+            'detected': self.detected,
+            'activities': self.activities,
+            'activities_verbal': self.activities.__repr__(),
+            'operational': self.operational,
+            'why_not_operational': self.why_not_operational,
+            'was_shut_down': self.was_shut_down,
+        }
 
 
 def quote(s: str):
