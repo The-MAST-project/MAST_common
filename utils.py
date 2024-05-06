@@ -327,6 +327,7 @@ class Component(ABC, Activities):
     def component_status(self) -> dict:
         return {
             'detected': self.detected,
+            'connected': self.connected,
             'activities': self.activities,
             'activities_verbal': self.activities.__repr__(),
             'operational': self.operational,
