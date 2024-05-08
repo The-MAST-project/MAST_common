@@ -76,7 +76,9 @@ class ApiClient:
             response.raise_for_status()
             canonical_response = response.json()['response']
             if 'exception' in canonical_response:
-                self.logger.error(f"Remote exception: {canonical_response['exception']}")
+                self.logger.error(f"Remote exception:")
+                for line in canonical_response['exception']:
+                    self.logger.error(f"  [E] {line}")
             elif 'errors' in canonical_response:
                 for err in canonical_response['errors']:
                     self.logger.error(f"Remote error: {err}")

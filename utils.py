@@ -9,6 +9,8 @@ import fits
 from multiprocessing import shared_memory
 import re
 from abc import ABC
+import sys
+import traceback
 
 from common.config import Config
 import datetime
@@ -425,6 +427,16 @@ def time_stamp(d: dict):
 
 
 class CanonicalResponse:
+    """
+    Formalizes API responses.  An API method will return a CanonicalResponse, so that the
+     API caller may safely parse it.
+
+    An API method may ONLY return one of the following keys (in decreasing severity): 'exception', 'errors' or 'value'
+
+    - 'exception' - an exception occurred, delivers the details (no 'value')
+    - 'errors' - the method detected one or more errors (no 'value')
+    - 'value' - all went well, this is the return value (may be 'None')
+    """
 
     ok: dict = {'value': 'ok'}
 
@@ -434,7 +446,9 @@ class CanonicalResponse:
                  exception: Exception | None = None
                  ):
         if exception:
-            self.response = {'exception': f"{exception}"}
+            exc_type, exc_value, exc_traceback = sys.exc_info()
+            traceback_string = traceback.format_exception(exc_type, exc_value, exc_traceback)
+            self.response = {'exception': traceback_string}
         elif errors:
             self.response = {'errors': errors}
         else:
