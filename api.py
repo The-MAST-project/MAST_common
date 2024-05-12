@@ -2,9 +2,11 @@ import httpx
 from common.utils import BASE_UNIT_PATH, BASE_SPEC_PATH, init_log
 from enum import Enum, auto
 import re
-import json
 import logging
 import asyncio
+
+logger = logging.getLogger("api")
+init_log(logger)
 
 
 class ApiDomain(Enum):
@@ -38,7 +40,9 @@ class ApiClient:
 
     """
 
-    def __init__(self, hostname: str, device: str | None = None):
+    TIMEOUT: float = 10
+
+    def __init__(self, hostname: str, device: str | None = None, timeout: float = TIMEOUT):
 
         mast_pattern = re.compile(r"^mast(0[1-9]|1[0-9]|20)$")
 
@@ -47,7 +51,7 @@ class ApiClient:
         elif hostname == "spec":
             self.domain = ApiDomain.Spec
         else:
-            raise Exception(f"bad {hostname=}.  Allowed hostnames are [mast01..mast20] or spec")
+            raise ValueError(f"bad {hostname=}.  Allowed hostnames are [mast01..mast20] or spec")
 
         domain_base = BASE_UNIT_PATH if self.domain == ApiDomain.Unit else BASE_SPEC_PATH
 
@@ -61,14 +65,28 @@ class ApiClient:
         self.logger = logging.getLogger(f"api-client")
         init_log(self.logger)
 
+        self.detected = False
+        self.operational = False
+        self.timeout = timeout
+        response: ApiResponse = asyncio.run(self.get('status'))
+        if response:
+            self.detected = response.detected
+            self.operational = response.operational
+
     async def get(self, method: str, params: dict | None = None):
         async with httpx.AsyncClient() as client:
-            response = await client.get(url=f"{self.base_url}/{method}", params=params)
+            try:
+                response = await client.get(url=f"{self.base_url}/{method}", params=params, timeout=self.timeout)
+            except:
+                return None
         return self.common_get_put(response)
 
     async def put(self, method: str, params: dict | None = None):
         async with httpx.AsyncClient() as client:
-            response = await client.put(url=f"{self.base_url}/{method}", params=params)
+            try:
+                response = await client.put(url=f"{self.base_url}/{method}", params=params, timeout=self.timeout)
+            except Exception as e:
+                return {'error': f"{e}"}
         return self.common_get_put(response)
 
     def common_get_put(self, response):
@@ -107,6 +125,28 @@ class ApiResponse:
     def __repr__(self):
         attrs = ', '.join(f"{key}={value!r}" for key, value in self.__dict__.items())
         return f"{self.__class__.__name__}({attrs})"
+
+
+class ApiUnit:
+
+    def __init__(self, host: str):
+        self.client = None
+
+        try:
+            self.client = ApiClient(host)
+        except ValueError as e:
+            logger.error(f"{e}")
+
+
+class ApiSpec:
+
+    def __init__(self):
+        self.client = None
+
+        try:
+            self.client = ApiClient("spec")
+        except ValueError as e:
+            logger.error(f"{e}")
 
 
 async def main():
