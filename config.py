@@ -13,6 +13,9 @@ class Config:
     _instance = None
     _initialized: bool = False
 
+    # NUMBER_OF_UNITS = 20
+    NUMBER_OF_UNITS = 1
+
     def __new__(cls, *args, **kwargs):
         if cls._instance is None:
             cls._instance = super(Config, cls).__new__(cls)
