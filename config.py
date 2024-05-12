@@ -13,8 +13,7 @@ class Config:
     _instance = None
     _initialized: bool = False
 
-    # NUMBER_OF_UNITS = 20
-    NUMBER_OF_UNITS = 1
+    NUMBER_OF_UNITS = 20
 
     def __new__(cls, *args, **kwargs):
         if cls._instance is None:
