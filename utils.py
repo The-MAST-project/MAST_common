@@ -19,6 +19,7 @@ default_encoding = "utf-8"
 
 BASE_SPEC_PATH = '/mast/api/v1/spec/'
 BASE_UNIT_PATH = '/mast/api/v1/unit'
+BASE_CONTROL_PATH = '/mast/api/v1/control'
 
 
 class Timing:
@@ -206,6 +207,9 @@ class PathMaker:
         daily_folder = os.path.join(self.make_daily_folder_name())
         os.makedirs(daily_folder)
         return os.path.join(daily_folder, 'log.txt')
+
+    def make_plans_folder(self):
+        return os.path.join(self.top_folder, 'plans')
 
 
 path_maker = SingletonFactory.get_instance(PathMaker)
