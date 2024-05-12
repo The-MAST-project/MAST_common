@@ -170,10 +170,5 @@ async def main():
     except:
         pass
 
-    try:
-        bad = ApiClient(hostname='mast01', device='screwdriver')
-    except Exception as ex:
-        print(f"exception: {ex}")
-
 if __name__ == '__main__':
     asyncio.run(main())
