@@ -90,13 +90,15 @@ class ApiClient:
         return self.common_get_put(response)
 
     def common_get_put(self, response):
+        line: str
+
         try:
             response.raise_for_status()
             canonical_response = response.json()['response']
             if 'exception' in canonical_response:
                 self.logger.error(f"Remote exception:")
                 for line in canonical_response['exception']:
-                    self.logger.error(f"  [E] {line}")
+                    self.logger.error(f"  [E] {line.removesuffix('\n')}")
             elif 'errors' in canonical_response:
                 for err in canonical_response['errors']:
                     self.logger.error(f"Remote error: {err}")
