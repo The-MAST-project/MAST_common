@@ -14,7 +14,7 @@ import traceback
 
 from common.config import Config
 import datetime
-from typing import List
+from typing import List, Any
 
 default_log_level = logging.DEBUG
 default_encoding = "utf-8"
@@ -445,7 +445,7 @@ class CanonicalResponse:
     ok: dict = {'value': 'ok'}
 
     def __init__(self,
-                 value: str | None = None,
+                 value: Any,
                  errors: List[str] | str | None = None,
                  exception: Exception | None = None
                  ):
