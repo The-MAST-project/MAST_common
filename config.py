@@ -30,7 +30,7 @@ class Config:
         if project == 'unit' or project == 'control':
             folder = os.path.dirname(os.path.dirname(__file__))
         elif project == 'spec':
-            folder = os.path.dirname(__file__)
+            folder = os.path.dirname(os.path.dirname(__file__))
         else:
             raise Exception(f"Bad MAST_PROJECT environment variable ('{project}') " +
                             f"must be one of 'unit', 'spec' or 'control'")
