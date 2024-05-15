@@ -25,6 +25,24 @@ api_devices = {
 }
 
 
+class ApiResponse:
+    """
+    Converts a hierarchical dictionary (received as an API response) into a hierarchical object
+    """
+    def __init__(self, dictionary: dict):
+        for key, value in dictionary.items():
+            if isinstance(value, dict):
+                value = ApiResponse(value)
+            elif isinstance(value, list):
+                # Convert each item in the list if it's a dictionary
+                value = [ApiResponse(item) if isinstance(item, dict) else item for item in value]
+            setattr(self, key, value)
+
+    def __repr__(self):
+        attrs = ', '.join(f"{key}={value!r}" for key, value in self.__dict__.items())
+        return f"{self.__class__.__name__}({attrs})"
+
+
 class ApiClient:
     """
     Creates an API interface to a MAST entity living on a remote host.
@@ -68,42 +86,44 @@ class ApiClient:
         self.detected = False
         self.operational = False
         self.timeout = timeout
-        response: ApiResponse = asyncio.run(self.get('status'))
+
+        response: dict = self.get('status')
         if response:
             self.detected = response.detected
             self.operational = response.operational
 
-    async def get(self, method: str, params: dict | None = None):
-        async with httpx.AsyncClient() as client:
+    def get(self, method: str, params: dict | None = None) -> dict | None:
+        with httpx.Client() as client:
             try:
-                response = await client.get(url=f"{self.base_url}/{method}", params=params, timeout=self.timeout)
+                response = client.get(url=f"{self.base_url}/{method}", params=params, timeout=self.timeout)
             except:
                 return None
         return self.common_get_put(response)
 
-    async def put(self, method: str, params: dict | None = None):
-        async with httpx.AsyncClient() as client:
+    def put(self, method: str, params: dict | None = None) -> dict:
+        with httpx.AsyncClient() as client:
             try:
-                response = await client.put(url=f"{self.base_url}/{method}", params=params, timeout=self.timeout)
+                response = client.put(url=f"{self.base_url}/{method}", params=params, timeout=self.timeout)
             except Exception as e:
                 return {'error': f"{e}"}
         return self.common_get_put(response)
 
-    def common_get_put(self, response):
+    def common_get_put(self, response) -> dict:
         line: str
 
         try:
             response.raise_for_status()
             canonical_response = response.json()['response']
             if 'exception' in canonical_response:
-                self.logger.error(f"Remote exception:")
-                for line in canonical_response['exception']:
-                    self.logger.error(f"  [E] {line.removesuffix('\n')}")
+                # self.logger.error(f"Remote exception:")
+                # for line in canonical_response['exception']:
+                #     self.logger.error(f"  [E] {line.removesuffix('\n')}")
+                self.logger.error(f"Remote exception: {canonical_response['exception']}")
             elif 'errors' in canonical_response:
                 for err in canonical_response['errors']:
                     self.logger.error(f"Remote error: {err}")
             else:
-                return ApiResponse(canonical_response['value'])
+                return canonical_response['value']
 
         except httpx.HTTPStatusError as e:
             self.logger.error(f"HTTP error (url={e.request.url}): {e.response.status_code} - {e.response.text}")
@@ -111,24 +131,6 @@ class ApiClient:
             self.logger.error(f"Request error (url={e.request.url}): {e}")
         except Exception as e:
             self.logger.error(f"An error occurred: {e}")
-
-
-class ApiResponse:
-    """
-    Converts a hierarchical dictionary (received as an API response) into a hierarchical object
-    """
-    def __init__(self, dictionary: dict):
-        for key, value in dictionary.items():
-            if isinstance(value, dict):
-                value = ApiResponse(value)
-            elif isinstance(value, list):
-                # Convert each item in the list if it's a dictionary
-                value = [ApiResponse(item) if isinstance(item, dict) else item for item in value]
-            setattr(self, key, value)
-
-    def __repr__(self):
-        attrs = ', '.join(f"{key}={value!r}" for key, value in self.__dict__.items())
-        return f"{self.__class__.__name__}({attrs})"
 
 
 class ApiUnit:
@@ -153,10 +155,10 @@ class ApiSpec:
             logger.error(f"{e}")
 
 
-async def main():
+def main():
     try:
         unit = ApiClient(hostname='mast01')
-        response = await unit.get('status')
+        response = unit.get('status')
         if response:
             print(f"unit.status(): {response=}")
     except:
@@ -164,7 +166,7 @@ async def main():
 
     try:
         focuser = ApiClient(hostname='mast01', device='focuser')
-        response = await focuser.get('status')
+        response = focuser.get('status')
         if response:
             print(f"focuser.status(): {response=}")
     except:
@@ -175,5 +177,6 @@ async def main():
     except Exception as ex:
         print(f"exception: {ex}")
 
+
 if __name__ == '__main__':
-    asyncio.run(main())
+    main()
