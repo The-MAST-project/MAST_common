@@ -19,7 +19,7 @@ from typing import List
 default_log_level = logging.DEBUG
 default_encoding = "utf-8"
 
-BASE_SPEC_PATH = '/mast/api/v1/spec/'
+BASE_SPEC_PATH = '/mast/api/v1/spec'
 BASE_UNIT_PATH = '/mast/api/v1/unit'
 BASE_CONTROL_PATH = '/mast/api/v1/control'
 
@@ -449,6 +449,9 @@ class CanonicalResponse:
                  errors: List[str] | str | None = None,
                  exception: Exception | None = None
                  ):
+        if value is None and errors is None and exception is None:
+            raise ValueError(f"parameters 'value', 'errors' and 'exception' cannot be 'None' all at once")
+
         if exception:
             exc_type, exc_value, exc_traceback = sys.exc_info()
             traceback_string = traceback.format_exception(exc_type, exc_value, exc_traceback)
