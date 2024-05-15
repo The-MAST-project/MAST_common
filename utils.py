@@ -5,7 +5,7 @@ import logging
 import platform
 import os
 import io
-import fits
+import astropy.io.fits as fits
 from multiprocessing import shared_memory
 import re
 from abc import ABC
@@ -449,8 +449,6 @@ class CanonicalResponse:
                  errors: List[str] | str | None = None,
                  exception: Exception | None = None
                  ):
-        if value is None and errors is None and exception is None:
-            raise ValueError(f"parameters 'value', 'errors' and 'exception' cannot be 'None' all at once")
 
         if exception:
             exc_type, exc_value, exc_traceback = sys.exc_info()
