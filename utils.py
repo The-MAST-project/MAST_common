@@ -445,7 +445,7 @@ class CanonicalResponse:
     ok: dict = {'value': 'ok'}
 
     def __init__(self,
-                 value: Any,
+                 value: Any = None,
                  errors: List[str] | str | None = None,
                  exception: Exception | None = None
                  ):
