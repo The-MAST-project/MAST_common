@@ -221,10 +221,11 @@ def init_log(logger: logging.Logger, level: int | None = None):
     logger.propagate = False
     level = default_log_level if level is None else level
     logger.setLevel(level)
-    handler = logging.StreamHandler()
-    handler.setLevel(level)
+
     formatter = logging.Formatter('%(asctime)s - %(levelname)-8s - {%(name)s:%(funcName)s:%(threadName)s:%(thread)s}' +
                                   ' -  %(message)s')
+    handler = logging.StreamHandler()
+    handler.setLevel(level)
     handler.setFormatter(formatter)
     logger.addHandler(handler)
 

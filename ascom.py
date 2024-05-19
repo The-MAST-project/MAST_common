@@ -1,9 +1,12 @@
+import logging
 import re
 import pywintypes
 import win32com.client
 
 from common.utils import CanonicalResponse
 from abc import ABC, abstractmethod
+
+logger = logging.getLogger('ascom')
 
 
 def ascom_driver_info(driver):
@@ -55,16 +58,16 @@ def ascom_run(o: AscomDispatcher, sentence: str, no_entry_log=True) -> Canonical
             ret = eval(cmd, globals(), locals())
             msg += f' -> {ret}'
         if not no_entry_log:
-            o.logger.debug(msg)
+            logger.debug(msg)
         return CanonicalResponse(value=ret)
 
     except pywintypes.com_error as e:
-        o.logger.debug(f"{label}: ASCOM error (cmd='{cmd.removeprefix('o.ascom.')}')")
-        o.logger.debug(f"{label}: Message: '{e.excepinfo[2]}'")
-        o.logger.debug(f"{label}:    Code: {e.hresult}")
+        logger.debug(f"{label}: ASCOM error (cmd='{cmd.removeprefix('o.ascom.')}')")
+        logger.debug(f"{label}: Message: '{e.excepinfo[2]}'")
+        logger.debug(f"{label}:    Code: {e.hresult}")
         return CanonicalResponse(exception=e)
 
     except Exception as e:
         message = f"{label}: Exception: cmd='{cmd}', exception='{e}'"
-        o.logger.debug(message)
+        logger.debug(message)
         return CanonicalResponse(exception=e)
