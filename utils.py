@@ -23,6 +23,8 @@ BASE_SPEC_PATH = '/mast/api/v1/spec'
 BASE_UNIT_PATH = '/mast/api/v1/unit'
 BASE_CONTROL_PATH = '/mast/api/v1/control'
 
+logger = logging.getLogger('mast.unit.utils')
+
 
 class Timing:
     start_time: datetime.datetime
@@ -48,14 +50,14 @@ class Activities:
     def start_activity(self, activity: IntFlag):
         self.activities |= activity
         self.timings[activity] = Timing()
-        self.logger.info(f"started activity {activity.__repr__()}")
+        logger.info(f"started activity {activity.__repr__()}")
 
     def end_activity(self, activity: IntFlag):
         if not self.is_active(activity):
             return
         self.activities &= ~activity
         self.timings[activity].end()
-        self.logger.info(f"ended activity {activity.__repr__()}, duration={self.timings[activity].duration}")
+        logger.info(f"ended activity {activity.__repr__()}, duration={self.timings[activity].duration}")
 
     def is_active(self, activity):
         return (self.activities & activity) != 0
@@ -217,23 +219,24 @@ class PathMaker:
 path_maker = SingletonFactory.get_instance(PathMaker)
 
 
-def init_log(logger: logging.Logger, level: int | None = None):
-    logger.propagate = False
+def init_log(logger_: logging.Logger, level: int | None = None, file_name: str | None = None):
+    logger_.propagate = False
     level = default_log_level if level is None else level
-    logger.setLevel(level)
+    logger_.setLevel(level)
 
     formatter = logging.Formatter('%(asctime)s - %(levelname)-8s - {%(name)s:%(funcName)s:%(threadName)s:%(thread)s}' +
                                   ' -  %(message)s')
     handler = logging.StreamHandler()
     handler.setLevel(level)
     handler.setFormatter(formatter)
-    logger.addHandler(handler)
+    logger_.addHandler(handler)
 
     # path_maker = SingletonFactory.get_instance(PathMaker)
-    handler = DailyFileHandler(path=os.path.join(path_maker.make_daily_folder_name(), 'log.txt'), mode='a')
+    file = f"{file_name}.txt" if file_name is not None else 'log.txt'
+    handler = DailyFileHandler(path=os.path.join(path_maker.make_daily_folder_name(), file), mode='a')
     handler.setLevel(level)
     handler.setFormatter(formatter)
-    logger.addHandler(handler)
+    logger_.addHandler(handler)
 
 
 def deep_update(original: dict, update: dict):
@@ -371,7 +374,7 @@ class Subsystem:
         self.obj_name = obj_name
 
 
-def image_to_fits(image, path: str, header: dict, logger):
+def image_to_fits(image, path: str, header: dict, logger_):
     """
 
     Parameters
@@ -382,7 +385,7 @@ def image_to_fits(image, path: str, header: dict, logger):
         name of the created file
     header
         a dictionary of FITS header key/values
-    logger
+    logger_
         a logger for logging :-)
 
     Returns
@@ -398,22 +401,22 @@ def image_to_fits(image, path: str, header: dict, logger):
     for k, v in header.items():
         hdu.header[k] = v
     hdu_list = fits.HDUList([hdu])
-    logger.info(f'saving image to {path} ...')
+    logger_.info(f'saving image to {path} ...')
     hdu_list.writeto(path)
 
 
-def parse_params(memory: shared_memory.SharedMemory, logger: logging.Logger) -> dict:
+def parse_params(memory: shared_memory.SharedMemory, logger_: logging.Logger) -> dict:
     bytes_array = bytearray(memory.buf)
     string_array = bytes_array.decode(encoding='utf-8')
     data = string_array[:string_array.find('\x00')]
-    logger.info(f"data: '{data}'")
+    logger_.info(f"data: '{data}'")
 
     matches = re.findall(r'(\w+(?:\(\d+\))?)\s*=\s*(.*?)(?=(!|$|\w+(\(\d+\))?\s*=))', data)
     d = {}
     for match in matches:
         key = match[0]
         value = match[1].strip()
-        logger.info(f"key={match[0]}, value='{value}'")
+        logger_.info(f"key={match[0]}, value='{value}'")
         d[key] = value
     return d
 

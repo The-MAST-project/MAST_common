@@ -37,11 +37,6 @@ class AscomDispatcher(ABC):
         ret['ascom']['connected'] = response.value if response.succeeded else 'unknown'
         return ret
 
-    # @property
-    # @abstractmethod
-    # def logger(self) -> Logger:
-    #     pass
-
 
 def ascom_run(o: AscomDispatcher, sentence: str, no_entry_log=True) -> CanonicalResponse:
     ascom_dispatcher = f'{o.ascom}'
