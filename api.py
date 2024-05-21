@@ -1,12 +1,10 @@
 import httpx
-from common.utils import BASE_UNIT_PATH, BASE_SPEC_PATH, init_log
+from common.utils import BASE_UNIT_PATH, BASE_SPEC_PATH
 from enum import Enum, auto
 import re
 import logging
-import asyncio
 
 logger = logging.getLogger("api")
-init_log(logger)
 
 
 class ApiDomain(Enum):
@@ -80,9 +78,6 @@ class ApiClient:
             else:
                 raise Exception(f"bad {device=} for domain {self.domain}, allowed: {api_devices[self.domain]}")
 
-        self.logger = logging.getLogger(f"api-client")
-        init_log(self.logger)
-
         self.detected = False
         self.operational = False
         self.timeout = timeout
@@ -115,22 +110,19 @@ class ApiClient:
             response.raise_for_status()
             canonical_response = response.json()['response']
             if 'exception' in canonical_response:
-                # self.logger.error(f"Remote exception:")
-                # for line in canonical_response['exception']:
-                #     self.logger.error(f"  [E] {line.removesuffix('\n')}")
-                self.logger.error(f"Remote exception: {canonical_response['exception']}")
+                logger.error(f"Remote exception: {canonical_response['exception']}")
             elif 'errors' in canonical_response:
                 for err in canonical_response['errors']:
-                    self.logger.error(f"Remote error: {err}")
+                    logger.error(f"Remote error: {err}")
             else:
                 return canonical_response['value']
 
         except httpx.HTTPStatusError as e:
-            self.logger.error(f"HTTP error (url={e.request.url}): {e.response.status_code} - {e.response.text}")
+            logger.error(f"HTTP error (url={e.request.url}): {e.response.status_code} - {e.response.text}")
         except httpx.RequestError as e:
-            self.logger.error(f"Request error (url={e.request.url}): {e}")
+            logger.error(f"Request error (url={e.request.url}): {e}")
         except Exception as e:
-            self.logger.error(f"An error occurred: {e}")
+            logger.error(f"An error occurred: {e}")
 
 
 class ApiUnit:
