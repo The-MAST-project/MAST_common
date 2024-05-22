@@ -80,17 +80,14 @@ class ApiClient:
             else:
                 raise Exception(f"bad {device=} for domain {self.domain}, allowed: {api_devices[self.domain]}")
 
-        self.logger = logging.getLogger(f"api-client")
-        init_log(self.logger)
-
         self.detected = False
         self.operational = False
         self.timeout = timeout
 
         response: dict = self.get('status')
         if response:
-            self.detected = response.detected
-            self.operational = response.operational
+            self.detected = response['detected']
+            self.operational = response['operational']
 
     def get(self, method: str, params: dict | None = None) -> dict | None:
         with httpx.Client() as client:
@@ -108,29 +105,32 @@ class ApiClient:
                 return {'error': f"{e}"}
         return self.common_get_put(response)
 
-    def common_get_put(self, response) -> dict:
+    @staticmethod
+    def common_get_put(response) -> dict:
         line: str
 
         try:
             response.raise_for_status()
-            canonical_response = response.json()['response']
-            if 'exception' in canonical_response:
-                # self.logger.error(f"Remote exception:")
-                # for line in canonical_response['exception']:
-                #     self.logger.error(f"  [E] {line.removesuffix('\n')}")
-                self.logger.error(f"Remote exception: {canonical_response['exception']}")
-            elif 'errors' in canonical_response:
-                for err in canonical_response['errors']:
-                    self.logger.error(f"Remote error: {err}")
+            canonical_response = response.json()
+            if hasattr(canonical_response, 'exception'):
+                # logger.error(f"Remote exception:")
+                # for line in canonical_response.exception:
+                #     logger.error(f"  [E] {line.removesuffix('\n')}")
+                logger.error(f"Remote exception: {canonical_response.exception}")
+            elif hasattr(canonical_response, 'errors'):
+                for err in canonical_response.errors:
+                    logger.error(f"Remote error: {err}")
+            elif hasattr(canonical_response, 'value'):
+                return canonical_response.value
             else:
-                return canonical_response['value']
+                raise Exception(f"missing 'value' attribute in canonical_response '{canonical_response}'")
 
         except httpx.HTTPStatusError as e:
-            self.logger.error(f"HTTP error (url={e.request.url}): {e.response.status_code} - {e.response.text}")
+            logger.error(f"HTTP error (url={e.request.url}): {e.response.status_code} - {e.response.text}")
         except httpx.RequestError as e:
-            self.logger.error(f"Request error (url={e.request.url}): {e}")
+            logger.error(f"Request error (url={e.request.url}): {e}")
         except Exception as e:
-            self.logger.error(f"An error occurred: {e}")
+            logger.error(f"An error occurred: {e}")
 
 
 class ApiUnit:
