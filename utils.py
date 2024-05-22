@@ -455,27 +455,27 @@ class CanonicalResponse:
         if exception:
             exc_type, exc_value, exc_traceback = sys.exc_info()
             traceback_string = traceback.format_exception(exc_type, exc_value, exc_traceback)
-            self.response = {'exception': traceback_string}
+            self.exception = traceback_string
         elif errors:
-            self.response = {'errors': errors}
+            self.errors = errors
         else:
-            self.response = {'value': value}
+            self.value = value
 
     @property
     def is_error(self):
-        return 'errors' in self.response
+        return self.errors is not None
 
     @property
     def is_exception(self):
-        return 'exception' in self.response
+        return self.exception is not None
 
     @property
     def succeeded(self):
-        return 'value' in self.response
+        return self.value is not None
 
     @property
     def failed(self):
-        return self.is_error or self.is_exception
+        return self.errors or self.exception
 
     @property
     def failure(self) -> List[str] | str | None:
@@ -484,16 +484,4 @@ class CanonicalResponse:
         if self.is_exception:
             return self.exception
         if self.is_error:
-            return self.errors if 'errors' in self.response else None
-
-    @property
-    def value(self):
-        return self.response['value'] if self.succeeded else None
-
-    @property
-    def errors(self) -> List[str] | None:
-        return self.response['errors'] if 'errors' in self.response else None
-
-    @property
-    def exception(self):
-        return self.response['exception'] if self.is_exception else None
+            return self.errors if self.errors is not None else None
