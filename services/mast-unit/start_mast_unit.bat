@@ -6,4 +6,4 @@ set MAST_PROJECT=unit
 set PYTHONUNBUFFERED=1
 
 CALL %venv%\Scripts\activate.bat
-%venv%\Scripts\python.exe %top%\src\app.py > NUL 2>&1
+%venv%\Scripts\python.exe %top%\src\app.py
