@@ -5,12 +5,13 @@ import subprocess
 import time
 
 
-def find_process(patt: str = None, pid: int | None = None) -> psutil.Process:
+def find_process(name: str | None = None, patt: str = None, pid: int | None = None) -> psutil.Process:
     """
     Searches for a running process either by a pattern in the command line or by pid
 
     Parameters
     ----------
+    name
     patt
     pid
 
@@ -19,25 +20,25 @@ def find_process(patt: str = None, pid: int | None = None) -> psutil.Process:
 
     """
     ret = None
-    if patt:
-        patt = re.compile(patt, re.IGNORECASE)
-        for proc in psutil.process_iter():
-            try:
-                argv = proc.cmdline()
-                for arg in argv:
-                    if patt.search(arg) and proc.status() == psutil.STATUS_RUNNING:
-                        ret = proc
-                        break
-            except psutil.AccessDenied:
-                continue
-    elif pid:
-        proc = [(x.pid == pid and x.status() == psutil.STATUS_RUNNING) for x in psutil.process_iter()]
-        ret = proc[0]
+    for proc in psutil.process_iter(['name', 'status', 'pid', 'cmdline']):
+        if name and proc.info['name'] == name:
+            ret = proc
+            break
+        elif patt:
+            patt = re.compile(patt, re.IGNORECASE)
+            for arg in proc.info['cmdline']:
+                if patt.search(arg):
+                    ret = proc
+                    break
+        elif pid and proc.info['pid'] == pid:
+            ret = proc
+            break
 
     return ret
 
 
-def ensure_process_is_running(pattern: str, cmd: str, logger: logging.Logger, env: dict = None,
+def ensure_process_is_running(name: str | None = None, pattern: str | None = None, cmd: str = None,
+                              logger: logging.Logger | None = None, env: dict = None,
                               cwd: str = None, shell: bool = False) -> psutil.Process:
     """
     Makes sure a process containing 'pattern' in the command line exists.
@@ -45,6 +46,7 @@ def ensure_process_is_running(pattern: str, cmd: str, logger: logging.Logger, en
 
     Parameters
     ----------
+    name:
     pattern: str The pattern to lookup in the command line of processes
     cmd: str - The command to use to start a new process
     env: dict - An environment dictionary
@@ -56,9 +58,9 @@ def ensure_process_is_running(pattern: str, cmd: str, logger: logging.Logger, en
     -------
 
     """
-    p = find_process(pattern)
+    p = find_process(name, pattern)
     if p is not None:
-        logger.debug(f'A process with pattern={pattern} in the commandline exists, pid={p.pid}')
+        logger.debug(f'A process with {name=} or {pattern=} in the commandline exists, pid={p.pid}')
         return p
 
     try:
@@ -74,8 +76,8 @@ def ensure_process_is_running(pattern: str, cmd: str, logger: logging.Logger, en
 
     p = None
     while not p:
-        p = find_process(pattern)
+        p = find_process(name, pattern)
         if p:
             return p
-        logger.info(f"waiting for proces with pattern='{pattern}' to run")
+        logger.info(f"waiting for proces with {name=} or {pattern=} to run")
         time.sleep(1)
