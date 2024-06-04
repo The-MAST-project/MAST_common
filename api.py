@@ -60,7 +60,7 @@ class ApiClient:
 
     def __init__(self, hostname: str, device: str | None = None, timeout: float = TIMEOUT):
 
-        mast_pattern = re.compile(r"^mast(0[1-9]|1[0-9]|20)$")
+        mast_pattern = re.compile(r"^mast(0[1-9]|1[0-9]|20|w)$")
 
         if mast_pattern.match(hostname):
             self.domain = ApiDomain.Unit
@@ -70,6 +70,9 @@ class ApiClient:
             raise ValueError(f"bad {hostname=}.  Allowed hostnames are [mast01..mast20] or spec")
 
         domain_base = BASE_UNIT_PATH if self.domain == ApiDomain.Unit else BASE_SPEC_PATH
+
+        if not hostname.endswith('.weizmann.ac.il'):
+            hostname += '.weizmann.ac.il'
 
         self.base_url = f"http://{hostname}:{api_ports[self.domain]}{domain_base}"
         if device:
@@ -84,26 +87,37 @@ class ApiClient:
 
         response: dict = self.get('status')
         if response:
-            self.detected = response.detected
-            self.operational = response.operational
+            self.detected = response['detected'] if 'detected' in response else False
+            self.operational = response['operational'] if 'operational' in response else False
 
     def get(self, method: str, params: dict | None = None) -> dict | None:
-        with httpx.Client() as client:
+        url = f"{self.base_url}/{method}"
+        with httpx.Client(trust_env=False) as client:
             try:
-                response = client.get(url=f"{self.base_url}/{method}", params=params, timeout=self.timeout)
-            except:
-                return None
-        return self.common_get_put(response)
-
-    def put(self, method: str, params: dict | None = None) -> dict:
-        with httpx.AsyncClient() as client:
-            try:
-                response = client.put(url=f"{self.base_url}/{method}", params=params, timeout=self.timeout)
+                response = client.get(url=url, params=params, timeout=self.timeout)
+            except httpx.TimeoutException:
+                logger.error(f"timeout after {self.timeout} seconds, {url=}")
+                return {'error': 'timeout'}
             except Exception as e:
+                logger.error(f"exception: {e}")
                 return {'error': f"{e}"}
         return self.common_get_put(response)
 
-    def common_get_put(self, response) -> dict:
+    def put(self, method: str, params: dict | None = None) -> dict:
+        url = f"{self.base_url}/{method}"
+        with httpx.Client(trust_env=False) as client:
+            try:
+                response = client.put(url=f"{self.base_url}/{method}", params=params, timeout=self.timeout)
+            except httpx.TimeoutException:
+                logger.error(f"timeout after {self.timeout} seconds, {url=}")
+                return {'error': 'timeout'}
+            except Exception as e:
+                logger.error(f"exception: {e}")
+                return {'error': f"{e}"}
+        return self.common_get_put(response)
+
+    @staticmethod
+    def common_get_put(response) -> dict:
         line: str
 
         try:
@@ -115,7 +129,7 @@ class ApiClient:
                 for err in canonical_response['errors']:
                     logger.error(f"Remote error: {err}")
             else:
-                return canonical_response['value']
+                raise Exception(f"missing 'value' attribute in canonical_response '{canonical_response}'")
 
         except httpx.HTTPStatusError as e:
             logger.error(f"HTTP error (url={e.request.url}): {e.response.status_code} - {e.response.text}")
