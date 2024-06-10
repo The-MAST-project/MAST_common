@@ -13,8 +13,7 @@ class Config:
     _instance = None
     _initialized: bool = False
 
-    # NUMBER_OF_UNITS = 20
-    NUMBER_OF_UNITS = 1
+    NUMBER_OF_UNITS = 20
 
     def __new__(cls, *args, **kwargs):
         if cls._instance is None:
@@ -31,7 +30,7 @@ class Config:
         if project == 'unit' or project == 'control':
             folder = os.path.dirname(os.path.dirname(__file__))
         elif project == 'spec':
-            folder = os.path.dirname(__file__)
+            folder = os.path.dirname(os.path.dirname(__file__))
         else:
             raise Exception(f"Bad MAST_PROJECT environment variable ('{project}') " +
                             f"must be one of 'unit', 'spec' or 'control'")

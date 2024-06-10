@@ -29,6 +29,10 @@ class FsWatcher:
 
         self.observer.join()
 
+    def stop(self):
+        self.observer.stop()
+        logger.info("Observer Stopped")
+
 
 class Handler(FileSystemEventHandler):
 
