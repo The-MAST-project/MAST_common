@@ -8,17 +8,31 @@ from common.utils import init_log
 logger = logging.getLogger('networking')
 init_log(logger, logging.DEBUG)
 
+WEIZMANN_DOMAIN = 'weizmann.ac.il'
+
 
 class NetworkDestination:
 
     def __init__(self, host: str, port: int):
+        """
+
+
+        Parameters
+        ----------
+        host - Either a quad notation IPv4 address or a
+         hostname (fully qualified or short)
+        port - a port number
+        """
+        ipaddr = None
+        hostname = None
+
         try:
-            # check if it's already an IPv4 address
+            # check if it's already an IPv4 address in quad format
             ipaddr = ipaddress.IPv4Address(host)
             try:
                 hostname = socket.gethostbyaddr(ipaddr)
             except socket.gaierror:
-                logger.error(f"cannot resolve '{ipaddr=}'")
+                logger.error(f"cannot resolve {ipaddr=}")
                 raise
 
         except ipaddress.AddressValueError:
@@ -26,13 +40,22 @@ class NetworkDestination:
             try:
                 ipaddr = socket.gethostbyname(host)
                 hostname = host
-            except socket.gaierror as e:
-                logger.error(f"cannot resolve '{host=}'")
-                raise
+            except socket.gaierror:
+                if not host.endswith('.' + WEIZMANN_DOMAIN):
+                    full_host = host + '.' + WEIZMANN_DOMAIN
+                    try:
+                        ipaddr = socket.gethostbyname(full_host)
+                        hostname = full_host
+                    except socket.gaierror:
+                        logger.error(f"cannot resolve {host=} or {full_host=}")
+                        raise
 
         self.ipaddr: str = ipaddr
         self.hostname: str = hostname
         self.port: int = port
+
+    def __repr__(self):
+        return f"NetworkDestination(ipaddr='{self.ipaddr}', hostname='{self.hostname}', port={self.port})"
 
 
 class NetworkedDevice:
@@ -44,8 +67,10 @@ class NetworkedDevice:
         """
 
         :param conf: A dictionary with keys:
-            - 'host'    - [Mandatory] The hostname or IP address of the device
-            - 'port'    - [Optional] Port
+            'network': {
+                - 'host'    - [Mandatory] The hostname or IP address of the device
+                - 'port'    - [Optional] Port
+            }
         """
 
         if 'network' not in conf:
