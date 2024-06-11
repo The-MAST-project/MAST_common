@@ -1,0 +1,5 @@
+{
+  "name": "operator",
+  "members": ["arie", "sagi", "eran", "ofer", "yahel", "ido"],
+  "capabilities": ["config", "control"]
+}

@@ -1,0 +1,5 @@
+{
+  "name": "all",
+  "members": ["arie", "sagi", "eran", "ofer", "yahel", "ido", "avishay"],
+  "capabilities": ["control"]
+}

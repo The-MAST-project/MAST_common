@@ -1,0 +1,53 @@
+{
+      "name": "common",
+      "global": {
+        "top_folder": "C:\\MAST",
+        "log_level": "debug"
+      },
+      "server": {
+        "port": 8000
+      },
+      "mount": {},
+      "stage": {
+        "spectra_position": 100000,
+        "image_position": 10000,
+        "power": {
+          "delay_after_on": 5
+        }
+      },
+      "camera": {
+        "ascom_driver": "ASCOM.ASICamera2.Camera",
+        "power": {
+          "delay_after_on": 2
+        },
+        "temp_check_interval": 10
+      },
+      "focuser": {
+        "ascom_driver": "ASCOM.PWI4.Focuser",
+        "known_as_good_position": 15000
+      },
+      "covers": {
+        "ascom_driver": "ASCOM.PlaneWave.CoverCalibrator"
+      },
+      "power_switch": {
+        "network": {
+          "host": "auto",
+          "port": 80
+        },
+        "userid": "admin",
+        "password": "1234",
+        "timeout": 2,
+        "cycle_time": 3,
+        "delay_after_on": 3,
+        "outlets": {
+          "1": "Mount",
+          "2": "Stage",
+          "3": "Camera",
+          "4": "Focuser",
+          "5": "Covers",
+          "6": "Computer",
+          "7": "Outlet 7",
+          "8": "Outlet 8"
+        }
+      }
+    }
