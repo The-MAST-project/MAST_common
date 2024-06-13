@@ -1,0 +1,3 @@
+{,"name":"admin","members":["arie"],"capabilities":["change_config","use_controls","change_users"]}
+{,"name":"operator","members":["arie","sagi","eran","ofer","yahel","ido"],"capabilities":["change_config","use_controls"]}
+{,"name":"everybody","members":["arie","sagi","eran","ofer","yahel","ido","avishay"],"capabilities":["view"]}
