@@ -1,15 +1,23 @@
-import datetime
 import socket
 
-import tomlkit
-import os
+import pymongo
+from pymongo.errors import ConnectionFailure, PyMongoError
+import logging
 from typing import List
-import git
+from utils import init_log, deep_dict_update, deep_dict_difference, deep_dict_is_empty
+from copy import deepcopy
+
+logger = logging.getLogger('config')
+init_log(logger)
+WEIZMANN_DOMAIN: str = 'weizmann.ac.il'
+
+
+# Enable debug logging for PyMongo
+# logging.basicConfig(level=logging.DEBUG)
+# logging.getLogger('pymongo').setLevel(logging.DEBUG)
 
 
 class Config:
-    global_file: str
-    toml: tomlkit.TOMLDocument = None
     _instance = None
     _initialized: bool = False
 
@@ -20,87 +28,123 @@ class Config:
             cls._instance = super(Config, cls).__new__(cls)
         return cls._instance
 
-    def __init__(self):
+    def __init__(self, site: str = 'wis'):
         if self._initialized:
             return
-        project = os.getenv('MAST_PROJECT')
-        if project is None:
-            raise Exception(f"Missing 'MAST_PROJECT' environment variable")
 
-        if project == 'unit' or project == 'control':
-            folder = os.path.dirname(os.path.dirname(__file__))
-        elif project == 'spec':
-            folder = os.path.dirname(os.path.dirname(__file__))
-        else:
-            raise Exception(f"Bad MAST_PROJECT environment variable ('{project}') " +
-                            f"must be one of 'unit', 'spec' or 'control'")
+        try:
+            client = pymongo.MongoClient(f"mongodb://mast-{site}-mongo.weizmann.ac.il:27017/")
+            self.db = client['mast']
+        except ConnectionFailure as e:
+            logger.error(f"{e}")
 
-        self.global_file = os.path.join(folder, 'config', f'{project}.toml')
-        self.specific_file = os.path.join(folder, 'config', f'{socket.gethostname()}.toml')
-        if not os.path.exists(self.global_file):
-            raise Exception(f"missing global config file '{self.global_file}'")
-
-        self.toml = tomlkit.TOMLDocument()
-        self.reload()
         self._initialized = True
 
-    def reload(self):
-        self.toml.clear()
-        file = self.specific_file if os.path.exists(self.specific_file) else self.global_file
-        if os.path.exists(file):
-            with open(file, 'r') as f:
-                self.toml = tomlkit.load(f)
+    def get_unit(self, unit_name: str = None) -> dict:
+        """
+        Gets a unit's configuration.  By default, this is the ['config']['units']['common']
+         entry. If a unit-specific entry exists it overrides the 'common' entry.
+        """
+        coll = self.db['units']
+        common_conf = coll.find_one({'name': 'common'})
+        ret: dict = deepcopy(common_conf)
 
-    def save(self):
-        self.toml['global']['saved_at'] = datetime.datetime.now()
-        with open(self.specific_file, 'w') as f:
-            tomlkit.dump(self.toml, f)
+        # override with unit-specific config
+        if unit_name:
+            unit_conf: dict = coll.find_one({'name': unit_name})
+            if unit_conf:
+                deep_dict_update(ret, unit_conf)
 
-        repo_path = os.path.dirname(os.path.dirname(self.global_file))
-        file_path = self.global_file.removeprefix(repo_path + os.path.sep)
-        repo = git.Repo(repo_path)
-        if file_path in repo.git.diff(None, name_only=True):
+        # resolve power-switch name and ipaddr
+        if unit_name:
+            ret['name'] = unit_name
+            if ret['power_switch']['network']['host'] == 'auto':
+                switch_host_name = unit_name.replace('mast', 'mastps') + '.' + WEIZMANN_DOMAIN
+                ret['power_switch']['network']['host'] = switch_host_name
+                if 'ipaddr' not in ret['power_switch']['network']:
+                    try:
+                        ipaddr = socket.gethostbyname(switch_host_name)
+                        ret['power_switch']['network']['ipaddr'] = ipaddr
+                    except socket.gaierror:
+                        logger.warning(f"could not resolve {switch_host_name=}")
+
+        return ret
+
+    def set_unit(self, unit_name: str = None, unit_conf: dict = None):
+        if not unit_name:
+            raise Exception(f"save_unit_config: 'unit_name' cannot be None")
+        if not unit_conf:
+            raise Exception(f"save_unit_config: 'unit_conf' cannot be None")
+
+        common_conf = self.db['units'].find_one({'name': 'common'})
+        difference = deep_dict_difference(common_conf, unit_conf)
+        saved_power_switch_network = difference['power_switch']['network']
+        del difference['power_switch']['network']
+        del difference['name']
+
+        if not deep_dict_is_empty(difference):
+            difference['name'] = unit_name
+            difference['power_switch']['network'] = saved_power_switch_network
             try:
-                repo.git.add(file_path)
-                repo.index.commit(f"Saved changes to '{self.specific_file}'")
-                origin = repo.remotes['origin']
-                origin.push(str(repo.active_branch))
-            except Exception as e:
-                print(f"Exception: {e}")
+                self.db['units'].update_one({'name': unit_name}, {'$set': difference}, upsert=True)
+            except PyMongoError:
+                logger.error(f"save_unit_config: failed to update unit config for {unit_name=} with {difference=}")
 
+    def get_sites(self) -> dict:
+        ret = {}
+        for doc in self.db['sites'].find():
+            ret[doc['name']] = {
+                'deployed': doc['deployed'],
+                'planned': doc['planned']
+            }
+        return ret
 
-class DeepSearchResult:
+    def get_user(self, name: str = None) -> dict:
+        try:
+            user = self.db['users'].find_one({'name': name})
+            groups: list = user['groups']
+        except PyMongoError:
+            logger.error(f"failed to get user {name=}")
+            raise
+        groups.append('everybody')
 
-    def __init__(self, path: str, value):
-        self.path = path
-        self.value = value
+        collection = self.db['groups']
+        # Define the aggregation pipeline
+        pipeline = [
+            {'$match': {'name': {'$in': groups}}},
+            {'$unwind': '$capabilities'},
+            {'$group': {'_id': None, 'allCapabilities': {'$addToSet': '$capabilities'}}},
+            {'$project': {'_id': 0, 'allCapabilities': 1}},
+            {'$unwind': '$allCapabilities'},
+            {'$sort': {'allCapabilities': 1}},
+            {'$group': {'_id': None, 'sortedCapabilities': {'$push': '$allCapabilities'}}},
+            {'$project': {'_id': 0, 'sortedCapabilities': 1}}
+        ]
 
+        # Perform the aggregation
+        result = list(collection.aggregate(pipeline))
 
-def deep_search(d: dict, what: str, path: str = None, found: list = None) -> List[DeepSearchResult]:
-    """
-    Performs a deep search of a keyword in a dictionary
-    :param d: The dictionary to be searched
-    :param what: The keyword to search for
-    :param path:
-    :param found:
-    :return:
-    """
+        # Extract the list of all capabilities
+        capabilities = []
+        if result:
+            capabilities = result[0]['sortedCapabilities']
 
-    if found is None:
-        found = list()
+        return {
+            'name': name,
+            'groups': groups,
+            'capabilities': capabilities
+        }
 
-    for key, value in d.items():
-        if isinstance(d[key], dict):
-            deep_search(d[key], what, key if path is None else path + '.' + key, found)
-        else:
-            if key == what:
-                f = DeepSearchResult(key if path is None else path + '.' + key, value)
-                found.append(f)
-                return found
-    return found
+    def get_users(self) -> List[str]:
+        users = []
+        for user in self.db['users'].find():
+            users.append(user['name'])
+        return users
 
 
 if __name__ == '__main__':
-    results = deep_search(Config().toml, 'address')
-    for result in results:
-        print(f"{result.path=}, {result.value=}")
+    cfg = Config()
+    print(f"sites: {cfg.get_sites()}")
+    us = cfg.get_users()
+    for u in us:
+        print(f"User '{u}': {cfg.get_user(u)}")
