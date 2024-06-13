@@ -1,5 +1,5 @@
 import httpx
-from common.utils import BASE_UNIT_PATH, BASE_SPEC_PATH
+from utils import BASE_UNIT_PATH, BASE_SPEC_PATH
 from enum import Enum, auto
 import re
 import logging
@@ -137,6 +137,8 @@ class ApiClient:
             logger.error(f"Request error (url={e.request.url}): {e}")
         except Exception as e:
             logger.error(f"An error occurred: {e}")
+
+        return response['value']
 
 
 class ApiUnit:
