@@ -4,7 +4,7 @@ import pymongo
 from pymongo.errors import ConnectionFailure, PyMongoError
 import logging
 from typing import List
-from utils import init_log, deep_dict_update, deep_dict_difference, deep_dict_is_empty
+from common.utils import init_log, deep_dict_update, deep_dict_difference, deep_dict_is_empty
 from copy import deepcopy
 
 logger = logging.getLogger('config')
@@ -140,6 +140,14 @@ class Config:
         for user in self.db['users'].find():
             users.append(user['name'])
         return users
+
+    def get_service(self, service_name: str) -> dict:
+        try:
+            service = self.db['services'].find_one({'name': service_name})
+        except PyMongoError:
+            logger.error(f"could not find_one() for {service_name=}")
+            raise
+        return service
 
 
 if __name__ == '__main__':
