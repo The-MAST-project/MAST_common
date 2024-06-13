@@ -1,5 +1,0 @@
-{
-  "name": "admin",
-  "members": ["arie"],
-  "capabilities": ["config", "control", "users"]
-}
