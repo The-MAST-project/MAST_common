@@ -1,5 +1,3 @@
-from common.config import Config, deep_search
-import pythonping
 import logging
 import ipaddress
 import socket
@@ -81,37 +79,3 @@ class NetworkedDevice:
             conf['network']['port'] = 80
 
         self.destination = NetworkDestination(conf['network']['host'], conf['network']['port'])
-
-
-def ping_peers(verbose: bool = False):
-    """
-    ICMP pings all the configured peers
-    :param verbose: If True, output results
-    :return: Tuple(list of successes, list of failures)
-    """
-    conf = Config().toml
-    failed = []
-    succeeded = []
-
-    print('Pinging network peers ...')
-    responses = deep_search(conf, 'address')
-    for response in responses:
-        peer_name = response.path
-        peer_name = peer_name.removesuffix('.network.address')
-
-        response = pythonping.ping(response.value, timeout=2, count=1)
-        if response.stats_success_ratio == 1.0:
-            succeeded.append(peer_name)
-            if verbose:
-                logger.info(f"{peer_name} responds to ping")
-        else:
-            failed.append(peer_name)
-            if verbose:
-                logger.error(f"{peer_name} does not respond to ping")
-
-    print(f"     responding: {succeeded}")
-    print(f" not-responding: {failed}")
-
-
-if __name__ == '__main__':
-    ping_peers(verbose=False)
