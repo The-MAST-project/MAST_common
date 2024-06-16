@@ -1,9 +1,0 @@
-{
-  "name": "mast77",
-  "power_switch": {
-    "outlets": {
-      "6": "Outlet 6",
-      "7": "Computer"
-    }
-  }
-}
