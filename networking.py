@@ -1,5 +1,3 @@
-from common.config import Config, deep_search
-import pythonping
 import logging
 import ipaddress
 import socket
@@ -13,7 +11,7 @@ WEIZMANN_DOMAIN = 'weizmann.ac.il'
 
 class NetworkDestination:
 
-    def __init__(self, host: str, port: int):
+    def __init__(self, addr: str, port: int):
         """
 
 
@@ -28,30 +26,30 @@ class NetworkDestination:
 
         try:
             # check if it's already an IPv4 address in quad format
-            ipaddr = ipaddress.IPv4Address(host)
+            ipaddr = ipaddress.IPv4Address(addr)
             try:
-                hostname = socket.gethostbyaddr(ipaddr)
+                hostname = socket.gethostbyaddr(addr)
             except socket.gaierror:
-                logger.error(f"cannot resolve {ipaddr=}")
+                logger.error(f"cannot resolve {addr=}")
                 raise
 
         except ipaddress.AddressValueError:
             # nope, it's a hostname
             try:
-                ipaddr = socket.gethostbyname(host)
-                hostname = host
+                ipaddr = socket.gethostbyname(addr)
+                hostname = addr
             except socket.gaierror:
-                if not host.endswith('.' + WEIZMANN_DOMAIN):
-                    full_host = host + '.' + WEIZMANN_DOMAIN
+                if not addr.endswith('.' + WEIZMANN_DOMAIN):
+                    full_host = addr + '.' + WEIZMANN_DOMAIN
                     try:
                         ipaddr = socket.gethostbyname(full_host)
                         hostname = full_host
                     except socket.gaierror:
-                        logger.error(f"cannot resolve {host=} or {full_host=}")
+                        logger.error(f"cannot resolve {addr=} or {full_host=}")
                         raise
 
         self.ipaddr: str = ipaddr
-        self.hostname: str = hostname
+        self.hostname: str = hostname[0]
         self.port: int = port
 
     def __repr__(self):
@@ -69,49 +67,15 @@ class NetworkedDevice:
         :param conf: A dictionary with keys:
             'network': {
                 - 'host'    - [Mandatory] The hostname or IP address of the device
+                - 'ipaddr'  - IP address
                 - 'port'    - [Optional] Port
             }
         """
 
-        if 'network' not in conf:
-            raise Exception(f"Missing 'network' key in {conf}")
-        if 'host' not in conf['network']:
-            raise Exception(f"Missing 'network.host' key in {conf}")
-        if 'port' not in conf['network']:
-            conf['network']['port'] = 80
+        address = conf['ipaddr'] if 'ipaddr' in conf else conf['host'] if 'host' in conf else None
+        if not address:
+            raise Exception(f"both 'ipaddr' and 'host' missing in {conf=}")
+        port = conf['port'] if 'port' in conf else 80
 
-        self.destination = NetworkDestination(conf['network']['host'], conf['network']['port'])
+        self.destination = NetworkDestination(address, port)
 
-
-def ping_peers(verbose: bool = False):
-    """
-    ICMP pings all the configured peers
-    :param verbose: If True, output results
-    :return: Tuple(list of successes, list of failures)
-    """
-    conf = Config().toml
-    failed = []
-    succeeded = []
-
-    print('Pinging network peers ...')
-    responses = deep_search(conf, 'address')
-    for response in responses:
-        peer_name = response.path
-        peer_name = peer_name.removesuffix('.network.address')
-
-        response = pythonping.ping(response.value, timeout=2, count=1)
-        if response.stats_success_ratio == 1.0:
-            succeeded.append(peer_name)
-            if verbose:
-                logger.info(f"{peer_name} responds to ping")
-        else:
-            failed.append(peer_name)
-            if verbose:
-                logger.error(f"{peer_name} does not respond to ping")
-
-    print(f"     responding: {succeeded}")
-    print(f" not-responding: {failed}")
-
-
-if __name__ == '__main__':
-    ping_peers(verbose=False)
