@@ -51,6 +51,7 @@ class Config:
         """
         coll = self.db['units']
         common_conf = coll.find_one({'name': 'common'})
+        del common_conf['_id']
         ret: dict = deepcopy(common_conf)
 
         if not unit_name:
@@ -58,6 +59,7 @@ class Config:
 
         # override with unit-specific config
         unit_conf: dict = coll.find_one({'name': unit_name})
+        del unit_conf['_id']
         if unit_conf:
             deep_dict_update(ret, unit_conf)
 
@@ -83,6 +85,7 @@ class Config:
             raise Exception(f"save_unit_config: 'unit_conf' cannot be None")
 
         common_conf = self.db['units'].find_one({'name': 'common'})
+        del common_conf['_id']
         difference = deep_dict_difference(common_conf, unit_conf)
         saved_power_switch_network = difference['power_switch']['network']
         del difference['power_switch']['network']
@@ -158,6 +161,14 @@ class Config:
         for user in self.db['users'].find():
             users.append(user['name'])
         return users
+
+    def get_service(self, service_name: str) -> dict:
+        try:
+            service = self.db['services'].find_one({'name': service_name})
+        except PyMongoError:
+            logger.error(f"could not find_one() for {service_name=}")
+            raise
+        return service
 
 
 if __name__ == '__main__':

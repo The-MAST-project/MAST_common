@@ -1,5 +1,5 @@
 import httpx
-from utils import BASE_UNIT_PATH, BASE_SPEC_PATH
+from common.utils import BASE_UNIT_PATH, BASE_SPEC_PATH
 from enum import Enum, auto
 import re
 import logging

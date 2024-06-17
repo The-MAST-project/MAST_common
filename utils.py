@@ -213,8 +213,8 @@ class PathMaker:
         os.makedirs(daily_folder)
         return os.path.join(daily_folder, 'log.txt')
 
-    def make_plans_folder(self):
-        return os.path.join(self.top_folder, 'plans')
+    def make_tasks_folder(self):
+        return os.path.join(self.top_folder, 'tasks')
 
 
 path_maker = SingletonFactory.get_instance(PathMaker)
