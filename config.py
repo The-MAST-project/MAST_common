@@ -4,12 +4,15 @@ import pymongo
 from pymongo.errors import ConnectionFailure, PyMongoError
 import logging
 from typing import List
-from utils import init_log, deep_dict_update, deep_dict_difference, deep_dict_is_empty
+from common.utils import init_log, deep_dict_update, deep_dict_difference, deep_dict_is_empty
 from copy import deepcopy
+from cachetools import TTLCache, cached
 
 logger = logging.getLogger('config')
 init_log(logger)
 WEIZMANN_DOMAIN: str = 'weizmann.ac.il'
+
+cache = TTLCache(maxsize=100, ttl=30)
 
 
 # Enable debug logging for PyMongo
@@ -40,6 +43,7 @@ class Config:
 
         self._initialized = True
 
+    @cached(cache)
     def get_unit(self, unit_name: str = None) -> dict:
         """
         Gets a unit's configuration.  By default, this is the ['config']['units']['common']
@@ -49,11 +53,13 @@ class Config:
         common_conf = coll.find_one({'name': 'common'})
         ret: dict = deepcopy(common_conf)
 
+        if not unit_name:
+            unit_name = socket.gethostname()
+
         # override with unit-specific config
-        if unit_name:
-            unit_conf: dict = coll.find_one({'name': unit_name})
-            if unit_conf:
-                deep_dict_update(ret, unit_conf)
+        unit_conf: dict = coll.find_one({'name': unit_name})
+        if unit_conf:
+            deep_dict_update(ret, unit_conf)
 
         # resolve power-switch name and ipaddr
         if unit_name:
@@ -90,6 +96,7 @@ class Config:
             except PyMongoError:
                 logger.error(f"save_unit_config: failed to update unit config for {unit_name=} with {difference=}")
 
+    @cached(cache)
     def get_sites(self) -> dict:
         ret = {}
         for doc in self.db['sites'].find():
@@ -99,6 +106,16 @@ class Config:
             }
         return ret
 
+    @cached(cache)
+    def get_service(self, service_name: str):
+        try:
+            doc = self.db['services'].find_one({'name': service_name})
+        except PyMongoError as e:
+            logger.error(f"could not get 'services' (error={e})")
+            raise
+        return doc
+
+    @cached(cache)
     def get_user(self, name: str = None) -> dict:
         try:
             user = self.db['users'].find_one({'name': name})
@@ -135,6 +152,7 @@ class Config:
             'capabilities': capabilities
         }
 
+    @cached(cache)
     def get_users(self) -> List[str]:
         users = []
         for user in self.db['users'].find():
