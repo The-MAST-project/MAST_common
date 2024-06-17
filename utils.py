@@ -513,19 +513,22 @@ class CanonicalResponse:
 
     @property
     def is_error(self):
-        return self.errors is not None
+        return hasattr(self, 'errors') and self.errors is not None
 
     @property
     def is_exception(self):
-        return self.exception is not None
+        return hasattr(self, 'exception') and self.exception is not None
 
     @property
     def succeeded(self):
-        return self.value is not None
+        return hasattr(self, 'value') and self.value is not None
 
     @property
     def failed(self):
-        return self.errors or self.exception
+        if self.is_exception:
+            return self.exception
+        if self.is_error:
+            return self.errors
 
     @property
     def failure(self) -> List[str] | str | None:
