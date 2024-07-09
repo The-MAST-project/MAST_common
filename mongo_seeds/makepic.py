@@ -6,7 +6,7 @@ from config import WEIZMANN_DOMAIN
 
 
 def store_user_picture(site: str, user: str, img: str):
-    client = MongoClient(f"mongodb://mast-{site}-mongo.{WEIZMANN_DOMAIN}:27017/")
+    client = MongoClient(f"mongodb://mast-{site}-control.{WEIZMANN_DOMAIN}:27017/")
     db = client['mast']
     collection = db['users']
 

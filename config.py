@@ -36,7 +36,7 @@ class Config:
             return
 
         try:
-            client = pymongo.MongoClient(f"mongodb://mast-{site}-mongo.weizmann.ac.il:27017/")
+            client = pymongo.MongoClient(f"mongodb://mast-{site}-control.weizmann.ac.il:27017/")
             self.db = client['mast']
         except ConnectionFailure as e:
             logger.error(f"{e}")
