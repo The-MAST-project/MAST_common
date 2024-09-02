@@ -1,3 +1,4 @@
+import threading
 import psutil
 import logging
 import re
@@ -37,9 +38,19 @@ def find_process(name: str | None = None, patt: str = None, pid: int | None = No
     return ret
 
 
+def log_stream(stream, logger, log_level):
+    """
+    Reads a stream line by line and logs it.
+    """
+    for line in iter(stream.readline, b''):
+        logger.log(log_level, line.decode().strip())
+    stream.close()
+
+
 def ensure_process_is_running(name: str | None = None, pattern: str | None = None, cmd: str = None,
                               logger: logging.Logger | None = None, env: dict = None,
-                              cwd: str = None, shell: bool = False) -> psutil.Process:
+                              cwd: str = None, shell: bool = False,
+                              log_stdout_and_stderr: bool = False) -> psutil.Process:
     """
     Makes sure a process containing 'pattern' in the command line exists.
     If it's not running, it starts one using 'cmd' and waits till it is running
@@ -53,6 +64,7 @@ def ensure_process_is_running(name: str | None = None, pattern: str | None = Non
     cwd: str - Current working directory
     shell: bool - Run the cmd in a shell
     logger
+    log_stdout_and_stderr
 
     Returns
     -------
@@ -60,16 +72,28 @@ def ensure_process_is_running(name: str | None = None, pattern: str | None = Non
     """
     p = find_process(name, pattern)
     if p is not None:
-        logger.debug(f'A process with {name=} or {pattern=} in the commandline exists, pid={p.pid}')
+        if name:
+            logger.debug(f'A process with {name=}exists, pid={p.pid}')
+        elif pattern:
+            logger.debug(f'A process with {pattern=} in the commandline exists, pid={p.pid}')
         return p
 
     try:
         # It's not running, start it
+        stdout = subprocess.PIPE if log_stdout_and_stderr else subprocess.DEVNULL
+        stderr = subprocess.PIPE if log_stdout_and_stderr else subprocess.DEVNULL
+
         if shell:
-            process = subprocess.Popen(args=cmd, env=env, shell=True, cwd=cwd, stderr=None, stdout=None)
+            process = subprocess.Popen(args=cmd, env=env, shell=True, cwd=cwd, stderr=stderr, stdout=stdout)
         else:
             args = cmd.split()
-            process = subprocess.Popen(args, env=env, executable=args[0], cwd=cwd, stderr=None, stdout=None)
+            process = subprocess.Popen(args, env=env, executable=args[0], cwd=cwd, stderr=stderr, stdout=stdout)
+        if log_stdout_and_stderr:
+            threading.Thread(name='stdout-logger', target=log_stream,
+                             args=(process.stdout, logger, logging.INFO)).start()
+            threading.Thread(name='stderr-logger', target=log_stream,
+                             args=(process.stderr, logger, logging.ERROR)).start()
+
         logger.info(f"started process (pid={process.pid}) with cmd: '{cmd}'")
     except Exception as ex:
         pass
@@ -79,5 +103,8 @@ def ensure_process_is_running(name: str | None = None, pattern: str | None = Non
         p = find_process(name, pattern)
         if p:
             return p
-        logger.info(f"waiting for proces with {name=} or {pattern=} to run")
+        if name:
+            logger.info(f"waiting for process with {name=} to run")
+        else:
+            logger.info(f"waiting for process with {pattern=} to run")
         time.sleep(1)

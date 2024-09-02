@@ -17,7 +17,7 @@ cache = TTLCache(maxsize=100, ttl=30)
 
 # Enable debug logging for PyMongo
 # logging.basicConfig(level=logging.DEBUG)
-# logging.getLogger('pymongo').setLevel(logging.DEBUG)
+logging.getLogger('pymongo').setLevel(logging.WARNING)
 
 
 class Config:

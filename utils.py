@@ -1,20 +1,24 @@
 from abc import abstractmethod
 from enum import IntFlag
-from threading import Timer, Lock
+from threading import Timer, Lock, Thread
 import logging
 import platform
 import os
 import io
-import astropy.io.fits as fits
+from astropy.coordinates import Angle
+import inspect
 from multiprocessing import shared_memory
 import re
 from abc import ABC
 import sys
 import traceback
+import socket
+import win32api
 
-# from config import Config
 import datetime
-from typing import List, Any
+from typing import List, Any, Optional, Union
+import shutil
+from pydantic import BaseModel, field_validator
 
 default_log_level = logging.DEBUG
 default_encoding = "utf-8"
@@ -146,14 +150,52 @@ class DailyFileHandler(logging.FileHandler):
         logging.FileHandler.__init__(self, filename='', delay=delay, mode=mode, encoding=encoding, errors=errors)
 
 
-class PathMaker:
-    top_folder: str
+def is_windows_drive_mapped(drive_letter):
+    try:
+        drives = win32api.GetLogicalDriveStrings()
+        drives = drives.split('\000')[:-1]
+        return drive_letter.upper() + "\\" in drives
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        return False
 
+
+class Location:
+    def __init__(self, drive: str, prefix: str):
+        self.drive = drive
+        self.prefix = prefix
+        self.root = self.drive + self.prefix
+
+
+class Filer:
     def __init__(self):
-        # cfg = Config()
-        # self.top_folder = cfg.toml['global']['TopFolder']
-        self.top_folder = 'C:\\MAST'
-        pass
+        self.local = Location('C:\\', 'MAST\\')
+        self.shared = Location('Z:\\', f"MAST\\{socket.gethostname()}\\") if is_windows_drive_mapped('Z:') \
+            else Location('C:\\', 'MAST\\')
+        self.ram = Location('D:\\', 'MAST\\') if is_windows_drive_mapped('D:') \
+            else Location('C:\\', 'MAST\\')
+
+    @staticmethod
+    def copy(src: str, dst: str):
+        try:
+            shutil.copy2(src, dst)
+            os.unlink(src)
+            logger.info(f"moved '{src}' to '{dst}'")
+        except Exception as e:
+            logger.exception(f"failed to move '{src} to '{dst}'", exc_info=e)
+
+    def move_ram_to_shared(self, *files: str):
+        for file in files:
+            src = file
+            dst = file.replace(self.ram.root, self.shared.root)
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            Thread(name='ram-to-shared-mover', target=self.copy, args=[src, dst]).start()
+
+
+filer = Filer()
+
+
+class PathMaker:
 
     @staticmethod
     def make_seq(folder: str, camera: str | None = None) -> str:
@@ -165,9 +207,9 @@ class PathMaker:
         :return: The resulting sequence string
         """
         if camera:
-            seq_file = os.path.join(folder, f'.{camera}.seq')
+            seq_file = os.path.join(folder, f'.{camera}.seq.txt')
         else:
-            seq_file = os.path.join(folder, '.seq')
+            seq_file = os.path.join(folder, '.seq.txt')
 
         os.makedirs(os.path.dirname(seq_file), exist_ok=True)
         if os.path.exists(seq_file):
@@ -181,40 +223,69 @@ class PathMaker:
 
         return f"{seq:04d}"
 
-    def make_daily_folder_name(self):
-        d = os.path.join(self.top_folder, datetime.datetime.now().strftime('%Y-%m-%d'))
+    @staticmethod
+    def make_daily_folder_name(root: str | None = None):
+        if not root:
+            root = filer.ram.root
+        d = os.path.join(root, datetime.datetime.now().strftime('%Y-%m-%d'))
         os.makedirs(d, exist_ok=True)
         return d
 
-    def make_exposure_file_name(self, camera: str, acquisition: str | None = None):
-        if acquisition:
-            folder = self.make_acquisition_folder_name(acquisition)
-        else:
-            folder = os.path.join(self.make_daily_folder_name(), 'Exposures')
+    def make_exposures_folder(self, root: str | None = None) -> str:
+        folder = os.path.join(self.make_daily_folder_name(root=root), 'Exposures')
         os.makedirs(folder, exist_ok=True)
-        return os.path.join(folder, f'exposure-{camera}-{path_maker.make_seq(folder)}')
+        return folder
 
-    def make_acquisition_folder_name(self, acquisition: str = None):
+    def make_acquisition_folder(self, tags: dict | None = None) -> str:
         acquisitions_folder = os.path.join(self.make_daily_folder_name(), 'Acquisitions')
         os.makedirs(acquisitions_folder, exist_ok=True)
-        if acquisition is None:
-            path = os.path.join(acquisitions_folder, f'acquisition-{PathMaker.make_seq(folder=acquisitions_folder)}')
-        else:
-            path = os.path.join(acquisitions_folder, f"{acquisition}")
-        return path
+        folder = os.path.join(acquisitions_folder,
+                              f'acquisition,seq={PathMaker.make_seq(folder=acquisitions_folder)}' +
+                              f",time={self.current_utc()}")
+        if tags:
+            for k, v in tags.items():
+                folder += f",{k}={v}" if v else ",{k}"
 
-    def make_guiding_folder_name(self):
-        guiding_folder = os.path.join(self.make_daily_folder_name(), 'Guidings')
+        os.makedirs(folder, exist_ok=True)
+        return folder
+
+    def make_guidings_folder(self, root: str | None = None, base_folder: str | None = None):
+        if base_folder is not None:
+            guiding_folder = os.path.join(base_folder, 'Guidings')
+        else:
+            if not root:
+                root = filer.ram.root
+            guiding_folder = os.path.join(self.make_daily_folder_name(root=root), 'Guidings')
+
         os.makedirs(guiding_folder, exist_ok=True)
-        return os.path.join(guiding_folder, f'guiding-{PathMaker.make_seq(guiding_folder)}')
+        return guiding_folder
+
+    @staticmethod
+    def current_utc():
+        return datetime.datetime.now(datetime.timezone.utc).strftime('%H-%M-%S_%f')[:-3]
+
+    def make_guiding_root_name(self, root: str | None = None):
+        if not root:
+            root = filer.ram.root
+        guiding_folder = os.path.join(self.make_daily_folder_name(root=root), 'Guidings')
+        os.makedirs(guiding_folder, exist_ok=True)
+        return os.path.join(guiding_folder, f'{PathMaker.make_seq(guiding_folder)}-{self.current_utc()}-')
+
+    def make_acquisition_root_name(self, root: str | None = None):
+        if not root:
+            root = filer.ram.root
+        acquisition_folder = os.path.join(self.make_daily_folder_name(root=root), 'Acquisitions')
+        os.makedirs(acquisition_folder, exist_ok=True)
+        return os.path.join(acquisition_folder, f'{PathMaker.make_seq(acquisition_folder)}-{self.current_utc()}-')
 
     def make_logfile_name(self):
-        daily_folder = os.path.join(self.make_daily_folder_name())
+        daily_folder = os.path.join(self.make_daily_folder_name(root=filer.shared.root))
         os.makedirs(daily_folder)
         return os.path.join(daily_folder, 'log.txt')
 
-    def make_tasks_folder(self):
-        return os.path.join(self.top_folder, 'tasks')
+    @staticmethod
+    def make_tasks_folder():
+        return os.path.join(filer.shared.root, 'tasks')
 
 
 path_maker = SingletonFactory.get_instance(PathMaker)
@@ -225,8 +296,9 @@ def init_log(logger_: logging.Logger, level: int | None = None, file_name: str |
     level = default_log_level if level is None else level
     logger_.setLevel(level)
 
-    formatter = logging.Formatter('%(asctime)s - %(levelname)-8s - {%(name)s:%(funcName)s:%(threadName)s:%(thread)s}' +
-                                  ' -  %(message)s')
+    formatter = logging.Formatter(
+        '%(asctime)s - %(levelname)-8s - {%(name)s:%(module)s:%(funcName)s:%(threadName)s:%(thread)s}' +
+        ' -  %(message)s')
     handler = logging.StreamHandler()
     handler.setLevel(level)
     handler.setFormatter(formatter)
@@ -234,7 +306,8 @@ def init_log(logger_: logging.Logger, level: int | None = None, file_name: str |
 
     # path_maker = SingletonFactory.get_instance(PathMaker)
     file = f"{file_name}.txt" if file_name is not None else 'log.txt'
-    handler = DailyFileHandler(path=os.path.join(path_maker.make_daily_folder_name(), file), mode='a')
+    handler = DailyFileHandler(path=os.path.join(path_maker.make_daily_folder_name(root=filer.shared.root), file),
+                               mode='a')
     handler.setLevel(level)
     handler.setFormatter(formatter)
     logger_.addHandler(handler)
@@ -422,35 +495,34 @@ class Subsystem:
         self.obj_name = obj_name
 
 
-def image_to_fits(image, path: str, header: dict, logger_):
-    """
-
-    Parameters
-    ----------
-    image
-        an ASCOM ImageArray
-    path
-        name of the created file
-    header
-        a dictionary of FITS header key/values
-    logger_
-        a logger for logging :-)
-
-    Returns
-    -------
-
-    """
-    if not path:
-        raise 'Must supply a path to the file'
-    if not path.endswith('.fits'):
-        path += '.fits'
-
-    hdu = fits.PrimaryHDU(image)
-    for k, v in header.items():
-        hdu.header[k] = v
-    hdu_list = fits.HDUList([hdu])
-    logger_.info(f'saving image to {path} ...')
-    hdu_list.writeto(path)
+# def image_to_fits(image, path: str, header, logger_):
+#     """
+#
+#     Parameters
+#     ----------
+#     image
+#         an ASCOM ImageArray
+#     path
+#         name of the created file
+#     header
+#         a dictionary of FITS header key/values
+#     logger_
+#         a logger for logging :-)
+#
+#     Returns
+#     -------
+#
+#     """
+#     if not path:
+#         raise 'Must supply a path to the file'
+#     if not path.endswith('.fits'):
+#         path += '.fits'
+#
+#     self.start_activity(CameraActivities.Saving)
+#     hdu = fits.PrimaryHDU(data=np.transpose(image), header=fits.Header(header))
+#     hdu_list = fits.HDUList([hdu])
+#     logger_.info(f'saving image to {path} ...')
+#     hdu_list.writeto(path, checksum=True)
 
 
 def parse_params(memory: shared_memory.SharedMemory, logger_: logging.Logger) -> dict:
@@ -482,7 +554,21 @@ def time_stamp(d: dict):
     d['time_stamp'] = datetime.datetime.now().isoformat()
 
 
-class CanonicalResponse:
+def function_name():
+    """
+    Gets the name of the calling function from the stack
+    Returns
+    -------
+
+    """
+    return inspect.currentframe().f_back.f_code.co_name
+
+
+def parse_coordinate(coord: float | str):
+    return Angle(coord) if isinstance(coord, str) else coord
+
+
+class CanonicalResponse(BaseModel):
     """
     Formalizes API responses.  An API method will return a CanonicalResponse, so that the
      API caller may safely parse it.
@@ -491,25 +577,41 @@ class CanonicalResponse:
 
     - 'exception' - an exception occurred, delivers the details (no 'value')
     - 'errors' - the method detected one or more errors (no 'value')
-    - 'value' - all went well, this is the return value (may be 'None')
+    - 'value' - all went well, this is the return value (maybe 'None')
     """
 
-    ok: dict = {'value': 'ok'}
+    value: Optional[Any] = None
+    errors: Optional[Union[List[str], str]] = None
+    exception: Optional[List[str]] = None
 
-    def __init__(self,
-                 value: Any = None,
-                 errors: List[str] | str | None = None,
-                 exception: Exception | None = None
-                 ):
+    # def __init__(self,
+    #              value: Any = None,
+    #              errors: List[str] | str | None = None,
+    #              exception: Exception | None = None
+    #              ):
+    #     super.__init__()
+    #
+    #     if exception:
+    #         exc_type, exc_value, exc_traceback = sys.exc_info()
+    #         traceback_string = traceback.format_exception(exc_type, exc_value, exc_traceback)
+    #         self.exception = traceback_string
+    #     elif errors:
+    #         self.errors = errors
+    #     else:
+    #         self.value = value
 
-        if exception:
+    @field_validator('exception', mode='before')
+    def process_exception(cls, v):
+        if v:
             exc_type, exc_value, exc_traceback = sys.exc_info()
-            traceback_string = traceback.format_exception(exc_type, exc_value, exc_traceback)
-            self.exception = traceback_string
-        elif errors:
-            self.errors = errors
-        else:
-            self.value = value
+            return ''.join(traceback.format_exception(exc_type, exc_value, exc_traceback))
+        return v
+
+    @field_validator('errors', mode='before')
+    def ensure_errors_list(cls, v):
+        if isinstance(v, str):
+            return [v]
+        return v
 
     @property
     def is_error(self):
@@ -521,7 +623,7 @@ class CanonicalResponse:
 
     @property
     def succeeded(self):
-        return hasattr(self, 'value') and self.value is not None
+        return hasattr(self, 'value')  # and self.value is not None
 
     @property
     def failed(self):
@@ -538,3 +640,11 @@ class CanonicalResponse:
             return self.exception
         if self.is_error:
             return self.errors if self.errors is not None else None
+
+    @classmethod
+    @property
+    def ok(cls):
+        return cls(value='ok')
+
+
+CanonicalResponse_Ok: CanonicalResponse = CanonicalResponse(value='ok')
