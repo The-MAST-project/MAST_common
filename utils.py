@@ -16,9 +16,11 @@ import socket
 import win32api
 
 import datetime
-from typing import List, Any, Optional, Union
+from typing import List, Any, Optional, Union, NamedTuple
 import shutil
 from pydantic import BaseModel, field_validator
+
+import astropy.units as u
 
 default_log_level = logging.DEBUG
 default_encoding = "utf-8"
@@ -184,7 +186,10 @@ class Filer:
         except Exception as e:
             logger.exception(f"failed to move '{src} to '{dst}'", exc_info=e)
 
-    def move_ram_to_shared(self, *files: str):
+    def move_ram_to_shared(self, files: str | List[str]):
+        if isinstance(files, str):
+            files = [files]
+
         for file in files:
             src = file
             dst = file.replace(self.ram.root, self.shared.root)
@@ -236,16 +241,24 @@ class PathMaker:
         os.makedirs(folder, exist_ok=True)
         return folder
 
+    def make_autofocus_folder(self, root: str | None = None) -> str:
+        autofocus_folder = os.path.join(self.make_daily_folder_name(root=root), 'Autofocus')
+        ret: str = os.path.join(autofocus_folder, self.make_seq(autofocus_folder))
+        os.makedirs(ret, exist_ok=True)
+        return ret
+
     def make_acquisition_folder(self, tags: dict | None = None) -> str:
         acquisitions_folder = os.path.join(self.make_daily_folder_name(), 'Acquisitions')
         os.makedirs(acquisitions_folder, exist_ok=True)
-        folder = os.path.join(acquisitions_folder,
-                              f'acquisition,seq={PathMaker.make_seq(folder=acquisitions_folder)}' +
-                              f",time={self.current_utc()}")
+        parts: List[str] = [
+            f"seq={PathMaker.make_seq(folder=acquisitions_folder)}",
+            f"time={self.current_utc()}"
+        ]
         if tags:
             for k, v in tags.items():
-                folder += f",{k}={v}" if v else ",{k}"
+                parts.append(f"{k}={v}" if v else "{k}")
 
+        folder = os.path.join(acquisitions_folder, ','.join(parts))
         os.makedirs(folder, exist_ok=True)
         return folder
 
@@ -645,6 +658,17 @@ class CanonicalResponse(BaseModel):
     @property
     def ok(cls):
         return cls(value='ok')
+
+
+class Coord(NamedTuple):
+    ra: Angle
+    dec: Angle
+
+    def __repr__(self):
+        return ("[" +
+                f"{self.ra.to_string(u.hourangle, decimal=True, precision=3)}, " +
+                f"{self.dec.to_string(u.deg, decimal=True, precision=3)}" +
+                "]")
 
 
 CanonicalResponse_Ok: CanonicalResponse = CanonicalResponse(value='ok')
