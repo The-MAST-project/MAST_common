@@ -1,7 +1,7 @@
 import logging
 import ipaddress
 import socket
-from common.utils import init_log
+from common.mast_logging import init_log
 
 logger = logging.getLogger('networking')
 init_log(logger, logging.DEBUG)

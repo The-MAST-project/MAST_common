@@ -4,7 +4,8 @@ import pymongo
 from pymongo.errors import ConnectionFailure, PyMongoError
 import logging
 from typing import List
-from common.utils import init_log, deep_dict_update, deep_dict_difference, deep_dict_is_empty
+from common.utils import deep_dict_update, deep_dict_difference, deep_dict_is_empty
+from common.mast_logging import init_log
 from copy import deepcopy
 from cachetools import TTLCache, cached
 

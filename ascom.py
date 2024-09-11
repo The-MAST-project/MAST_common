@@ -3,7 +3,8 @@ import re
 import pywintypes
 import win32com.client
 
-from common.utils import CanonicalResponse, CanonicalResponse_Ok, init_log
+from common.utils import CanonicalResponse
+from common.mast_logging import init_log
 from abc import ABC, abstractmethod
 
 logger = logging.getLogger('ascom')

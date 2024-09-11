@@ -1,10 +1,6 @@
 from abc import abstractmethod
-from enum import IntFlag
-from threading import Timer, Lock, Thread
+from threading import Timer, Lock
 import logging
-import platform
-import os
-import io
 from astropy.coordinates import Angle
 import inspect
 from multiprocessing import shared_memory
@@ -12,67 +8,24 @@ import re
 from abc import ABC
 import sys
 import traceback
-import socket
-import win32api
+from common.activities import Activities
+from common.filer import Filer
+from common.paths import PathMaker
+from common.camera import CameraBinning, CameraRoi
 
 import datetime
 from typing import List, Any, Optional, Union, NamedTuple
-import shutil
 from pydantic import BaseModel, field_validator
 
 import astropy.units as u
 
-default_log_level = logging.DEBUG
 default_encoding = "utf-8"
 
 BASE_SPEC_PATH = '/mast/api/v1/spec'
 BASE_UNIT_PATH = '/mast/api/v1/unit'
 BASE_CONTROL_PATH = '/mast/api/v1/control'
 
-logger = logging.getLogger('mast.unit.utils')
-
-
-class Timing:
-    start_time: datetime.datetime
-    end_time: datetime.datetime
-    duration: datetime.timedelta
-
-    def __init__(self):
-        self.start_time = datetime.datetime.now()
-
-    def end(self):
-        self.end_time = datetime.datetime.now()
-        self.duration = self.end_time - self.start_time
-
-
-class Activities:
-
-    Idle: IntFlag = 0
-
-    def __init__(self):
-        self.activities: IntFlag = Activities.Idle
-        self.timings = dict()
-
-    def start_activity(self, activity: IntFlag):
-        self.activities |= activity
-        self.timings[activity] = Timing()
-        logger.info(f"started activity {activity.__repr__()}")
-
-    def end_activity(self, activity: IntFlag):
-        if not self.is_active(activity):
-            return
-        self.activities &= ~activity
-        self.timings[activity].end()
-        logger.info(f"ended activity {activity.__repr__()}, duration={self.timings[activity].duration}")
-
-    def is_active(self, activity):
-        return (self.activities & activity) != 0
-
-    def is_idle(self):
-        return self.activities == 0
-
-    def __repr__(self):
-        return self.activities.__repr__()
+logger = logging.getLogger('mast.unit.' + __name__)
 
 
 class RepeatTimer(Timer):
@@ -93,237 +46,8 @@ class SingletonFactory:
         return SingletonFactory._instances[class_type]
 
 
-class DailyFileHandler(logging.FileHandler):
-
-    filename: str = ''
-    path: str
-
-    def make_file_name(self):
-        """
-        Produces file names for the DailyFileHandler, which rotates them daily at noon (UT).
-        The filename has the format <top><daily><bottom> and includes:
-        * A top section (either /var/log/mast on Linux or %LOCALAPPDATA%/mast on Windows
-        * The daily section (current date as %Y-%m-%d)
-        * The bottom path, supplied by the user
-        Examples:
-        * /var/log/mast/2022-02-17/server/app.log
-        * c:\\User\\User\\LocalAppData\\mast\\2022-02-17\\main.log
-        :return:
-        """
-        top = ''
-        if platform.platform() == 'Linux':
-            top = '/var/log/mast'
-        elif platform.platform().startswith('Windows'):
-            top = os.path.join(os.path.expandvars('%LOCALAPPDATA%'), 'mast')
-        now = datetime.datetime.now()
-        if now.hour < 12:
-            now = now - datetime.timedelta(days=1)
-        return os.path.join(top, f'{now:%Y-%m-%d}', self.path)
-
-    def emit(self, record: logging.LogRecord):
-        """
-        Overrides the logging.FileHandler's emit method.  It is called every time a log record is to be emitted.
-        This function checks whether the handler's filename includes the current date segment.
-        If not:
-        * A new file name is produced
-        * The handler's stream is closed
-        * A new stream is opened for the new file
-        The record is emitted.
-        :param record:
-        :return:
-        """
-        filename = self.make_file_name()
-        if not filename == self.filename:
-            if self.stream is not None:
-                # we have an open file handle, clean it up
-                self.stream.flush()
-                self.stream.close()
-                self.stream = None  # See Issue #21742: _open () might fail.
-
-            self.baseFilename = filename
-            os.makedirs(os.path.dirname(self.baseFilename), exist_ok=True)
-            self.stream = self._open()
-        logging.StreamHandler.emit(self, record=record)
-
-    def __init__(self, path: str, mode='a', encoding=None, delay=True, errors=None):
-        self.path = path
-        if "b" not in mode:
-            encoding = io.text_encoding(encoding)
-        logging.FileHandler.__init__(self, filename='', delay=delay, mode=mode, encoding=encoding, errors=errors)
-
-
-def is_windows_drive_mapped(drive_letter):
-    try:
-        drives = win32api.GetLogicalDriveStrings()
-        drives = drives.split('\000')[:-1]
-        return drive_letter.upper() + "\\" in drives
-    except Exception as e:
-        print(f"An error occurred: {e}")
-        return False
-
-
-class Location:
-    def __init__(self, drive: str, prefix: str):
-        self.drive = drive
-        self.prefix = prefix
-        self.root = self.drive + self.prefix
-
-
-class Filer:
-    def __init__(self):
-        self.local = Location('C:\\', 'MAST\\')
-        self.shared = Location('Z:\\', f"MAST\\{socket.gethostname()}\\") if is_windows_drive_mapped('Z:') \
-            else Location('C:\\', 'MAST\\')
-        self.ram = Location('D:\\', 'MAST\\') if is_windows_drive_mapped('D:') \
-            else Location('C:\\', 'MAST\\')
-
-    @staticmethod
-    def copy(src: str, dst: str):
-        try:
-            shutil.copy2(src, dst)
-            os.unlink(src)
-            logger.info(f"moved '{src}' to '{dst}'")
-        except Exception as e:
-            logger.exception(f"failed to move '{src} to '{dst}'", exc_info=e)
-
-    def move_ram_to_shared(self, files: str | List[str]):
-        if isinstance(files, str):
-            files = [files]
-
-        for file in files:
-            src = file
-            dst = file.replace(self.ram.root, self.shared.root)
-            os.makedirs(os.path.dirname(dst), exist_ok=True)
-            Thread(name='ram-to-shared-mover', target=self.copy, args=[src, dst]).start()
-
-
 filer = Filer()
-
-
-class PathMaker:
-
-    @staticmethod
-    def make_seq(folder: str, camera: str | None = None) -> str:
-        """
-        Creates a sequence number by maintaining a '.seq' file.
-        The sequence may be camera specific or camera agnostic.
-        :param folder: Where to maintain the '.seq' file
-        :param camera: What camera is the sequence for
-        :return: The resulting sequence string
-        """
-        if camera:
-            seq_file = os.path.join(folder, f'.{camera}.seq.txt')
-        else:
-            seq_file = os.path.join(folder, '.seq.txt')
-
-        os.makedirs(os.path.dirname(seq_file), exist_ok=True)
-        if os.path.exists(seq_file):
-            with open(seq_file) as f:
-                seq = int(f.readline())
-        else:
-            seq = 0
-        seq += 1
-        with open(seq_file, 'w') as file:
-            file.write(f'{seq}\n')
-
-        return f"{seq:04d}"
-
-    @staticmethod
-    def make_daily_folder_name(root: str | None = None):
-        if not root:
-            root = filer.ram.root
-        d = os.path.join(root, datetime.datetime.now().strftime('%Y-%m-%d'))
-        os.makedirs(d, exist_ok=True)
-        return d
-
-    def make_exposures_folder(self, root: str | None = None) -> str:
-        folder = os.path.join(self.make_daily_folder_name(root=root), 'Exposures')
-        os.makedirs(folder, exist_ok=True)
-        return folder
-
-    def make_autofocus_folder(self, root: str | None = None) -> str:
-        autofocus_folder = os.path.join(self.make_daily_folder_name(root=root), 'Autofocus')
-        ret: str = os.path.join(autofocus_folder, self.make_seq(autofocus_folder))
-        os.makedirs(ret, exist_ok=True)
-        return ret
-
-    def make_acquisition_folder(self, tags: dict | None = None) -> str:
-        acquisitions_folder = os.path.join(self.make_daily_folder_name(), 'Acquisitions')
-        os.makedirs(acquisitions_folder, exist_ok=True)
-        parts: List[str] = [
-            f"seq={PathMaker.make_seq(folder=acquisitions_folder)}",
-            f"time={self.current_utc()}"
-        ]
-        if tags:
-            for k, v in tags.items():
-                parts.append(f"{k}={v}" if v else "{k}")
-
-        folder = os.path.join(acquisitions_folder, ','.join(parts))
-        os.makedirs(folder, exist_ok=True)
-        return folder
-
-    def make_guidings_folder(self, root: str | None = None, base_folder: str | None = None):
-        if base_folder is not None:
-            guiding_folder = os.path.join(base_folder, 'Guidings')
-        else:
-            if not root:
-                root = filer.ram.root
-            guiding_folder = os.path.join(self.make_daily_folder_name(root=root), 'Guidings')
-
-        os.makedirs(guiding_folder, exist_ok=True)
-        return guiding_folder
-
-    @staticmethod
-    def current_utc():
-        return datetime.datetime.now(datetime.timezone.utc).strftime('%H-%M-%S_%f')[:-3]
-
-    def make_guiding_root_name(self, root: str | None = None):
-        if not root:
-            root = filer.ram.root
-        guiding_folder = os.path.join(self.make_daily_folder_name(root=root), 'Guidings')
-        os.makedirs(guiding_folder, exist_ok=True)
-        return os.path.join(guiding_folder, f'{PathMaker.make_seq(guiding_folder)}-{self.current_utc()}-')
-
-    def make_acquisition_root_name(self, root: str | None = None):
-        if not root:
-            root = filer.ram.root
-        acquisition_folder = os.path.join(self.make_daily_folder_name(root=root), 'Acquisitions')
-        os.makedirs(acquisition_folder, exist_ok=True)
-        return os.path.join(acquisition_folder, f'{PathMaker.make_seq(acquisition_folder)}-{self.current_utc()}-')
-
-    def make_logfile_name(self):
-        daily_folder = os.path.join(self.make_daily_folder_name(root=filer.shared.root))
-        os.makedirs(daily_folder)
-        return os.path.join(daily_folder, 'log.txt')
-
-    @staticmethod
-    def make_tasks_folder():
-        return os.path.join(filer.shared.root, 'tasks')
-
-
 path_maker = SingletonFactory.get_instance(PathMaker)
-
-
-def init_log(logger_: logging.Logger, level: int | None = None, file_name: str | None = None):
-    logger_.propagate = False
-    level = default_log_level if level is None else level
-    logger_.setLevel(level)
-
-    formatter = logging.Formatter(
-        '%(asctime)s - %(levelname)-8s - {%(name)s:%(module)s:%(funcName)s:%(threadName)s:%(thread)s}' +
-        ' -  %(message)s')
-    handler = logging.StreamHandler()
-    handler.setLevel(level)
-    handler.setFormatter(formatter)
-    logger_.addHandler(handler)
-
-    # path_maker = SingletonFactory.get_instance(PathMaker)
-    file = f"{file_name}.txt" if file_name is not None else 'log.txt'
-    handler = DailyFileHandler(path=os.path.join(path_maker.make_daily_folder_name(root=filer.shared.root), file),
-                               mode='a')
-    handler.setLevel(level)
-    handler.setFormatter(formatter)
-    logger_.addHandler(handler)
 
 
 def deep_dict_update(original: dict, update: dict):
@@ -508,36 +232,6 @@ class Subsystem:
         self.obj_name = obj_name
 
 
-# def image_to_fits(image, path: str, header, logger_):
-#     """
-#
-#     Parameters
-#     ----------
-#     image
-#         an ASCOM ImageArray
-#     path
-#         name of the created file
-#     header
-#         a dictionary of FITS header key/values
-#     logger_
-#         a logger for logging :-)
-#
-#     Returns
-#     -------
-#
-#     """
-#     if not path:
-#         raise 'Must supply a path to the file'
-#     if not path.endswith('.fits'):
-#         path += '.fits'
-#
-#     self.start_activity(CameraActivities.Saving)
-#     hdu = fits.PrimaryHDU(data=np.transpose(image), header=fits.Header(header))
-#     hdu_list = fits.HDUList([hdu])
-#     logger_.info(f'saving image to {path} ...')
-#     hdu_list.writeto(path, checksum=True)
-
-
 def parse_params(memory: shared_memory.SharedMemory, logger_: logging.Logger) -> dict:
     bytes_array = bytearray(memory.buf)
     string_array = bytes_array.decode(encoding='utf-8')
@@ -669,6 +363,43 @@ class Coord(NamedTuple):
                 f"{self.ra.to_string(u.hourangle, decimal=True, precision=3)}, " +
                 f"{self.dec.to_string(u.deg, decimal=True, precision=3)}" +
                 "]")
+
+
+class UnitRoi:
+    """
+    In unit terms a region-of-interest is centered on a pixel and has width and height
+    """
+    fiber_x: int
+    fiber_y: int
+    width: int
+    height: int
+
+    def __init__(self, fiber_x: int, fiber_y: int, width: int, height: int):
+        self.fiber_x = fiber_x
+        self.fiber_y = fiber_y
+        self.width = width
+        self.height = height
+
+    def to_camera_roi(self, binning: CameraBinning = CameraBinning(1, 1)) -> CameraRoi:
+        """
+        An ASCOM camera ROI has a starting pixel (x, y) at lower left corner, width and height
+        Returns The corresponding camera region-of-interest
+        -------
+
+        """
+        return CameraRoi(
+            (self.fiber_x - int(self.width / 2)) * binning.x,
+            (self.fiber_y - int(self.height / 2)) * binning.y,
+            self.width * binning.x,
+            self.height * binning.y
+        )
+
+    @staticmethod
+    def from_dict(d):
+        return UnitRoi(d['fiber_x'], d['fiber_y'], d['width'], d['height'])
+
+    def __repr__(self) -> str:
+        return f"x={self.fiber_x},y={self.fiber_y},w={self.width},h={self.height}"
 
 
 CanonicalResponse_Ok: CanonicalResponse = CanonicalResponse(value='ok')

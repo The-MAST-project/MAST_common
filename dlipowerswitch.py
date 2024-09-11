@@ -2,7 +2,7 @@ import urllib.parse
 from typing import List
 import socket
 from common.config import Config
-from common.utils import init_log
+from common.mast_logging import init_log
 from common.networking import WEIZMANN_DOMAIN
 import httpx
 import logging
