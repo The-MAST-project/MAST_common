@@ -74,8 +74,7 @@ def init_log(logger_: logging.Logger, level: int | None = None, file_name: str |
     logger_.setLevel(level)
 
     formatter = logging.Formatter(
-        '%(asctime)s - %(levelname)-8s - {%(name)s:%(module)s:%(funcName)s:%(threadName)s:%(thread)s}' +
-        ' -  %(message)s')
+        '%(asctime)s - %(levelname)-8s - {%(name)s:%(funcName)s:%(threadName)s:%(thread)s} -  %(message)s')
     handler = logging.StreamHandler()
     handler.setLevel(level)
     handler.setFormatter(formatter)
