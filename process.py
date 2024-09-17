@@ -94,7 +94,7 @@ def ensure_process_is_running(name: str | None = None, pattern: str | None = Non
             threading.Thread(name='stderr-logger', target=log_stream,
                              args=(process.stderr, logger, logging.ERROR)).start()
 
-        logger.info(f"started process (pid={process.pid}) with cmd: '{cmd}'")
+        logger.info(f"started process (pid={process.pid}) with cmd: '{cmd}' in {cwd=}")
     except Exception as ex:
         pass
 
