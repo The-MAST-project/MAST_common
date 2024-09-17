@@ -16,6 +16,7 @@ from common.camera import CameraBinning, CameraRoi
 import datetime
 from typing import List, Any, Optional, Union, NamedTuple
 from pydantic import BaseModel, field_validator
+from enum import Enum, auto
 
 import astropy.units as u
 
@@ -26,6 +27,11 @@ BASE_UNIT_PATH = '/mast/api/v1/unit'
 BASE_CONTROL_PATH = '/mast/api/v1/control'
 
 logger = logging.getLogger('mast.unit.' + __name__)
+
+
+class OperatingMode(Enum):
+    Day = auto(),
+    Night = auto()
 
 
 class RepeatTimer(Timer):
@@ -280,78 +286,50 @@ class CanonicalResponse(BaseModel):
     Formalizes API responses.  An API method will return a CanonicalResponse, so that the
      API caller may safely parse it.
 
-    An API method may ONLY return one of the following keys (in decreasing severity): 'exception', 'errors' or 'value'
+    An API method may ONLY return one of the following keys (in decreasing severity): 'errors' or 'value'
 
-    - 'exception' - an exception occurred, delivers the details (no 'value')
     - 'errors' - the method detected one or more errors (no 'value')
-    - 'value' - all went well, this is the return value (maybe 'None')
+    - 'value' - all went well, this is the return value (may be 'None')
     """
 
     value: Optional[Any] = None
     errors: Optional[Union[List[str], str]] = None
-    exception: Optional[List[str]] = None
 
-    # def __init__(self,
-    #              value: Any = None,
-    #              errors: List[str] | str | None = None,
-    #              exception: Exception | None = None
-    #              ):
-    #     super.__init__()
-    #
-    #     if exception:
-    #         exc_type, exc_value, exc_traceback = sys.exc_info()
-    #         traceback_string = traceback.format_exception(exc_type, exc_value, exc_traceback)
-    #         self.exception = traceback_string
-    #     elif errors:
-    #         self.errors = errors
-    #     else:
-    #         self.value = value
+    def __init__(self,
+                 value: Optional[Any] = None,
+                 errors: Optional[Union[List[str], str]] = None,
+                 exception: Optional[Exception] | None = None):
+        super().__init__()
 
-    @field_validator('exception', mode='before')
-    def process_exception(cls, v):
-        if v:
+        if exception:
             exc_type, exc_value, exc_traceback = sys.exc_info()
-            return ''.join(traceback.format_exception(exc_type, exc_value, exc_traceback))
-        return v
-
-    @field_validator('errors', mode='before')
-    def ensure_errors_list(cls, v):
-        if isinstance(v, str):
-            return [v]
-        return v
+            self.errors = traceback.format_exception(exc_type, exc_value, exc_traceback)
+        elif errors:
+            if isinstance(errors, str):
+                self.errors = [errors]
+            else:
+                self.errors = errors
+        else:
+            self.value = value
 
     @property
     def is_error(self):
         return hasattr(self, 'errors') and self.errors is not None
 
     @property
-    def is_exception(self):
-        return hasattr(self, 'exception') and self.exception is not None
-
-    @property
     def succeeded(self):
-        return hasattr(self, 'value')  # and self.value is not None
+        return self.errors is None
 
     @property
     def failed(self):
-        if self.is_exception:
-            return self.exception
-        if self.is_error:
-            return self.errors
+        return self.errors is not None
 
     @property
     def failure(self) -> List[str] | str | None:
-        if not self.failed:
-            return None
-        if self.is_exception:
-            return self.exception
-        if self.is_error:
-            return self.errors if self.errors is not None else None
+        return self.errors
 
-    @classmethod
-    @property
-    def ok(cls):
-        return cls(value='ok')
+
+CanonicalResponse_Ok: CanonicalResponse = CanonicalResponse(value='ok')
 
 
 class Coord(NamedTuple):
@@ -400,6 +378,3 @@ class UnitRoi:
 
     def __repr__(self) -> str:
         return f"x={self.fiber_x},y={self.fiber_y},w={self.width},h={self.height}"
-
-
-CanonicalResponse_Ok: CanonicalResponse = CanonicalResponse(value='ok')
