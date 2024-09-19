@@ -55,6 +55,7 @@ class UnitActivities(IntFlag):
     Idle = 0
     AutofocusingPWI4 = auto()
     AutofocusingWIS = auto()
+    AutofocusAnalysis = auto()
     Guiding = auto()
     StartingUp = auto()
     ShuttingDown = auto()
