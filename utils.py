@@ -338,8 +338,8 @@ class Coord(NamedTuple):
 
     def __repr__(self):
         return ("[" +
-                f"{self.ra.to_string(u.hourangle, decimal=True, precision=3)}, " +
-                f"{self.dec.to_string(u.deg, decimal=True, precision=3)}" +
+                f"{self.ra.to_string(u.hourangle, decimal=True, precision=9)}, " +
+                f"{self.dec.to_string(u.deg, decimal=True, precision=9)}" +
                 "]")
 
 
