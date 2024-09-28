@@ -13,7 +13,7 @@ init_log(logger)
 
 def ascom_driver_info(driver):
     return {
-        'name': driver.name,
+        'name': driver.Name,
         'description': driver.Description,
         'version': driver.DriverVersion,
     }

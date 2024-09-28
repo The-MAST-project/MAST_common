@@ -7,7 +7,7 @@ from typing import List
 class PathMaker:
 
     @staticmethod
-    def make_seq(folder: str, camera: str | None = None) -> str:
+    def make_seq(folder: str, camera: str | None = None, start_with: int | None = None) -> str:
         """
         Creates a sequence number by maintaining a '.seq' file.
         The sequence may be camera specific or camera agnostic.
@@ -25,7 +25,7 @@ class PathMaker:
             with open(seq_file) as f:
                 seq = int(f.readline())
         else:
-            seq = 0
+            seq = start_with if start_with is not None else 0
         seq += 1
         with open(seq_file, 'w') as file:
             file.write(f'{seq}\n')
@@ -51,7 +51,7 @@ class PathMaker:
         os.makedirs(ret, exist_ok=True)
         return ret
 
-    def make_acquisition_folder(self, tags: dict | None = None) -> str:
+    def make_acquisition_folder(self, phase: str | None = None, tags: dict | None = None) -> str:
         acquisitions_folder = os.path.join(self.make_daily_folder_name(), 'Acquisitions')
         os.makedirs(acquisitions_folder, exist_ok=True)
         parts: List[str] = [
@@ -63,6 +63,8 @@ class PathMaker:
                 parts.append(f"{k}={v}" if v else "{k}")
 
         folder = os.path.join(acquisitions_folder, ','.join(parts))
+        if phase:
+            folder = os.path.join(folder, phase)
         os.makedirs(folder, exist_ok=True)
         return folder
 

@@ -20,6 +20,9 @@ from enum import Enum, auto
 
 import astropy.units as u
 
+import time
+from functools import cache
+
 default_encoding = "utf-8"
 
 BASE_SPEC_PATH = '/mast/api/v1/spec'
@@ -378,3 +381,36 @@ class UnitRoi:
 
     def __repr__(self) -> str:
         return f"x={self.fiber_x},y={self.fiber_y},w={self.width},h={self.height}"
+
+
+def cached(timeout_seconds):
+    def decorator(func):
+        cached_value: object | None = None  # Store the single cached value here
+        cache_time = 0  # Store the time the cache was last updated
+
+        def wrapper(*args, **kwargs):
+            nonlocal cached_value, cache_time
+            current_time = time.time()
+
+            # If the cache is valid (not expired), return the cached value
+            if cached_value is not None and (current_time - cache_time < timeout_seconds):
+                return cached_value
+
+            # Otherwise, call the function and update the cache
+            result = func(*args, **kwargs)
+            cached_value = result
+            cache_time = current_time
+            return result
+
+        # Add cache clearing function
+        def clear_cache():
+            nonlocal cached_value, cache_time
+
+            cached_value = None
+            cache_time = 0
+
+        wrapper.clear_cache = clear_cache
+
+        return wrapper
+    return decorator
+

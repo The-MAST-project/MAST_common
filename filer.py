@@ -6,6 +6,7 @@ import logging
 # from common.mast_logging import init_log
 from typing import List
 from threading import Thread
+import fnmatch
 
 # logger = logging.Logger('mast.unit.filer')
 # init_log(logger)
@@ -37,21 +38,67 @@ class Filer:
             else Location('C:\\', 'MAST\\')
 
     @staticmethod
-    def copy(src: str, dst: str):
+    def move(src: str, dst: str):
+        op = 'move'
+
         try:
-            shutil.copy2(src, dst)
-            os.unlink(src)
-            # logger.info(f"moved '{src}' to '{dst}'")
+            if os.path.isfile(src):
+                shutil.copy2(src, dst)
+                os.unlink(src)
+            elif os.path.isdir(src):
+                shutil.copytree(src, dst)
+                shutil.rmtree(src)
+            else:
+                raise Exception(f"{op}: '{src}' is neither a file nor a folder, don't know how to move")
+
+            print(f"moved '{src}' to '{dst}'")
         except Exception as e:
-            # logger.exception(f"failed to move '{src} to '{dst}'", exc_info=e)
+            print(f"failed to move '{src} to '{dst}' (exception: {e})")
             pass
 
-    def move_ram_to_shared(self, files: str | List[str]):
-        if isinstance(files, str):
-            files = [files]
+    def move_ram_to_shared(self, paths: str | List[str]):
+        """
+        Moves stuff from the 'ram' storage to the 'shared' storage.
+        The path name hierarchy is preserved, only the 'root' is changed from the 'ram' root to the 'shared' root
 
-        for file in files:
+        :param paths: Can be one of:
+                    - A file name: it will be moved
+                    - A list of files: they will be moved
+                    - A folder name: the whole folder will be recursively moved
+        :return:
+        """
+        if isinstance(paths, str):
+            paths = [paths]
+
+        for file in paths:
             src = file
             dst = file.replace(self.ram.root, self.shared.root)
             os.makedirs(os.path.dirname(dst), exist_ok=True)
-            Thread(name='ram-to-shared-mover', target=self.copy, args=[src, dst]).start()
+            Thread(name='ram-to-shared-mover', target=self.move, args=[src, dst]).start()
+
+    def find_latest(self, root: str, name: str | None = None, pattern=None, qualifier: callable = os.path.isfile) -> str:
+        matches = []
+        roots = [self.ram.root, self.shared.root, self.local.root]
+
+        if root not in roots:
+            raise Exception(f"root must be one of {','.join(roots)}")
+
+        # Walk through the directory and find matching files
+        for top, folders, files in os.walk(root):
+            # If name is provided, look for an exact match
+            if name:
+                if qualifier is os.path.isfile and name in files:
+                    matches.append(os.path.join(top, name))
+                elif qualifier is os.path.isdir and name in folders:
+                    matches.append(os.path.join(top, name))
+
+            # If pattern is provided, look for matching files using the pattern
+            if pattern:
+                where = files if qualifier is os.path.isfile else folders
+                for filename in fnmatch.filter(where, pattern):
+                    matches.append(os.path.join(top, filename))
+
+        # Sort the matched files by creation date
+        matches_sorted = sorted(matches, key=os.path.getctime, reverse=True)
+
+        return matches_sorted[0] if len(matches_sorted) > 0 else None
