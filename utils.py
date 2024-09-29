@@ -273,9 +273,6 @@ def time_stamp(d: dict):
 def function_name():
     """
     Gets the name of the calling function from the stack
-    Returns
-    -------
-
     """
     return inspect.currentframe().f_back.f_code.co_name
 
@@ -283,7 +280,6 @@ def function_name():
 def caller_name():
     """
     Gets the name of the calling function's caller
-    :return:
     """
     return inspect.currentframe().f_back.f_back.f_code.co_name
 
