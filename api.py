@@ -1,10 +1,12 @@
 import httpx
 from common.utils import BASE_UNIT_PATH, BASE_SPEC_PATH
+from common.mast_logging import init_log
 from enum import Enum, auto
 import re
 import logging
 
 logger = logging.getLogger("api")
+init_log(logger)
 
 
 class ApiDomain(Enum):

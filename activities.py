@@ -4,7 +4,7 @@ import datetime
 
 import logging
 
-logger = logging.Logger('mast.unit.activities')
+logger = logging.Logger('mast.unit.' + __name__)
 init_log(logger)
 
 

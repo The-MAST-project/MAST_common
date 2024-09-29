@@ -3,7 +3,6 @@ import json
 from typing import List
 import random
 
-
 correction_phases = ['sky', 'spec', 'guiding', 'testing']
 
 

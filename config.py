@@ -9,8 +9,9 @@ from common.mast_logging import init_log
 from copy import deepcopy
 from cachetools import TTLCache, cached
 
-logger = logging.getLogger('config')
+logger = logging.getLogger('mast.unit.' + __name__)
 init_log(logger)
+
 WEIZMANN_DOMAIN: str = 'weizmann.ac.il'
 
 cache = TTLCache(maxsize=100, ttl=30)

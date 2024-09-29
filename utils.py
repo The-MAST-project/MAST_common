@@ -280,6 +280,14 @@ def function_name():
     return inspect.currentframe().f_back.f_code.co_name
 
 
+def caller_name():
+    """
+    Gets the name of the calling function's caller
+    :return:
+    """
+    return inspect.currentframe().f_back.f_back.f_code.co_name
+
+
 def parse_coordinate(coord: float | str):
     return Angle(coord) if isinstance(coord, str) else coord
 

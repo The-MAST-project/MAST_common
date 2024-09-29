@@ -68,7 +68,7 @@ class DailyFileHandler(logging.FileHandler):
         logging.FileHandler.__init__(self, filename='', delay=delay, mode=mode, encoding=encoding, errors=errors)
 
 
-def init_log(logger_: logging.Logger, level: int | None = None, file_name: str | None = None):
+def init_log(logger_: logging.Logger, level: int | None = None, file_name: str = 'mast-unit-log.txt'):
     logger_.propagate = False
     level = default_log_level if level is None else level
     logger_.setLevel(level)
@@ -80,9 +80,12 @@ def init_log(logger_: logging.Logger, level: int | None = None, file_name: str |
     handler.setFormatter(formatter)
     logger_.addHandler(handler)
 
-    file = f"{file_name}.txt" if file_name is not None else 'log.txt'
-    handler = DailyFileHandler(path=os.path.join(PathMaker().make_daily_folder_name(root=Filer().shared.root), file),
-                               mode='a')
+    handler = DailyFileHandler(
+        path=os.path.join(
+            PathMaker().make_daily_folder_name(root=Filer().shared.root),
+            file_name),
+        mode='a')
+
     handler.setLevel(level)
     handler.setFormatter(formatter)
     logger_.addHandler(handler)
