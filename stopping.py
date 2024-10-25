@@ -9,9 +9,28 @@ logger = logging.Logger('stopping-monitor')
 init_log(logger)
 
 
+class MonitoredPosition:
+
+    def __init__(self, ra: float, dec: float):
+        self.ra = ra
+        self.dec = dec
+        self.epsilon = 0.001
+
+    def __repr__(self):
+        return f"MonitoredPosition({self.ra}, {self.dec})"
+
+    def __eq__(self, other):
+        return abs(self.ra - other.ra) < self.epsilon and abs(self.dec - other.dec) < self.epsilon
+
+
 class StoppingMonitor:
 
-    def __init__(self, monitored_entity: str, max_len: int, sampler: Callable[[], float], interval: float, epsilon: float = 0):
+    def __init__(self,
+                 monitored_entity: str,
+                 max_len: int,
+                 sampler: Callable[[], float] | Callable[[], MonitoredPosition],
+                 interval: float,
+                 epsilon: float = 0):
         """
         Monitors an object (e.g. mount, stage, focuser) to decide if it is still moving
 
@@ -24,12 +43,13 @@ class StoppingMonitor:
         self.queue = deque(maxlen=max_len)
         self.lock = Lock()
         self.timer = RepeatTimer(interval=interval, function=self.sample)
-        # self.timer.start()
+        self.monitored_entity: str = monitored_entity
+        self.timer.name = f"{self.monitored_entity}-stopping-monitor"
+        self.timer.start()
         self.sampler = sampler
         self.previous: float | None = None
         self.epsilon: float = epsilon
         self.was_moving: bool | None = None
-        self.monitored_entity: str = monitored_entity
 
     def sample(self):
         """
@@ -39,14 +59,8 @@ class StoppingMonitor:
           - Stage: position
           - Focuser: position
         """
-        current = self.sampler()
-        if self.previous:
-            delta = abs(self.previous - current)
-            self.previous = current
-            with self.lock:
-                self.queue.append(delta)
-        else:
-            self.previous = current
+        with self.lock:
+            self.queue.append(self.sampler())
 
         is_moving = not self.fully_stopped()
         if self.was_moving is None:
@@ -62,8 +76,11 @@ class StoppingMonitor:
         If all deltas in the queue are under epsilon, we have stopped
         """
         with self.lock:
-            # if self.monitored_entity == 'stage':
-            #     logger.info(f"fully_stopped ({self.monitored_entity}): {self.queue}")
-            if len(self.queue) != self.queue.maxlen:
+            if self.monitored_entity == 'mount':
+                max_diff_ra = max(x.ra for x in self.queue) - min(x.ra for x in self.queue)
+                max_diff_dec = max(x.dec for x in self.queue) - min(x.dec for x in self.queue)
+                logger.info(f"fully_stopped {max_diff_ra=}, {max_diff_dec=}")
+            if len(self.queue) != self.queue.maxlen or any(x is None for x in self.queue):
                 return False
-            return not any([(x > self.epsilon) for x in self.queue])
+            v = self.queue[0]
+            return all([(x == v) for x in self.queue])
