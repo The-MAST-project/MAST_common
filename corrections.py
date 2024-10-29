@@ -71,11 +71,11 @@ if __name__ == '__main__':
     for i in range(5):
         corrections.sequence.append(
             Correction(
-                time=datetime.datetime.now(),
+                time=datetime.datetime.now(datetime.UTC),
                 ra_arcsec=random.uniform(0, 10),
                 dec_arcsec=random.uniform(0, 10)
             ))
-    corrections.last_delta = Correction(datetime.datetime.now(), ra_arcsec=0.13, dec_arcsec=0.21)
+    corrections.last_delta = Correction(datetime.datetime.now(datetime.UTC), ra_arcsec=0.13, dec_arcsec=0.21)
 
     out_json = json.dumps(corrections.to_dict(), indent=2)
     in_json = Corrections.from_dict(json.loads(out_json))
