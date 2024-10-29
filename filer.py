@@ -7,6 +7,7 @@ import logging
 from typing import List
 from threading import Thread
 import fnmatch
+from enum import Enum, auto
 
 # logger = logging.Logger('mast.unit.filer')
 # init_log(logger)
@@ -20,6 +21,12 @@ def is_windows_drive_mapped(drive_letter):
     except Exception as e:
         print(f"An error occurred: {e}")
         return False
+
+
+class Top(Enum):
+    Local = auto()
+    Shared = auto()
+    Ram = auto()
 
 
 class Location:
@@ -36,9 +43,21 @@ class Filer:
             else Location('C:\\', 'MAST\\')
         self.ram = Location('D:\\', 'MAST\\') if is_windows_drive_mapped('D:') \
             else Location('C:\\', 'MAST\\')
+        self.tops = {
+            Top.Local: self.local,
+            Top.Shared: self.shared,
+            Top.Ram: self.ram,
+        }
 
     @staticmethod
     def move(src: str, dst: str):
+        """
+        Moves a source path (either file or folder) to a destination path
+
+        :param src: Source
+        :param dst: Destination
+        :return:
+        """
         op = 'move'
 
         try:
@@ -55,6 +74,31 @@ class Filer:
         except Exception as e:
             print(f"failed to move '{src} to '{dst}' (exception: {e})")
             pass
+
+    def move_to(self, dst_top: Top, src_paths: str | List[str]):
+        """
+        Moves one or more source paths (files or folders) to a destination top,
+         unless the source path already resides on the destination root.
+
+        :param dst_top: The ID of the destination top
+        :param src_paths: One or more names of files or folders
+        :return:
+        """
+        if isinstance(src_paths, str):
+            src_paths = [src_paths]
+
+        dst_root = self.tops[dst_top].root
+        for src_path in src_paths:
+            src_root = None
+            if src_path.startswith(dst_root):
+                continue    # it's already on the destination root
+            for top in self.tops.keys():
+                if src_path.startswith(self.tops[top].root):
+                    src_root = self.tops[top].root
+                    break
+            if not src_root:
+                continue
+            self.move(src_path, src_path.replace(src_root, dst_root))
 
     def move_ram_to_shared(self, paths: str | List[str]):
         """
