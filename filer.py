@@ -23,7 +23,7 @@ def is_windows_drive_mapped(drive_letter):
         return False
 
 
-class Top(Enum):
+class FilerTop(Enum):
     Local = auto()
     Shared = auto()
     Ram = auto()
@@ -44,9 +44,9 @@ class Filer:
         self.ram = Location('D:\\', 'MAST\\') if is_windows_drive_mapped('D:') \
             else Location('C:\\', 'MAST\\')
         self.tops = {
-            Top.Local: self.local,
-            Top.Shared: self.shared,
-            Top.Ram: self.ram,
+            FilerTop.Local: self.local,
+            FilerTop.Shared: self.shared,
+            FilerTop.Ram: self.ram,
         }
 
     @staticmethod
@@ -75,7 +75,12 @@ class Filer:
             print(f"failed to move '{src} to '{dst}' (exception: {e})")
             pass
 
-    def move_to(self, dst_top: Top, src_paths: str | List[str]):
+    def change_top_to(self, top: FilerTop, path: str) -> str:
+        for t in self.tops:
+            if path.startswith(self.tops[t].root):
+                return path.replace(self.tops[t].root, self.tops[top].root)
+
+    def move_to(self, dst_top: FilerTop, src_paths: str | List[str]):
         """
         Moves one or more source paths (files or folders) to a destination top,
          unless the source path already resides on the destination root.
