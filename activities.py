@@ -54,7 +54,7 @@ class Activities:
 class UnitActivities(IntFlag):
     Idle = 0
     AutofocusingPWI4 = auto()
-    AutofocusingWIS = auto()
+    Autofocusing = auto()
     AutofocusAnalysis = auto()
     Guiding = auto()
     StartingUp = auto()
@@ -99,6 +99,7 @@ class MountActivities(IntFlag):
     Tracking = auto()
     FindingHome = auto()
     Dancing = auto()
+    Moving = auto()
 
 
 class StageActivities(IntFlag):
