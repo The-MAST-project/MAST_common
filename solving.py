@@ -3,22 +3,34 @@ from astropy.coordinates import Angle
 
 
 class SolvingSolution:
-    ra_rads: float
-    dec_rads: float
-    ra_hours: float
-    dec_degs: float
-    matched_stars: int = 0
-    catalog_stars: int = 0
-    rotation_angle_degs: float
-    pixel_scale: float
+    ra_rads: Optional[float] = None
+    dec_rads: Optional[float] = None
+    ra_hours: Optional[float] = None
+    dec_degs: Optional[float] = None
+    matched_stars: Optional[int] = None
+    catalog_stars: Optional[int] = None
+    rotation_angle_degs: Optional[float] = None
+    pixel_scale: Optional[float] = None
+
+    def to_dict(self):
+        return self.__dict__
 
 
 class SolvingResult:
-    succeeded: bool
+    succeeded: bool | None = None
     errors: Optional[List[str]] = None
-    solution: SolvingSolution
+    solution: SolvingSolution | None = None
     result = None
-    elapsed_seconds: float
+    elapsed_seconds: float | None = None
+
+    def to_dict(self):
+        return {
+            'succeeded': self.succeeded,
+            'errors': self.errors,
+            'solution': self.solution.to_dict(),
+            # 'result': self.result.to_dict(),
+            'elapsed_seconds': self.elapsed_seconds,
+        }
 
 
 class SolvingTolerance:
