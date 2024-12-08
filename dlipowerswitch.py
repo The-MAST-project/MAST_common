@@ -3,10 +3,11 @@ import socket
 from common.config import Config
 from common.mast_logging import init_log
 from common.networking import WEIZMANN_DOMAIN
-from common.utils import function_name, RepeatTimer
+from common.utils import function_name, RepeatTimer, caller_name
 import httpx
 import logging
 import time
+from threading import Lock
 
 logger = logging.getLogger('power-switch')
 init_log(logger)
@@ -15,16 +16,16 @@ logging.getLogger('httpx').setLevel(logging.WARN)
 
 class Outlet:
 
-    def __init__(self, power_switch, outlet_index: int, name: str, state: bool):
+    def __init__(self, power_switch, index: int, name: str, state: bool):
         self.power_switch = power_switch
-        if outlet_index >= DliPowerSwitch.NUM_OUTLETS:
-            raise Exception(f"{outlet_index=} not in range({DliPowerSwitch.NUM_OUTLETS})")
-        self.outlet_index: int = outlet_index
+        if index >= DliPowerSwitch.NUM_OUTLETS:
+            raise Exception(f"{index=} not in range({DliPowerSwitch.NUM_OUTLETS})")
+        self.index: int = index
         self.name: str = name
         self.state: bool = state
 
     def __repr__(self) -> str:
-        return f"<Outlet[{self.outlet_index}]: name='{self.name}', state={self.state}>"
+        return f"Outlet(index={self.index}]: name='{self.name}', state={self.state})"
 
 
 class DliPowerSwitch:
@@ -49,23 +50,16 @@ class DliPowerSwitch:
         self.timeout = 2
         self.base_url = f"http://{self.ipaddr}/"
 
+        self.lock = Lock()
         self.last_fetch: float = 0
-        self.max_age_seconds = 60  # seconds
+        self.max_age_seconds = 30  # seconds
+        self.outlets: List[Outlet] = []
+        self.fetch_outlets(force=True)
         self.upload_outlet_names()
-        self.outlets: List[Outlet] = self.fetch_outlets()
 
-        timer = RepeatTimer(interval=60, function=self.fetcher)
+        timer = RepeatTimer(interval=self.max_age_seconds, function=self.fetch_outlets)
         timer.name = 'dli-outlets-fetcher'
-        timer.start()
-
-    def fetcher(self):
-        """
-        If the outlet information is older than max_age_seconds, re-fetch it.
-        NOTE: each fetch_outlets() bumps self.last_fetch
-        :return:
-        """
-        if time.time() - self.last_fetch > self.max_age_seconds:
-            self.outlets = self.fetch_outlets()
+        # timer.start()
 
     def get(self, url: str, params: dict | None = None) -> dict | object:
         url = self.base_url + url
@@ -115,10 +109,13 @@ class DliPowerSwitch:
 
         return s
 
-    def fetch_outlets(self) -> List[Outlet]:
+    def fetch_outlets(self, force=False):
         op = function_name()
 
-        logger.info(f"fetching outlets from  {self.hostname}")
+        if not force and self.last_fetch != 0 and (time.time() - self.last_fetch) < self.max_age_seconds:
+            return
+
+        logger.info(f"fetching outlets {"(forced)" if force else ''} from {caller_name()}")
         names = self.get('restapi/relay/outlets/all;/name/')
         states = self.get('restapi/relay/outlets/all;/state/')
 
@@ -127,35 +124,39 @@ class DliPowerSwitch:
         if len(names) != len(states):
             raise Exception(f"{op}: got {len(names)} names but {len(states)} states!")
 
-        ret: List[Outlet] = []
-        for i in range(0, len(names)):
-            ret.append(Outlet(self, outlet_index=i, name=names[i], state=states[i]))
+        with self.lock:
+            self.outlets = []
+            for i in range(0, len(names)):
+                self.outlets.append(Outlet(self, index=i, name=names[i], state=states[i]))
         self.last_fetch = time.time()
-        return ret
 
     def get_outlet(self, identifier: str | int) -> Outlet | None:
-        self.fetch_outlets()
-        if isinstance(identifier, int):
-            return self.outlets[identifier]
+        with self.lock:
+            if isinstance(identifier, int):
+                return self.outlets[identifier]
 
-        result = [o for o in self.outlets if o.name == identifier]
-        return result[0] if result else None
+            result = [o for o in self.outlets if o.name == identifier]
+            return result[0] if result else None
 
     def upload_outlet_names(self):
+        """
+        Uploads the outlet names, as configured
+        """
         keys = self.conf['outlets'].keys()
         for _id, key in enumerate(keys):
             self.set_outlet_name(_id, self.conf['outlets'][key])
-        self.fetch_outlets()
+        self.fetch_outlets(force=True)
 
     def set_outlet_name(self, identifier: int | str, name: str):
         outlet: Outlet = self.get_outlet(identifier)
-        self.put(f'restapi/relay/outlets/{outlet.outlet_index}/name/', data={'value': name})
+        self.put(f'restapi/relay/outlets/{outlet.index}/name/', data={'value': name})
+        # self.fetch_outlets(force=True)
 
     def set_outlet_state(self, identifier: str | int, state: bool):
         outlet: Outlet = self.get_outlet(identifier)
         if outlet.state != state:
-            self.put(url=f"restapi/relay/outlets/{outlet.outlet_index}/state/", data={'value': state})
-            self.fetch_outlets()
+            self.put(url=f"restapi/relay/outlets/{outlet.index}/state/", data={'value': state})
+            self.fetch_outlets(force=True)
 
     def toggle_outlet(self, identifier: str | int):
         outlet: Outlet = self.get_outlet(identifier)
@@ -188,46 +189,49 @@ class PowerSwitchFactory:
 
 class SwitchedOutlet:
 
-    def __init__(self, unit_name: str, identifier: int | str | None = None):
+    def __init__(self, unit_name: str | None = None, identifier: int | str | None = None):
         """
         A SwitchedOutlet consists of a PowerSwitch instance and an outlet number.
         """
         op = function_name()
 
-        self.power_switch: DliPowerSwitch | None = None
+        self.switch: DliPowerSwitch | None = None
         self.outlet_on_the_switch: Outlet | None = None
 
+        if unit_name is None:
+            unit_name = socket.gethostname()
+
         try:
-            self.power_switch = PowerSwitchFactory.get_instance(unit_name=unit_name)
+            self.switch = PowerSwitchFactory.get_instance(unit_name=unit_name)
         except:
             raise Exception(f"{op}: could not get a DliPowerSwitch instance for {unit_name=}")
 
         # outlets have a numerical id (index), starting with 0 and a name
         if isinstance(identifier, int):  # 0 to 7
-            if 0 > identifier >= len(self.power_switch.outlets):
-                raise Exception(f"{op}: {identifier=} not in range({len(self.power_switch.outlets)}")
-            self.outlet_on_the_switch = self.power_switch.outlets[identifier]
+            if 0 > identifier >= len(self.switch.outlets):
+                raise Exception(f"{op}: {identifier=} not in range({len(self.switch.outlets)}")
+            self.outlet_on_the_switch = self.switch.outlets[identifier]
 
         elif isinstance(identifier, str):
             if identifier.isdigit():  # '1' to '8'
                 n = int(identifier) - 1
-                if 1 > n >= len(self.power_switch.outlets):
+                if 1 > n >= len(self.switch.outlets):
                     raise Exception(f"{op}: '{identifier=}' not in '1'..'8'")
                 else:
-                    self.outlet_on_the_switch = self.power_switch.outlets[n]
+                    self.outlet_on_the_switch = self.switch.outlets[n]
             else:  # an outlet name
-                result = [_o for _o in self.power_switch.outlets if _o.name == identifier]
+                result = [_o for _o in self.switch.outlets if _o.name == identifier]
                 if not result:
-                    raise Exception(f"{op}: no outlet named '{identifier}' in {self.power_switch.outlets=}")
+                    raise Exception(f"{op}: no outlet named '{identifier}' in {self.switch.outlets=}")
                 else:
                     self.outlet_on_the_switch = result[0]
 
-        self.delay_after_on = self.power_switch.conf['delay_after_on'] \
-            if 'delay_after_on' in self.power_switch.conf else 0
+        self.delay_after_on = self.switch.conf['delay_after_on'] \
+            if 'delay_after_on' in self.switch.conf else 0
 
     @property
     def id(self):
-        return self.outlet_on_the_switch.outlet_index
+        return self.outlet_on_the_switch.index
 
     @property
     def name(self) -> str:
@@ -279,17 +283,7 @@ class SwitchedOutlet:
 
 
 if __name__ == '__main__':
-
-    # o: List[SwitchedOutlet] = []
-    # for i in range(8):
-    #     o.append(SwitchedOutlet('mastw', identifier=str(i + 1)))
-    #
-    # for i in range(8):
-    #     print(f"[{i}]: '{o[i].name}', {o[i].is_on()}")
-    #
-    # print('')
     o8 = SwitchedOutlet('mastw', identifier='Outlet 8')
     print(f"[{o8.id}]: '{o8.name}', {o8.is_on()}")
-    time.sleep(12)
     o8.toggle()
     print(f"[{o8.id}]: '{o8.name}', {o8.is_on()}")
