@@ -12,6 +12,9 @@ from common.activities import Activities
 from common.filer import Filer
 from common.paths import PathMaker
 from common.camera import CameraBinning, CameraRoi
+import random
+import string
+import subprocess
 
 import datetime
 from typing import List, Any, Optional, Union, NamedTuple
@@ -420,3 +423,93 @@ def cached(timeout_seconds):
         return wrapper
     return decorator
 
+
+def boxed_lines(lines: str | List[str], center: bool = False) -> List[str]:
+    ret: List[str] = []
+    max_len = 0
+
+    if isinstance(lines, str):
+        lines = [lines]
+
+    for l in lines:
+        if len(l) > max_len:
+            max_len = len(l)
+    if (max_len % 2) != 0:
+        max_len += 1
+
+    ret.append('+-' + '-' * max_len + '-+')
+    for line in lines:
+        if center:
+            l_padding = ' ' * int((max_len - len(line)) / 2)
+            r_padding = ' ' * (max_len - len(l_padding) - len(lines))
+        else:
+            l_padding = ''
+            r_padding = ' ' * (max_len - len(line))
+        ret.append('| ' + l_padding + line + r_padding + ' |')
+    ret.append('+-' + '-' * max_len + '-+')
+
+    return ret
+
+
+def generate_random_string(prefix="tmp_", length=15) -> str:
+    # Calculate the number of random characters needed
+    random_part_length = length - len(prefix)
+
+    if random_part_length <= 0:
+        raise ValueError("Length must be greater than the length of the prefix.")
+
+    # Generate random characters
+    random_part = ''.join(random.choices(string.ascii_letters + string.digits, k=random_part_length))
+
+    # Combine prefix and random part
+    return prefix + random_part.upper()
+
+
+def cygpath(path: str, to_windows: bool = False) -> str | None:
+    """
+    Converts a path from windows to cygwin (or the other way around)
+
+    :param path: The path to convert
+    :param to_windows:  from cygwin to windows
+    :return:
+    """
+    args = [r"\cygwin64\bin\cygpath"]
+    if to_windows:
+        args.append('-w')
+    args.append(path)
+
+    try:
+        result = subprocess.run(args,
+                                capture_output=True,
+                                text=True,
+                                check=True
+                                )
+        return result.stdout.strip()
+    except subprocess.CalledProcessError as e:
+        print(f"Error: {e.stderr.strip()}")
+        return None
+
+
+def wslpath(path: str, to_windows: bool = False) -> str | None:
+    """
+    Converts a path from windows to cygwin (or the other way around)
+
+    :param path: The path to convert
+    :param to_windows:  from cygwin to windows
+    :return:
+    """
+    args = ['wsl', 'wslpath']
+    if to_windows:
+        args.append('-w')
+    args.append(path)
+
+    try:
+        result = subprocess.run(args,
+                                capture_output=True,
+                                text=True,
+                                check=True
+                                )
+        return result.stdout.strip().replace('.localhost', r'$')
+    except subprocess.CalledProcessError as e:
+        print(f"Error: {e.stderr.strip()}")
+        return None
