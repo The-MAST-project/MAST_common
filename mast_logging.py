@@ -5,6 +5,8 @@ import os
 import io
 from common.filer import Filer
 from common.paths import PathMaker
+# from common.utils import boxed_lines
+# from typing import List
 
 default_log_level = logging.DEBUG
 
@@ -89,3 +91,8 @@ def init_log(logger_: logging.Logger, level: int | None = None, file_name: str =
     handler.setLevel(level)
     handler.setFormatter(formatter)
     logger_.addHandler(handler)
+
+
+# def log_info_boxed_lines(logger: logging.Logger, prefix: str, lines: List[str], center: bool = False):
+#     for line in boxed_lines(lines, center):
+#         logger.info(f'{prefix}{line}')
