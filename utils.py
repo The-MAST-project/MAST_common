@@ -18,13 +18,12 @@ import subprocess
 
 import datetime
 from typing import List, Any, Optional, Union, NamedTuple
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel
 from enum import Enum, auto
 
 import astropy.units as u
 
 import time
-from functools import cache
 
 default_encoding = "utf-8"
 
@@ -443,7 +442,7 @@ def generate_random_string(prefix="tmp_", length=15) -> str:
         raise ValueError("Length must be greater than the length of the prefix.")
 
     # Generate random characters
-    random_part = ''.join(random.choices(string.ascii_letters + string.digits, k=random_part_length))
+    random_part = ''.join(random.choices(string.ascii_uppercase + string.digits, k=random_part_length))
 
     # Combine prefix and random part
     return prefix + random_part.upper()
