@@ -424,7 +424,7 @@ def boxed_lines(lines: str | List[str], center: bool = False) -> List[str]:
     for line in lines:
         if center:
             l_padding = ' ' * int((max_len - len(line)) / 2)
-            r_padding = ' ' * (max_len - len(l_padding) - len(lines))
+            r_padding = ' ' * (max_len - len(l_padding) - len(line))
         else:
             l_padding = ''
             r_padding = ' ' * (max_len - len(line))
