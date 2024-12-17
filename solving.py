@@ -1,5 +1,16 @@
-from typing import Optional, List
+from typing import Optional, List, Literal
 from astropy.coordinates import Angle
+from enum import IntFlag, auto
+
+
+class SolverId(IntFlag):
+    PlaneWaveCli = auto()
+    PlaneWaveShm = auto()
+    AstrometryDotNet = auto()
+    # Astap = auto()
+
+
+SolverIdNames = Literal['PlaneWaveCli', 'PlaneWaveShm', 'AstrometryDotNet']
 
 
 class SolvingSolution:
@@ -13,7 +24,16 @@ class SolvingSolution:
     pixel_scale: Optional[float] = None
 
     def to_dict(self):
-        return self.__dict__
+        return {
+            'ra_rads': self.ra_rads,
+            'dec_rads': self.dec_rads,
+            'ra_hours': self.ra_hours,
+            'dec_degs': self.dec_degs,
+            'matched_stars': self.matched_stars,
+            'catalog_stars': self.catalog_stars,
+            'rotation_angle_degs': self.rotation_angle_degs,
+            'pixel_scale': self.pixel_scale,
+        }
 
 
 class SolvingResult:
@@ -26,7 +46,7 @@ class SolvingResult:
     def __init__(self, succeeded: Optional[bool] = None,
                  errors: Optional[List[str]] = None,
                  solution: Optional[SolvingSolution] = None,
-                 solver_result = None):
+                 solver_result=None):
         self.succeeded = succeeded
         self.errors = errors
         self.solution = solution
