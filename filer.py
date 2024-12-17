@@ -2,15 +2,11 @@ import socket
 import win32api
 import shutil
 import os
-import logging
-# from common.mast_logging import init_log
 from typing import List
 from threading import Thread
 import fnmatch
 from enum import Enum, auto
-
-# logger = logging.Logger('mast.unit.filer')
-# init_log(logger)
+from typing import Optional
 
 
 def is_windows_drive_mapped(drive_letter):
@@ -19,7 +15,7 @@ def is_windows_drive_mapped(drive_letter):
         drives = drives.split('\000')[:-1]
         return drive_letter.upper() + "\\" in drives
     except Exception as e:
-        print(f"An error occurred: {e}")
+        print(f"is_windows_drive_mapped: An error occurred: {e}")
         return False
 
 
@@ -136,7 +132,10 @@ class Filer:
             os.makedirs(os.path.dirname(dst), exist_ok=True)
             Thread(name='ram-to-shared-mover', target=self.move, args=[src, dst]).start()
 
-    def find_latest(self, root: str, name: str | None = None, pattern=None, qualifier: callable = os.path.isfile) -> str:
+    def find_latest(self,
+                    root: str,
+                    name: str | None = None,
+                    pattern=None, qualifier: callable = os.path.isfile) -> str:
         matches = []
         roots = [self.ram.root, self.shared.root, self.local.root]
 
