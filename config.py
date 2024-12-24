@@ -112,6 +112,33 @@ class Config:
         return ret
 
     @cached(cache)
+    def get_specs(self) -> dict:
+        doc =  self.db['specs'].find()[0]
+
+        #
+        # For the individual deepspec cameras we merge the camera-specific configuration
+        #  with the 'common' configuration
+        #
+        deepspec_conf = doc['deepspec']
+        common = deepspec_conf['common']
+        bands = [k for k in deepspec_conf.keys() if k != 'common']
+        for band in bands:
+            d = deepcopy(common)
+            deep_dict_update(d, deepspec_conf[band])
+            doc['deepspec'][band] = d
+
+        return {
+            'wheels': doc['wheels'],
+            'gratings': doc['gratings'],
+            'power_switch': doc['power_switch'],
+            'stage': doc['stage'],
+            'chiller': doc['chiller'],
+            'deepspec': doc['deepspec'],
+            'highspec': doc['highspec'],
+            'lamps': doc['lamps'],
+        }
+
+    @cached(cache)
     def get_service(self, service_name: str):
         try:
             doc = self.db['services'].find_one({'name': service_name})
@@ -164,18 +191,10 @@ class Config:
             users.append(user['name'])
         return users
 
-    def get_service(self, service_name: str) -> dict:
-        try:
-            service = self.db['services'].find_one({'name': service_name})
-        except PyMongoError:
-            logger.error(f"could not find_one() for {service_name=}")
-            raise
-        return service
-
 
 if __name__ == '__main__':
-    cfg = Config()
-    print(f"sites: {cfg.get_sites()}")
-    us = cfg.get_users()
-    for u in us:
-        print(f"User '{u}': {cfg.get_user(u)}")
+    import json
+    print(json.dumps(Config().get_specs(), indent=2))
+    # cfg = Config()
+    # print(f"sites: {cfg.get_sites()}")
+    # cfg.get_users()
