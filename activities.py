@@ -22,6 +22,13 @@ class Timing:
 
 
 class Activities:
+    """
+    An activity consists of:
+    * A flag bit (ON when the activity is in-progress, OFF when not)
+    * A timing construct that monitors the start, end and duration of the activity
+
+    The activity can be started, ended and checked if in-progress
+    """
 
     Idle: IntFlag = 0
 
@@ -29,12 +36,26 @@ class Activities:
         self.activities: IntFlag = Activities.Idle
         self.timings = dict()
 
-    def start_activity(self, activity: IntFlag):
+    def start_activity(self, activity: IntFlag, existing_ok: bool = False):
+        """
+        Marks the start of an activity.
+        :param activity:
+        :param existing_ok: If already in progress don't create a new timing structure
+        :return:
+        """
+        if existing_ok and (self.activities & activity) != 0:
+            return
+
         self.activities |= activity
         self.timings[activity] = Timing()
         logger.info(f"started activity {activity.__repr__()}")
 
     def end_activity(self, activity: IntFlag):
+        """
+        Marks the end of an activity
+        :param activity:
+        :return:
+        """
         if not self.is_active(activity):
             return
         self.activities &= ~activity
@@ -42,9 +63,18 @@ class Activities:
         logger.info(f"ended activity {activity.__repr__()}, duration={self.timings[activity].duration}")
 
     def is_active(self, activity):
+        """
+        Checks if an activity is active (in-progress)
+        :param activity:
+        :return:
+        """
         return (self.activities & activity) != 0
 
     def is_idle(self):
+        """
+        Checks if no activities are in-progress
+        :return: True if no in-progress activities, False otherwise
+        """
         return self.activities == 0
 
     def __repr__(self):
@@ -107,3 +137,18 @@ class StageActivities(IntFlag):
     StartingUp = auto()
     ShuttingDown = auto()
     Moving = auto()
+
+class SpecActivities(IntFlag):
+    StartingUp = auto()
+    ShuttingDown = auto()
+    Positioning = auto()
+    Exposing = auto()
+
+class DeepspecActivities(IntFlag):
+    CoolingDown = auto()
+    WarmingUp = auto()
+    Exposing = auto()
+
+class HighspecActivities(IntFlag):
+    CoolingDown = auto()
+    WarmingUp = auto()
