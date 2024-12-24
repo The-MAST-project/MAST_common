@@ -414,9 +414,9 @@ def boxed_lines(lines: str | List[str], center: bool = False) -> List[str]:
     if isinstance(lines, str):
         lines = [lines]
 
-    for l in lines:
-        if len(l) > max_len:
-            max_len = len(l)
+    for line in lines:
+        if len(line) > max_len:
+            max_len = len(line)
     if (max_len % 2) != 0:
         max_len += 1
 
