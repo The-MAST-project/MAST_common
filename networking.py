@@ -77,5 +77,5 @@ class NetworkedDevice:
             raise Exception(f"both 'ipaddr' and 'host' missing in {conf=}")
         port = conf['port'] if 'port' in conf else 80
 
-        self.destination = NetworkDestination(address, port)
+        self.network = NetworkDestination(address, port)
 
