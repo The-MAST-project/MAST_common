@@ -513,3 +513,29 @@ def wslpath(path: str, to_windows: bool = False) -> str | None:
     except subprocess.CalledProcessError as e:
         print(f"Error: {e.stderr.strip()}")
         return None
+
+def canonic_unit_name(name: str) -> str | None:
+    """
+    Tries to make a canonic MAST unit name, accepting
+    - mastw
+    - mast1 to mast20 (with or w/out leading zero)
+
+    :param name: The input name
+    :return: canonic name ('mastw', 'mast01'..'mast20') or None
+    """
+    op = function_name()
+
+    if not name:
+        raise ValueError(f"{op}: Empty name")
+    if name.startswith('mast'):
+        suffix = name[4:]
+        if suffix == 'w':
+            return name
+        elif name.isdigit():
+            unit_number = int(name[4:])
+            if 1 >= unit_number <= 20:
+                return name
+            else:
+                return None
+    else:
+        return None
