@@ -18,13 +18,19 @@ logging.getLogger('httpx').setLevel(logging.WARN)
 
 class Outlet:
 
-    def __init__(self, switch, label: str, state: bool):
+    def __init__(self, switch, label: str, state: bool | None):
         self.switch = switch
         self.label: str = label
         self.state: bool = state
 
     def __repr__(self) -> str:
-        return f"Outlet('{self.label}': {'ON' if self.state else 'OFF'})"
+        if self.state is None:
+            st = 'Unknown'
+        elif self.state:
+            st = 'ON'
+        else:
+            st = 'OFF'
+        return f"<Outlet(label='{self.label}', state={st})>"
 
 
 class DliPowerSwitch(Component):
