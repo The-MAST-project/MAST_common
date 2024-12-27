@@ -4,7 +4,7 @@ import socket
 from common.config import Config
 from common.mast_logging import init_log
 from common.networking import WEIZMANN_DOMAIN
-from common.utils import function_name, canonic_unit_name
+from common.utils import function_name, canonic_unit_name, Component, CanonicalResponse, CanonicalResponse_Ok
 import httpx
 import logging
 import time
@@ -66,8 +66,13 @@ class DliPowerSwitch(Component):
         self.lock = Lock()
         self.max_age_seconds = 30  # seconds
         self.outlets: List[Outlet] = []
+        for k, v in conf['outlets'].items():
+            self.outlets.append(Outlet(switch=self, label=v, state=None))
         self.upload_outlet_names(list(conf['outlets'].values()))
         self.fetch_outlets()
+
+    def __repr__(self):
+        return f"power-switch {self.name}({self.ipaddr})"
 
     @property
     def detected(self) -> bool:
@@ -141,7 +146,17 @@ class DliPowerSwitch(Component):
         op = function_name()
 
         names = self.get('restapi/relay/outlets/all;/name/')
-        states = self.get('restapi/relay/outlets/all;/state/')
+        if isinstance(names, dict) and 'error' in names:
+            self._detected = False
+        else:
+            self._detected = True
+            states = self.get('restapi/relay/outlets/all;/state/')
+            if isinstance(states, dict) and 'error' in states:
+                self._detected = False
+            else:
+                self._detected = True
+        if not self.detected:
+            return
 
         if len(names) != DliPowerSwitch.NUM_OUTLETS:
             raise Exception(f"{op}: expected {DliPowerSwitch.NUM_OUTLETS}, got {len(names)}")
@@ -153,8 +168,10 @@ class DliPowerSwitch(Component):
             for i in range(0, len(names)):
                 self.outlets.append(Outlet(self, label=names[i], state=states[i]))
 
-    def fetch_outlet(self, identifier: int | str) -> Outlet:
+    def fetch_outlet(self, identifier: int | str) -> Outlet | None:
         self.fetch_outlets()
+        if not self.detected:
+            return None
         if isinstance(identifier, int):
             return self.outlets[identifier]
         identifier = [i for i in range(len(self.outlets)) if self.outlets[i].label == identifier][0]
@@ -166,17 +183,27 @@ class DliPowerSwitch(Component):
         """
         for idx in range(len(names)):
             self.set_outlet_name(idx, names[idx])
+            if not self.detected:
+                return
 
     def set_outlet_name(self, idx: int, name: str):
-        self.put(f'restapi/relay/outlets/{idx}/name/', data={'value': name})
+        result = self.put(f'restapi/relay/outlets/{idx}/name/', data={'value': name})
+        if isinstance(result, dict) and 'error' in result:
+            self._detected = False
 
     def set_outlet_state(self, idx: int, state: bool):
         outlet: Outlet = self.fetch_outlet(idx)
+        if not self.detected:
+            return
+
         if outlet.state != state:
             self.put(url=f"restapi/relay/outlets/{idx}/state/", data={'value': state})
 
     def toggle_outlet(self, idx: int):
         outlet: Outlet = self.fetch_outlet(idx)
+        if not self.detected:
+            return
+
         new_state = not outlet.state
         self.set_outlet_state(idx=idx, state=new_state)
 
@@ -254,7 +281,7 @@ class PowerSwitchFactory:
                 conf = Config().get_unit(unit_name)['power_switch']
             elif name.startswith('mast-spec-ps') and name[len('mast-spec-ps'):].isdigit():
                 ps_name = name
-                conf = Config().get_specs['power_switch'][name]
+                conf = Config().get_specs()['power_switch'][name]
 
         if not ps_name:
             raise ValueError(f"{op}: Bad name '{name}'")
@@ -273,8 +300,8 @@ class PowerSwitchFactory:
         if ipaddr is None:
             # We could not GAI resolve the name, maybe it's in the configuration database
             conf = Config().get_specs()['power_switch']
-            if ps_name in conf and 'ipaddr' in conf[ps_name]:
-                ipaddr = conf[ps_name]['ipaddr']
+            if ps_name in conf and 'ipaddr' in conf[ps_name]['network']:
+                ipaddr = conf[ps_name]['network']['ipaddr']
                 conf = conf[ps_name]
 
         if ipaddr is None:
@@ -320,7 +347,7 @@ class SwitchedOutlet:
         """
         op = function_name()
 
-        self.switch: DliPowerSwitch | None = None
+        self.power_switch: DliPowerSwitch | None = None
         self.outlet_name = outlet_name
 
         if (self.outlet_name not in SwitchedOutlet.valid_names[domain] and self.outlet_name
@@ -334,7 +361,7 @@ class SwitchedOutlet:
             if unit_name is None:
                 unit_name = socket.gethostname()
             try:
-                self.switch = PowerSwitchFactory.get_instance(name=unit_name)
+                self.power_switch = PowerSwitchFactory.get_instance(name=unit_name)
             except ValueError:
                 raise
             try:
@@ -347,22 +374,22 @@ class SwitchedOutlet:
         elif domain == OutletDomain.Spec:
             # Spec outlets have pre-defined names but may belong to any one of the spec power switches
             conf = Config().get_specs()['power_switch']
-            for key in conf.keys():
-                if self.outlet_name in conf[key]['outlets']:
+            for switch_name in conf.keys():
+                if self.outlet_name in conf[switch_name]['outlets'].values():
                     # we located the switch
                     try:
-                        self.switch = PowerSwitchFactory.get_instance(name=key)
-                        outlet_names = [o.label for o in self.switch.outlets]
+                        self.power_switch = PowerSwitchFactory.get_instance(name=switch_name)
+                        outlet_names = [o.label for o in self.power_switch.outlets]
                         if self.outlet_name not in outlet_names:
                             raise ValueError(f"outlet name '{self.outlet_name} not in {outlet_names}")
                     except:
                         raise
 
-        self.delay_after_on = self.switch.conf['delay_after_on'] if 'delay_after_on' in self.switch.conf else 0
+        self.delay_after_on = self.power_switch.conf['delay_after_on'] if 'delay_after_on' in self.power_switch.conf else 0
 
     def __repr__(self):
         # logger.info(f"__repr__: {self.outlet_name=}")
-        outlet = self.switch.fetch_outlet(self.outlet_name)
+        outlet = self.power_switch.fetch_outlet(self.outlet_name)
         return outlet.__repr__()
 
     @property
@@ -371,14 +398,14 @@ class SwitchedOutlet:
 
     @property
     def state(self) -> bool:
-        self.switch.fetch_outlets()
-        return [o.state for o in self.switch.outlets if o.label == self.outlet_name][0]
+        self.power_switch.fetch_outlets()
+        return [o.state for o in self.power_switch.outlets if o.label == self.outlet_name][0]
 
     def power_on_or_off(self, new_state: bool):
         op = function_name()
 
-        self.switch.fetch_outlets()
-        outlet = [o for o in self.switch.outlets if o.label == self.outlet_name][0]
+        self.power_switch.fetch_outlets()
+        outlet = [o for o in self.power_switch.outlets if o.label == self.outlet_name][0]
         if outlet.state != new_state:
             outlet.state = new_state
             if new_state is True and self.delay_after_on:
@@ -392,8 +419,8 @@ class SwitchedOutlet:
         self.power_on_or_off(False)
 
     def toggle(self):
-        idx = [i for i in range(len(self.switch.outlets)) if self.outlet_name == self.switch.outlets[i].label][0]
-        self.switch.toggle_outlet(idx)
+        idx = [i for i in range(len(self.power_switch.outlets)) if self.outlet_name == self.power_switch.outlets[i].label][0]
+        self.power_switch.toggle_outlet(idx)
 
     def cycle(self):
         if self.is_on():
@@ -404,13 +431,13 @@ class SwitchedOutlet:
             self.power_on()
 
     def is_on(self) -> bool:
-        self.switch.fetch_outlets()
-        outlet = [o for o in self.switch.outlets if o.label == self.outlet_name][0]
+        self.power_switch.fetch_outlets()
+        outlet = [o for o in self.power_switch.outlets if o.label == self.outlet_name][0]
         return outlet.state is True
 
     def is_off(self) -> bool:
-        self.switch.fetch_outlets()
-        outlet = [o for o in self.switch.outlets if o.label == self.outlet_name][0]
+        self.power_switch.fetch_outlets()
+        outlet = [o for o in self.power_switch.outlets if o.label == self.outlet_name][0]
         return outlet.state is False
 
     def power_status(self):
