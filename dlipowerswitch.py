@@ -27,11 +27,12 @@ class Outlet:
         return f"Outlet('{self.label}': {'ON' if self.state else 'OFF'})"
 
 
-class DliPowerSwitch:
+class DliPowerSwitch(Component):
 
     NUM_OUTLETS: int = 8
 
     def __init__(self, hostname: str, ipaddr: str | None, conf: dict):
+        Component.__init__(self)
         self.hostname = hostname
         self.ipaddr = ipaddr
         self.conf = conf
@@ -172,6 +173,45 @@ class DliPowerSwitch:
         outlet: Outlet = self.fetch_outlet(idx)
         new_state = not outlet.state
         self.set_outlet_state(idx=idx, state=new_state)
+
+    def startup(self):
+        pass
+
+    def shutdown(self):
+        pass
+
+    def abort(self):
+        pass
+
+    @property
+    def why_not_operational(self) -> List[str]:
+        errors = []
+        if not self.detected:
+            errors.append(f'{self} not detected')
+        return errors
+
+    @property
+    def operational(self) -> bool:
+        return self.detected
+
+    def status(self):
+        return {
+            'detected': self.detected,
+            'operational': self.operational,
+            'why_not_operational': self.why_not_operational,
+        }
+
+    @property
+    def name(self):
+        return self.hostname
+
+    @property
+    def was_shut_down(self) -> bool:
+        return False
+
+    @property
+    def connected(self) -> bool:
+        return False
 
 
 class PowerSwitchFactory:
