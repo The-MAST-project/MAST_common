@@ -2,6 +2,7 @@ import logging
 import ipaddress
 import socket
 from common.mast_logging import init_log
+from common.utils import function_name
 
 logger = logging.getLogger('networking')
 init_log(logger, logging.DEBUG)
@@ -32,6 +33,9 @@ class NetworkDestination:
             except socket.gaierror:
                 logger.error(f"cannot resolve {addr=}")
                 raise
+            except socket.herror:
+                logger.error(f"cannot resolve {addr} to hostname")
+                pass
 
         except ipaddress.AddressValueError:
             # nope, it's a hostname
@@ -48,8 +52,8 @@ class NetworkDestination:
                         logger.error(f"cannot resolve {addr=} or {full_host=}")
                         raise
 
-        self.ipaddr: str = ipaddr
-        self.hostname: str = hostname[0]
+        self.ipaddr: str = str(ipaddr)
+        self.hostname: str | None = hostname[0] if isinstance(hostname, list) else None
         self.port: int = port
 
     def __repr__(self):
@@ -71,11 +75,15 @@ class NetworkedDevice:
                 - 'port'    - [Optional] Port
             }
         """
+        op = function_name()
 
-        address = conf['ipaddr'] if 'ipaddr' in conf else conf['host'] if 'host' in conf else None
+        if 'network' not in conf:
+            raise ValueError(f"{op}: no 'network' in {conf=}")
+        network_conf = conf['network']
+        address = network_conf['ipaddr'] if 'ipaddr' in network_conf else network_conf['host'] if 'host' in network_conf else None
         if not address:
-            raise Exception(f"both 'ipaddr' and 'host' missing in {conf=}")
-        port = conf['port'] if 'port' in conf else 80
+            raise Exception(f"both 'ipaddr' and 'host' missing in {network_conf=}")
+        port = network_conf['port'] if 'port' in network_conf else 80
 
         self.network = NetworkDestination(address, port)
 
