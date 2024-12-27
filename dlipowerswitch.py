@@ -53,7 +53,7 @@ class DliPowerSwitch:
         #     raise Exception(f"Missing 'power_switch' in unit configuration {unit_conf=}")
         # self.conf = unit_conf['power_switch']
 
-        self.timeout = 2
+        self.timeout = 1
         self.base_url = f"http://{self.ipaddr}/"
 
         self.lock = Lock()
