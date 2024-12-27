@@ -66,6 +66,8 @@ class SpecAcquisitionSettings:
 
 
 GratingsStageLiteral = Literal['Ca', 'Mg', 'Halpha', 'Future']
-CameraStageLiteral = Literal['Deepspec', 'Highspec']
-StageLiteral = GratingsStageLiteral | CameraStageLiteral
+FiberStageLiteral = Literal['Deepspec', 'Highspec']
+StageLiteral = GratingsStageLiteral | FiberStageLiteral
 
+StageNames = Literal['fiber', 'camera', 'gratings']
+DeepspecBands = Literal['I', 'G', 'R', 'U']
