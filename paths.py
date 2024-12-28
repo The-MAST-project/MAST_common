@@ -104,4 +104,4 @@ class PathMaker:
 
     @staticmethod
     def make_tasks_folder():
-        return os.path.join(Filer().shared.root, 'tasks')
+        return os.path.join(Filer().shared.root, 'targets')
