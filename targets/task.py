@@ -52,6 +52,7 @@ class Target:
         self.units: List[Unit] = []
         self.requested_units = requested_units
         self.allocated_units = allocated_units
+
         self.magnitude: float = magnitude
         self.magnitude_band: str = magnitude_band
 
@@ -130,8 +131,8 @@ class Spectrograph:
         self.instrument: str = spec_model.instrument
         self.exposure: float = spec_model.exposure
         self.lamp = spec_model.lamp
-        self.binning_x = spec_model.binning_x
-        self.binning_y = spec_model.binning_y
+        self.binning_x = spec_model.x_binning
+        self.binning_y = spec_model.y_binning
 
 class Settings:
     def __init__(self, ulid: str, owner: str, merit: int, timeout: float, state: str):
