@@ -33,6 +33,7 @@ BASE_UNIT_PATH = '/mast/api/v1/unit'
 BASE_CONTROL_PATH = '/mast/api/v1/control'
 
 PLATE_SOLVING_SHM_NAME = 'PlateSolving_Image'
+TriStateBool = bool | None
 
 logger = logging.getLogger('mast.unit.' + __name__)
 
@@ -211,7 +212,7 @@ class Component(ABC, Activities):
             'detected': self.detected,
             'connected': self.connected,
             'activities': self.activities,
-            'activities_verbal': self.activities.__repr__(),
+            'activities_verbal': 'Idle' if self.activities == 0 else self.activities.__repr__(),
             'operational': self.operational,
             'why_not_operational': self.why_not_operational,
             'was_shut_down': self.was_shut_down,
