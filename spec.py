@@ -70,7 +70,7 @@ class SpecAcquisitionSettings:
 GratingsStageLiteral = Literal['Ca', 'Mg', 'Halpha', 'Future']
 FiberStageLiteral = Literal['Deepspec', 'Highspec']
 StageLiteral = GratingsStageLiteral | FiberStageLiteral
-BinningLiteral = [1, 2, 4]
+BinningLiteral = Literal[1, 2, 4]
 
 StageNames = Literal['fiber', 'camera', 'gratings']
 DeepspecBands = Literal['I', 'G', 'R', 'U']
