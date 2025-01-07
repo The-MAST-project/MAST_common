@@ -14,7 +14,12 @@ init_log(logger)
 
 WEIZMANN_DOMAIN: str = 'weizmann.ac.il'
 
-cache = TTLCache(maxsize=100, ttl=30)
+unit_cache = TTLCache(maxsize=100, ttl=30)
+sites_cache = TTLCache(maxsize=100, ttl=30)
+user_cache = TTLCache(maxsize=100, ttl=30)
+users_cache = TTLCache(maxsize=100, ttl=30)
+specs_cache = TTLCache(maxsize=100, ttl=30)
+service_cache = TTLCache(maxsize=100, ttl=30)
 
 
 # Enable debug logging for PyMongo
@@ -45,7 +50,7 @@ class Config:
 
         self._initialized = True
 
-    @cached(cache)
+    @cached(unit_cache)
     def get_unit(self, unit_name: str = None) -> dict:
         """
         Gets a unit's configuration.  By default, this is the ['config']['units']['common']
@@ -101,17 +106,15 @@ class Config:
             except PyMongoError:
                 logger.error(f"save_unit_config: failed to update unit config for {unit_name=} with {difference=}")
 
-    @cached(cache)
+    @cached(sites_cache)
     def get_sites(self) -> dict:
         ret = {}
-        for doc in self.db['sites'].find():
-            ret[doc['name']] = {
-                'deployed': doc['deployed'],
-                'planned': doc['planned']
-            }
+        for d in self.db['sites'].find():
+            site_name = d['name']
+            ret[site_name] = {k: v for k, v in d.items() if k != '_id'}
         return ret
 
-    @cached(cache)
+    @cached(specs_cache)
     def get_specs(self) -> dict:
         doc =  self.db['specs'].find()[0]
 
@@ -138,7 +141,7 @@ class Config:
             'lamps': doc['lamps'],
         }
 
-    @cached(cache)
+    @cached(service_cache)
     def get_service(self, service_name: str):
         try:
             doc = self.db['services'].find_one({'name': service_name})
@@ -147,7 +150,7 @@ class Config:
             raise
         return doc
 
-    @cached(cache)
+    @cached(user_cache)
     def get_user(self, name: str = None) -> dict:
         try:
             user = self.db['users'].find_one({'name': name})
@@ -184,7 +187,7 @@ class Config:
             'capabilities': capabilities
         }
 
-    @cached(cache)
+    @cached(users_cache)
     def get_users(self) -> List[str]:
         users = []
         for user in self.db['users'].find():
@@ -194,7 +197,6 @@ class Config:
 
 if __name__ == '__main__':
     import json
-    print(json.dumps(Config().get_specs(), indent=2))
-    # cfg = Config()
-    # print(f"sites: {cfg.get_sites()}")
-    # cfg.get_users()
+    # print(json.dumps(Config().get_specs(), indent=2))
+    print(json.dumps(Config().get_sites(), indent=2))
+    # print(json.dumps(Config().get_users(), indent=2))
