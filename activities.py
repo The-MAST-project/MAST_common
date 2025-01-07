@@ -4,7 +4,7 @@ import datetime
 
 import logging
 
-logger = logging.Logger('mast.unit.' + __name__)
+logger = logging.Logger('mast.' + __name__)
 init_log(logger)
 
 
@@ -152,3 +152,5 @@ class DeepspecActivities(IntFlag):
 class HighspecActivities(IntFlag):
     CoolingDown = auto()
     WarmingUp = auto()
+    Exposing = auto()
+    Focusing = auto()
