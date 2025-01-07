@@ -32,6 +32,8 @@ class SpecCameraExposureSettings:
         self.y_binning = y_binning
         self.output_folder = output_folder  # A folder path underneath the Filer().root
         self._number_in_sequence: int | None = None
+        self.image_file: str | None = None
+        self.image_full_path: str | None = None
 
     @property
     def number_in_sequence(self) -> int:
