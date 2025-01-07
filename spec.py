@@ -15,7 +15,7 @@ class SpecId(IntFlag):
     Deepspec = auto()
     Highspec = auto()
 
-class SpecCameraExposureSettings:
+class SpecExposureSettings:
     """
     Defines the settings for spectrograph camera exposures
     """
