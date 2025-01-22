@@ -6,7 +6,7 @@
     name = 'A dummy target, for practice'
     ulid = ''                       # generated at creation time
     owner = "arie"                  # valid user with canOwnTasks capability
-    merit = 17                      # for sorting eligible targets
+    merit = 17                      # for sorting eligible tasks
     timeout_to_guiding = 600        # how long to wait for member units to achieve 'guiding'
     state = "new"
 
@@ -36,7 +36,7 @@
 #
 #    - quorum: If less than this are ready (operational and reached guiding), the task is aborted.
 #
-[target]
+[specification]
     name = 'whatever name'  # optional
     ra = "10:12:34.56"      # Decimal (e.g. 12.345) or Sexagesimal (HH:MM:SS.FFF)
     dec = "-12:34:56.7"     # Decimal (e.g. -23.45) or Sexagesimal (DD:MM:SS.FFF)
@@ -46,14 +46,14 @@
     quorum = 1              # minimal number of units mandatory for this target
     allocated_units = []    # to be filled-in by the scheduler or manually before we have a scheduler
 
-[spec]
-    instrument = "highspec" # one of 'highspec', 'high', 'deepspec', 'deep']
+[spectrograph]
+    instrument = "highspec" # one of ['highspec', 'high', 'deepspec', 'deep']
     exposure = 600.0        # seconds
-    binning_x = 1           # optional (default: 1), one of [1, 2, 4]
-    binning_y = 2           # optional (default: 1), one of [1, 2, 4]
+    x_binning = 1           # optional (default: 1), one of [1, 2, 4]
+    y_binning = 2           # optional (default: 1), one of [1, 2, 4]
     gratings = ['Ca', 'Mg'] # if multiple, take subsequent exposures withing same 'guiding' sequence
 
-[spec.lamp]
+[spectrograph.lamp]          # optional, default OFF
     on = true
     filter = "ND3000"
 

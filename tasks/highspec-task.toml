@@ -1,0 +1,41 @@
+[task]
+    ulid = "ulid..."
+    autofocus = true            # or false (default: false)
+
+[unit.w]                        # unit-specifier: w, wis:w, ns:17, ns:north:3
+    ra = "12:34:56.789"         # sexagesimal
+    dec = 1.23456               # decimal
+
+[unit.4]
+    ra = 1.23456                # decimal
+    dec = "-12:34:56.789"       # sexagesimal
+
+[unit.7]
+    ra = "13:34:56.789"         # sexagesimal
+    dec = -13.456               # decimal
+
+[spec]
+    instrument = "highspec"
+    exposure_time = 340.5       # [seconds]
+    number_of_exposures = 7
+    disperser = "Ca"            # ["Ca", "Mg", "Halpha", "Future"]
+    camera_focus = 54321        # stage position
+    x_binning = 1
+    y_binnig = 2
+    gain = 234
+
+[spec.calibration]
+    lamp = true                 # or false (default: false)
+    filter = "ND3000"           # default: empty
+
+[event]
+    time = "isoformat"
+    details = "created"
+
+[event]
+    time = "isoformat"
+    details = "started"
+
+[event]
+    time = "isoformat"
+    detail = "failed"

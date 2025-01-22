@@ -3,8 +3,8 @@ from typing import List, Optional
 
 from datetime import datetime, timezone
 
-from .task import Task, Event
-from .model import TaskModel
+from .target import Target, Event
+from .models import TargetModel
 import os
 from common.utils import path_maker
 from ulid import ULID
@@ -20,23 +20,23 @@ for sub in ['pending', 'completed', 'in-progress']:
 del sub
 
 
-def loads(s, file_name: str | None = None) -> Task:
+def loads(s, file_name: str | None = None) -> Target:
     toml = tomlkit.loads(s)
-    return Task(TaskModel(**toml), toml, os.path.realpath(file_name))
+    return Target(TargetModel(**toml), toml, os.path.realpath(file_name))
 
-def load(fp, _from_template: bool = False) -> Task:
+def load(fp, _from_template: bool = False) -> Target:
     return loads(fp.read(), fp.name)
 
-def load_folder(which: str) -> Optional[List[Task]]:
+def load_folder(which: str) -> Optional[List[Target]]:
     """
-    Gets all the targets in the subfolder
+    Gets all the tasks in the subfolder
     :param which: folder containing 'TSK_' files
-    :return: a list of Task objects, loaded from the files
+    :return: a list of Target objects, loaded from the files
     """
     if not which in folders:
         return None
 
-    tasks: List[Task] = []
+    tasks: List[Target] = []
     with os.scandir(folders[which]) as entries:
         for entry in entries:
             if entry.is_file() and entry.name.startswith('TSK_'):
@@ -80,9 +80,9 @@ def new():
     with open(file, 'r') as f:
         toml = tomlkit.load(f)
     if not toml:
-        raise Exception(f"Could not load targets template from '{file}'")
+        raise Exception(f"Could not load tasks template from '{file}'")
     ret = toml_to_dict(toml)
-    ret['settings']['ulid'] = str(ULID())
+    # ret['settings']['ulid'] = str(ULID.new())
     ret['file_name'] = os.path.join(top_folder, 'pending', f"TSK_{ret['settings']['ulid']}.toml")
     ret['events'] = [{'date': datetime.now(timezone.utc).isoformat(), 'desc': 'created from template'}]
 

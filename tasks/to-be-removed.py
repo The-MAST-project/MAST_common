@@ -1,9 +1,9 @@
 from common.utils import init_log
-from common.api import ApiUnit
+from common.api import UnitApi
 import logging
 from typing import List
 
-logger = logging.getLogger('targets')
+logger = logging.getLogger('tasks')
 init_log(logger)
 
 
@@ -15,9 +15,9 @@ class Target:
         self.name: str = name
         self.ra: float = ra
         self.dec: float = dec
-        self.priority:float = priority
+        self.priority: float = priority
         self.required_units: List[int] = []
-        self.units: List[ApiUnit] = []
+        self.units: List[UnitApi] = []
         self.number_of_visits: int = 1  # from config
         self.observing_duration: float  # [seconds] from config
 

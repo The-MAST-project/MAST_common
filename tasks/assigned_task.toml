@@ -1,0 +1,27 @@
+[task]
+quorum = 1
+ulid = "01jj6rzhvkve6ta6xj9jm4cjpw"
+
+[unit.w]
+ra = '12:34:56.789'
+dec = -23.45
+
+[unit.2]
+ra = '12:34:56.789'
+dec = -23.45
+
+[unit.17]
+ra = '23:45:57.2'
+dec = 45.678
+
+[unit.'wis:w ns:north:2 ns:2-5,7,8-10 nam:17']
+ra = '23:45:57.2'
+dec = 45.678
+
+[spec]
+instrument = 'deepspec'
+exposure = 1.23
+
+[spec.lamp]
+on = true
+filter = 'ND1000'

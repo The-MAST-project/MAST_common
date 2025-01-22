@@ -1,0 +1,43 @@
+[task]
+    ulid = "ulid..."
+    autofocus = true            # or false (default: false)
+
+[unit.2]
+    ra = "12:34:56.789"         # sexagesimal
+    dec = 1.23456               # decimal
+
+[unit.4]
+    ra = 1.23456                # decimal
+    dec = "-12:34:56.789"       # sexagesimal
+
+[spec]
+    instrument = "deepspec"
+    exposure_time = 340.5       # [seconds]
+    number_of_exposures = 7
+    x_binning = 1
+    y_binnig = 2
+    gain = 234
+
+[spec.calibration]
+    lamp = "on"
+    filter = "ND2000"
+
+[spec.U]
+    x_binning = 2
+    y_binnig = 1
+    gain = 123
+
+[spec.R]
+    x_binning = 2
+
+[event]
+    time = "datetime"
+    details = "what happened"
+
+[event]
+    time = "isoformat"
+    details = "started"
+
+[event]
+    time = "isoformat"
+    detail = "failed"

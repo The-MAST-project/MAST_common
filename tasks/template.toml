@@ -6,7 +6,7 @@
     name = 'None'
     ulid = 'None'                   # generated at creation time
     owner = 'None'                  # valid user with canOwnTasks capability
-    merit = 0                       # for sorting eligible targets
+    merit = 0                       # for sorting eligible tasks
     timeout_to_guiding = 600        # how long to wait for member units to achieve 'guiding'
     state = 'None'
 
