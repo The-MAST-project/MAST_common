@@ -65,7 +65,7 @@ class ApiClient:
 
     """
 
-    TIMEOUT: float = 10
+    TIMEOUT: float = 30
 
     def __init__(self,
                  hostname: Optional[str] = None,
