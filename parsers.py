@@ -1,77 +1,133 @@
+import logging
 from typing import List
-from common.config import Config
+from common.config import Config, Site
+from common.utils import function_name
+from common.mast_logging import init_log
 import re
 
-def parse_range(s: str) -> tuple:
-    pass
+logger = logging.Logger('parsers')
+init_log(logger)
 
-def parse_unit_ids(s: str) -> List[str]:
-    pass
-
-def parse_units(specifiers: List[str]) -> tuple:
+def parse_units(specifiers: List[str] | str) -> List[str]:
     """
-    Parses and validates unit specifiers.  Valid specifiers:
-     - 'w', 'wis::w', 'ns:north:9', 'ns:17'
+    The ultimate unit-specifier parser
+
+    Valid specifiers:
+     - 'w'          - unit named 'w' in the (default) local site
+     - 'wis:w'      - unit named 'w' in site named 'wis'
+     - 'ns:north:9' - unit '9' in building 'north' of site 'ns'
+     - 'ns:10-17'   - units '10' to '17' at site 'ns'
 
     :param specifiers: one or more unit specifiers
-    :return: on success True, values, on failure False, List[errors], where values is a list of 'site:building:unit-id' triplets
+    :return: list of site:unit-id pairs
     """
+    op = function_name()
     errors: List[str] = []
     ret: List[str] = []
-    sites_cfg = Config().get_sites()
     if isinstance(specifiers, str):
         specifiers = [specifiers]
 
+    sites = Config().sites
+    local_site: Site = [s for s in sites if s.local][0]
+    units_spec = None
+    building = None
+    site = None
+
     for specifier in specifiers:
-        building = None
-        building_name = None
+        for spec in specifier.split():
+            site = None
+            units_spec = None
+            building = None
+            building_name: str | None = None
 
-        match = re.match(r'^(?:(?P<site>\w+):)?(?:(?P<building>\w+):)?(?P<units>[,a-zA-Z0-9_-]+)$', specifier)
-        if match:
-            site_name = match.group(1)
-            building_name = match.group(2)
-            units_spec = match.group(3)
-        else:
-            match = re.match(r'^(?:(?P<site>\w+):{1,2})?(?P<units>\w+)$', specifier)
+            match = re.match(r'^(?:(?P<site>\w+):)?(?:(?P<building>\w+):)?(?P<units>[,a-zA-Z0-9_-]+)$', spec)
             if match:
-                site_name = match.group('site')
-                units_spec = match.group('units')
+                # <site>:<building>:<units>
+                site_name = match.group(1)
+                building_name = match.group(2)
+                units_spec = match.group(3)
             else:
-                errors.append(f"Invalid units spec: {specifier}")
-                continue
+                match = re.match(r'^(?:(?P<site>\w+):{1,2})?(?P<units>\w+)$', spec)
+                if match:
+                    # <site>:<units>
+                    site_name = match.group('site')
+                    units_spec = match.group('units')
+                else:
+                    logger.error(f"{op}: Invalid units spec: {specifier}")
+                    continue
 
-        site = None
-        if site_name:
-            site = [s for s in sites_cfg if s.name == site_name][0]
-            if not site:
-                errors.append(f"Invalid site: '{site_name}'")
-                continue
-        else:
-            result = [s for s in sites_cfg if hasattr(s, 'local') and s.local == True]
-            if result:
-                site = result[0]
 
-        if building_name:
-            if building_name.isdigit() and int(building_name) in range(0, len(site.buildings)):
-                building = site.buildings[int(building_name)]
+            if site_name:
+                if site_name not in [s.name for s in sites]:
+                    logger.error(f"{op}: Invalid site: '{site_name}', defined sites: {[s.name for s in sites]}")
+                    continue
+                else:
+                    site = [s for s in sites if s.name == site_name][0]
             else:
+                site = local_site
+
+            if building_name:
                 for b in site.buildings:
                     if building_name in b.names:
                         building = b
                         break
-            if not building:
-                # a building was specified but it's not valid
-                errors.append(f"Invalid building: '{building_name}' at site '{site.name}'")
-                continue
 
-        units = parse_unit_ids(units_spec)
-        for unit in units:
-            if building and unit in building.units:
-                unit_in_site = site.units_map[f"{building.id}:{unit}"]
-                ret.append(f"{site.name}:{unit_in_site}")
-            elif unit in site.units:
-                ret.append(f"{site.name}:{unit}")
-            else:
-                errors.append(f"Invalid unit: '{unit}' ({specifier=})")
+                if not building:
+                    # a building was specified but it's not valid
+                    logger.error(f"{op}: Invalid building: '{building_name}' at site '{site.name}'")
+                    continue
 
-    return (False, errors) if errors else (True, ret)
+            for unit in parse_unit_ids(units_spec):
+                if building:
+                    if unit not in building.units:
+                        logger.error(f"{op}: {unit=} not in {building.units=}")
+                        continue
+                    units_numbering_base = sum([len(b.units) for b in site.buildings[0:site.buildings.index(building)]])
+                    unit_id = str(int(unit) + units_numbering_base)
+                    if unit_id not in site.valid_ids:
+                        logger.error(f"{op}: {unit_id=} not valid at '{site.name}' ({site.valid_ids=}), skipped.")
+                    elif unit_id not in site.deployed_units:
+                        logger.error(f"{op}: {unit_id=} not deployed at '{site.name}' ({site.deployed_units=}), skipped.")
+                    elif unit_id in site.units_in_maintenance:
+                        logger.error(f"{op}: {unit_id=} in maintenance at '{site.name}' ({site.units_in_maintenance=}), skipped.")
+                    else:
+                        ret.append(f"{site_name}:{unit_id}")
+
+                elif unit in site.valid_ids:
+                    unit_id = unit
+                    if unit_id not in site.valid_ids:
+                        logger.error(f"{op}: {unit_id=} not valid at '{site.name}' ({site.valid_ids=}), skipped.")
+                    elif unit_id not in site.deployed_units:
+                        logger.error(f"{op}: {unit_id=} not deployed at '{site.name}' ({site.deployed_units=}), skipped.")
+                    elif unit_id in site.units_in_maintenance:
+                        logger.error(f"{op}: {unit_id=} in maintenance at '{site.name}' ({site.units_in_maintenance=}), skipped.")
+                    else:
+                        ret.append(f"{site_name}:{unit_id}")
+                else:
+                    logger.error(f"{op}: Invalid unit: '{unit}' at '{site.name=}', known units: {site.valid_ids}")
+
+    return ret
+
+def parse_unit_ids(units_spec: str) -> List[str]:
+    """
+    Parses and validates a units specifier (a string):
+
+    :param units_spec: a units specifier, e.g. "mastw" or "w" or "1-5" or "3,4,2-6"
+    :return: list of fully qualified unit names
+    """
+    ret = []
+
+    for spec in units_spec.split(','):
+        if '-' in spec:
+            word = spec.split('-')
+            if word[0].isdigit() and word[1].isdigit():
+                for i in range(int(word[0]), int(word[1])+1):
+                    ret.append(str(i))
+        else:
+            ret.append(spec)
+
+    return ret
+
+if __name__ == '__main__':
+    units = parse_units(['w', 'ns:10-12', 'ns:1,3,5', 'ns:south:3-5'])
+    print(units)
