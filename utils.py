@@ -308,23 +308,6 @@ class CanonicalResponse(BaseModel):
     value: Optional[Any] = None
     errors: Optional[Union[List[str], str]] = None
 
-    def __init__(self,
-                 value: Optional[Any] = None,
-                 errors: Optional[Union[List[str], str]] = None,
-                 exception: Optional[Exception] | None = None):
-        super().__init__()
-
-        if exception:
-            exc_type, exc_value, exc_traceback = sys.exc_info()
-            self.errors = traceback.format_exception(exc_type, exc_value, exc_traceback)
-        elif errors:
-            if isinstance(errors, str):
-                self.errors = [errors]
-            else:
-                self.errors = errors
-        else:
-            self.value = value
-
     @property
     def is_error(self):
         return hasattr(self, 'errors') and self.errors is not None
