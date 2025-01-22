@@ -303,7 +303,7 @@ class AssignedTaskModel(BaseModel, Activities):
             elif method == 'PUT':
                 return await asyncio.wait_for(api.put(sub_url, data=data), timeout=timeout)
         except Exception as e:
-            pass
+            raise
 
     async def fetch_statuses(self, units: List[UnitApi], spec: SpecApi | None = None):
         tasks = [self.api_coroutine(unit, 'GET', 'status') for unit in units]
@@ -349,7 +349,7 @@ class AssignedTaskModel(BaseModel, Activities):
                     logger.info(f"unit api: {unit_api.ipaddr}, not operational: {why_not_operational}")
 
         if isinstance(spec_response, Exception):
-            logger.error(f"spec api: {self.spec_api.ipaddr}, {spec_response=}")
+            logger.error(f"spec api exception: {self.spec_api.ipaddr}, {spec_response=}")
         else:
             spec_is_responding = True
             logger.info(f"spec api: {self.spec_api.ipaddr}, {spec_response=}")
@@ -359,7 +359,7 @@ class AssignedTaskModel(BaseModel, Activities):
             self.end_activity(AssignmentActivities.Probing)
             return
         if len(operational_unit_apis) == 0:
-            logger.error(f"no units are responding, aborting {self.__repr__()}!")
+            logger.error(f"no units are operational, aborting {self.__repr__()}!")
             self.end_activity(AssignmentActivities.Probing)
             return
         elif len(operational_unit_apis) < self.task.quorum:
