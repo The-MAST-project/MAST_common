@@ -3,6 +3,8 @@ import platform
 import datetime
 import os
 import io
+from logging import StreamHandler
+
 from common.filer import Filer
 from common.paths import PathMaker
 # from common.utils import boxed_lines
@@ -77,22 +79,21 @@ def init_log(logger_: logging.Logger, level: int | None = None, file_name: str =
 
     formatter = logging.Formatter(
         '%(asctime)s - %(levelname)-8s - {%(name)s:%(funcName)s:%(threadName)s:%(thread)s} -  %(message)s')
-    handler = logging.StreamHandler()
-    handler.setLevel(level)
-    handler.setFormatter(formatter)
-    logger_.addHandler(handler)
+    stream_handlers = [h for h in logger_.handlers if isinstance(h, logging.StreamHandler)]
+    if not stream_handlers:
+        handler = logging.StreamHandler()
+        handler.setLevel(level)
+        handler.setFormatter(formatter)
+        logger_.addHandler(handler)
 
-    handler = DailyFileHandler(
-        path=os.path.join(
-            PathMaker().make_daily_folder_name(root=Filer().shared.root),
-            file_name),
-        mode='a')
+    daily_handlers = [h for h in logger_.handlers if isinstance(h, DailyFileHandler)]
+    if not daily_handlers:
+        handler = DailyFileHandler(
+            path=os.path.join(
+                PathMaker().make_daily_folder_name(root=Filer().shared.root),
+                file_name),
+            mode='a')
 
-    handler.setLevel(level)
-    handler.setFormatter(formatter)
-    logger_.addHandler(handler)
-
-
-# def log_info_boxed_lines(logger: logging.Logger, prefix: str, lines: List[str], center: bool = False):
-#     for line in boxed_lines(lines, center):
-#         logger.info(f'{prefix}{line}')
+        handler.setLevel(level)
+        handler.setFormatter(formatter)
+        logger_.addHandler(handler)
