@@ -1,9 +1,13 @@
+import socket
+import asyncio
 import httpx
-from common.utils import BASE_UNIT_PATH, BASE_SPEC_PATH
+from common.utils import BASE_UNIT_PATH, BASE_SPEC_PATH, BASE_CONTROL_PATH, CanonicalResponse
 from common.mast_logging import init_log
+from common.config import Config, Site, WEIZMANN_DOMAIN
 from enum import Enum, auto
 import re
 import logging
+from typing import Optional, Dict
 
 logger = logging.getLogger("api")
 init_log(logger)
@@ -12,6 +16,7 @@ init_log(logger)
 class ApiDomain(Enum):
     Unit = auto()
     Spec = auto()
+    Control = auto()
 
 
 api_ports = {
@@ -46,10 +51,12 @@ class ApiResponse:
 class ApiClient:
     """
     Creates an API interface to a MAST entity living on a remote host.
-    Currently supported entities are 'spec' and 'unit'
+
     Parameters:
-     - hostname (str): The host name or address
-     - device (str) | None: A specific device.  If not specified, either 'spec' or 'unit' will be accessed
+     - hostname Optional[str]: host name
+     - ipaddr Optional[str]:  IPv4 address
+     - device Optional[str]: A specific device.  If not specified, either 'spec' or 'unit' will be accessed
+     - domain: ApiDomain: selects a Unit, Spec or Controller
 
     Examples:
         - spec = ApiClient(hostname='spec')
@@ -60,23 +67,49 @@ class ApiClient:
 
     TIMEOUT: float = 10
 
-    def __init__(self, hostname: str, device: str | None = None, timeout: float = TIMEOUT):
+    def __init__(self,
+                 hostname: Optional[str] = None,
+                 ipaddr: Optional[str] = None,
+                 domain: Optional[ApiDomain] = None,
+                 device: Optional[str] = None,
+                 timeout: Optional[float] = TIMEOUT):
 
-        mast_pattern = re.compile(r"^mast(0[1-9]|1[0-9]|20|w)$")
+        if hostname is None and ipaddr is None:
+            raise ValueError(f"both 'hostname' and 'ipaddr' are None")
 
-        if mast_pattern.match(hostname):
-            self.domain = ApiDomain.Unit
-        elif hostname == "spec":
-            self.domain = ApiDomain.Spec
+        if ipaddr is not None and domain is None:
+            raise ValueError(f"if 'ipaddr' is provided a 'domain' must be provided as well")
+
+        domain_base = None
+
+        if ipaddr is not None:
+            self.domain = domain
+            self.ipaddr = ipaddr
+            domain_base = BASE_UNIT_PATH if domain == ApiDomain.Unit else BASE_SPEC_PATH if domain == ApiDomain.Spec else BASE_CONTROL_PATH
         else:
-            raise ValueError(f"bad {hostname=}.  Allowed hostnames are [mast01..mast20] or spec")
+            if hostname.endswith('-spec'):
+                self.domain = ApiDomain.Spec
+                domain_base = BASE_SPEC_PATH
+            elif hostname.endswith('-control'):
+                self.domain = ApiDomain.Control
+                domain_base = BASE_CONTROL_PATH
+            else:
+                mast_pattern = re.compile(r"^mast(0[1-9]|1[0-9]|20|w)$")
+                if mast_pattern.match(hostname):
+                    self.domain = ApiDomain.Unit
+                    domain_base = BASE_UNIT_PATH
 
-        domain_base = BASE_UNIT_PATH if self.domain == ApiDomain.Unit else BASE_SPEC_PATH
+            try:
+                self.ipaddr = socket.gethostbyname(hostname)
+                self.hostname = hostname
+            except socket.gaierror:
+                try:
+                    self.ipaddr = socket.gethostbyname(hostname + '.' + WEIZMANN_DOMAIN)
+                    self.hostname = hostname
+                except socket.gaierror:
+                    raise ValueError(f"cannot get 'ipaddr' for {hostname=}")
 
-        if not hostname.endswith('.weizmann.ac.il'):
-            hostname += '.weizmann.ac.il'
-
-        self.base_url = f"http://{hostname}:{api_ports[self.domain]}{domain_base}"
+        self.base_url = f"http://{self.ipaddr}:{api_ports[self.domain]}{domain_base}"
         if device:
             if device in api_devices[self.domain]:
                 self.base_url += f"/{device}"
@@ -87,80 +120,112 @@ class ApiClient:
         self.operational = False
         self.timeout = timeout
 
-        response: dict = self.get('status')
-        if response:
-            self.detected = response['detected'] if 'detected' in response else False
-            self.operational = response['operational'] if 'operational' in response else False
-
-    def get(self, method: str, params: dict | None = None) -> dict | None:
+    async def get(self, method: str, params: Optional[Dict] = None):
         url = f"{self.base_url}/{method}"
-        with httpx.Client(trust_env=False) as client:
+        async with httpx.AsyncClient(trust_env=False) as client:
             try:
-                response = client.get(url=url, params=params, timeout=self.timeout)
+                response = await client.get(url=url, params=params, timeout=self.timeout)
             except httpx.TimeoutException:
                 logger.error(f"timeout after {self.timeout} seconds, {url=}")
-                return {'error': 'timeout'}
+                raise
             except Exception as e:
                 logger.error(f"exception: {e}")
-                return {'error': f"{e}"}
+                raise
         return self.common_get_put(response)
 
-    def put(self, method: str, params: dict | None = None) -> dict:
+    async def put(self, method: str, params: Optional[Dict] = None):
         url = f"{self.base_url}/{method}"
-        with httpx.Client(trust_env=False) as client:
+        async with httpx.AsyncClient(trust_env=False) as client:
             try:
-                response = client.put(url=f"{self.base_url}/{method}", params=params, timeout=self.timeout)
+                response = await  client.put(url=f"{self.base_url}/{method}", params=params, timeout=self.timeout)
             except httpx.TimeoutException:
                 logger.error(f"timeout after {self.timeout} seconds, {url=}")
-                return {'error': 'timeout'}
+                # return {'error': 'timeout'}
+                raise
             except Exception as e:
                 logger.error(f"exception: {e}")
-                return {'error': f"{e}"}
+                # return {'error': f"{e}"}
+                raise
         return self.common_get_put(response)
 
-    @staticmethod
-    def common_get_put(response) -> dict:
+    def common_get_put(self, response: httpx.Response):
         line: str
+        value = None
 
         try:
             response.raise_for_status()
-            canonical_response = response.json()['response']
-            if 'exception' in canonical_response:
-                logger.error(f"Remote exception: {canonical_response['exception']}")
-            elif 'errors' in canonical_response:
-                for err in canonical_response['errors']:
-                    logger.error(f"Remote error: {err}")
+            response_dict = response.json()
+            if 'canonical' in response_dict and response_dict['canonical']:
+                canonical_response = CanonicalResponse(**response_dict)
+                if hasattr(canonical_response, 'exception') and  canonical_response.exception is not None:
+                    e = canonical_response.exception
+                    logger.error(f"Remote Exception     type: {e.type}")
+                    logger.error(f"Remote Exception  message: {e.message}")
+                    for arg in e.args:
+                        logger.error(f"Remote Exception      arg: {arg}")
+                    for line in e.traceback.split('\n'):
+                        logger.error(f"Remote Exception traceback: {line}")
+
+                elif hasattr(canonical_response, 'errors') and canonical_response.errors is not None:
+                    for err in canonical_response.errors:
+                        logger.error(f"Remote error: {err}")
+
+                elif hasattr(canonical_response, 'value') and canonical_response.value is not None:
+                    value = canonical_response.value
+
+                else:
+                    raise Exception(f"got a canonical response but fields 'exception', 'errors' and 'value' are all None")
             else:
-                raise Exception(f"missing 'value' attribute in canonical_response '{canonical_response}'")
+                # shouldn't happen - we received a non-canonical api response
+                value = response_dict
 
         except httpx.HTTPStatusError as e:
             logger.error(f"HTTP error (url={e.request.url}): {e.response.status_code} - {e.response.text}")
+            raise
         except httpx.RequestError as e:
             logger.error(f"Request error (url={e.request.url}): {e}")
+            raise
         except Exception as e:
             logger.error(f"An error occurred: {e}")
+            raise
 
-        return response['value']
+        self.detected = True
+        self.operational = True
+        return value
 
 
-class ApiUnit:
+class UnitApi(ApiClient):
 
-    def __init__(self, host: str):
+    def __init__(self,
+                 hostname: Optional[str] = None,
+                 ipaddr: Optional[str] = None,
+                 domain: Optional[ApiDomain] = None,
+                 device: Optional[str] = None):
+        super().__init__(hostname=hostname, ipaddr=ipaddr, device=device, domain=domain)
+
+
+class SpecApi(ApiClient):
+
+    def __init__(self, site_name: Optional[str] = None):
         self.client = None
 
-        try:
-            self.client = ApiClient(host)
-        except ValueError as e:
-            logger.error(f"{e}")
+        if site_name:
+            site = [s for s in Config().sites if s.name == site_name][0]
+        else:
+            site: Site = Config().local_site
+        super().__init__(hostname=f"{site.project}-{site.name}-spec")
 
+class ControlApi:
 
-class ApiSpec:
-
-    def __init__(self):
+    def __init__(self, site_name: Optional[str] = None):
         self.client = None
 
+        if site_name:
+            site = [s for s in Config().sites if s.name == site_name][0]
+        else:
+            site: Site = Config().local_site
         try:
-            self.client = ApiClient("spec")
+            self.client = ApiClient(f"{site.project}-{site.name}-control")
         except ValueError as e:
             logger.error(f"{e}")
 
