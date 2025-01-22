@@ -27,6 +27,81 @@ service_cache = TTLCache(maxsize=100, ttl=30)
 logging.getLogger('pymongo').setLevel(logging.WARNING)
 
 
+class Building:
+    def __init__(self, conf: dict):
+        self.names = conf['names']
+        self.units: List[str] = []
+
+        units_spec: str = conf['units']
+        for spec in units_spec.split(','):
+            if '-' in spec:
+                word = spec.split('-')
+                if word[0].isdigit() and word[1].isdigit():
+                    for i in range(int(word[0]), int(word[1])+1):
+                        self.units.append(str(i))
+            else:
+                self.units.append(spec)
+
+
+class Site:
+
+    def __init__(self, conf: dict):
+        self.name = conf['name'] if 'name' in conf else None
+        self.project = conf['project'] if 'project' in conf else None
+        self.deployed_units: List[str] = conf['deployed']
+        self.planned_units: List[str] = conf['planned']
+        self.units_in_maintenance: List[str] = conf['maintenance']
+        self.controller_host = conf['controller_host'] if 'controller_host' in conf else None
+        self.spec_host = conf['spec_host'] if 'spec_host' in conf else None
+        self.domain = conf['domain'] if 'domain' in conf else None
+        self.local = True if 'local' in conf and conf['local'] else False
+        self.location = conf['location'] if 'location' in conf else 'Unknown Location'
+        self.buildings: List[Building] = []
+        for b in conf['buildings']:
+            self.buildings.append(Building(b))
+
+        # Unit ids may be 1,3,5-7,xyz or just 1-20
+        unit_ids = conf['units']
+        self.valid_ids: List[str] = []
+        word: str = ''
+        for word in unit_ids.split(','):
+            word = word.strip()
+            if word.isdigit():
+                self.valid_ids.append(word)
+            elif '-' in word:
+                sub_word = word.split('-')
+                if len(sub_word) == 2 and sub_word[0].isdigit() and sub_word[1].isdigit():
+                    for i in range(int(sub_word[0]), int(sub_word[1])+1):
+                        self.valid_ids.append(str(i))
+            else:
+                self.valid_ids.append(word)
+
+        full_ids: List[str] = []
+        for i in self.valid_ids:
+            full_ids.append(f"{self.project}{int(i):02}" if i.isdigit() else f"{self.project}{i}")
+        self.valid_ids += full_ids
+
+
+
+    def to_json(self):
+        return json.dumps(self.__dict__)
+
+    def to_dict(self):
+        return {
+        'name': self.name,
+        'project_name': self.project,
+        'deployed_units': self.deployed_units,
+        'planned_units': self.planned_units,
+        'units_in_maintenance': self.units_in_maintenance,
+        'controller_host': self.controller_host,
+        'spec_host': self.spec_host,
+        'domain': self.domain,
+        'local': self.local,
+        'location': self.location,
+        'valid_ids': self.valid_ids,
+        }
+
+
 class Config:
     _instance = None
     _initialized: bool = False
@@ -194,9 +269,24 @@ class Config:
             users.append(user['name'])
         return users
 
+    @property
+    def sites(self) -> List[Site]:
+        conf: dict = self.get_sites()
+        sites: List[Site] = []
+        for name in list(conf.keys()):
+            sites.append(Site(conf[name]))
+
+        return sites
+
+    @property
+    def local_site(self) -> Site:
+        return [s for s in self.sites if s.local][0]
+
 
 if __name__ == '__main__':
     import json
     # print(json.dumps(Config().get_specs(), indent=2))
-    print(json.dumps(Config().get_sites(), indent=2))
+    # print(json.dumps(Config().get_sites(), indent=2))
     # print(json.dumps(Config().get_users(), indent=2))
+
+    print(json.dumps([s.to_dict() for s in Config().sites]))
