@@ -7,7 +7,6 @@ from multiprocessing import shared_memory
 import re
 from abc import ABC
 import sys
-import traceback
 from common.activities import Activities
 from common.filer import Filer
 from common.paths import PathMaker
@@ -15,6 +14,7 @@ from common.camera import CameraBinning, CameraRoi
 import random
 import string
 import subprocess
+import traceback
 
 import datetime
 from typing import List, Any, Optional, Union, NamedTuple
@@ -27,12 +27,11 @@ import time
 
 default_encoding = "utf-8"
 
-BASE_SPEC_PATH = '/mast/api/v1/spec/'
+BASE_SPEC_PATH = '/mast/api/v1/spec'
 BASE_UNIT_PATH = '/mast/api/v1/unit'
 BASE_CONTROL_PATH = '/mast/api/v1/control'
 
 PLATE_SOLVING_SHM_NAME = 'PlateSolving_Image'
-TriStateBool = bool | None
 
 logger = logging.getLogger('mast.unit.' + __name__)
 
@@ -211,7 +210,7 @@ class Component(ABC, Activities):
             'detected': self.detected,
             'connected': self.connected,
             'activities': self.activities,
-            'activities_verbal': 'Idle' if self.activities == 0 else self.activities.__repr__(),
+            'activities_verbal': self.activities.__repr__(),
             'operational': self.operational,
             'why_not_operational': self.why_not_operational,
             'was_shut_down': self.was_shut_down,
@@ -293,6 +292,22 @@ def parse_coordinate(coord: float | str):
     return Angle(coord) if isinstance(coord, str) else coord
 
 
+class ExceptionModel(BaseModel):
+    type: str
+    message: str
+    args: list
+    traceback: Optional[str]
+
+    @classmethod
+    def from_exception(cls, exception: Exception):
+        return cls(
+            type=type(exception).__name__,
+            message=str(exception),
+            args=list(exception.args),
+            traceback="".join(traceback.format_exception(type(exception), exception, exception.__traceback__)),
+        )
+
+
 class CanonicalResponse(BaseModel):
     """
     Formalizes API responses.  An API method will return a CanonicalResponse, so that the
@@ -303,25 +318,44 @@ class CanonicalResponse(BaseModel):
     - 'errors' - the method detected one or more errors (no 'value')
     - 'value' - all went well, this is the return value (may be 'None')
     """
-
+    canonical: bool = True                      # denotes this as a canonical response
     value: Optional[Any] = None
-    errors: Optional[Union[List[str], str]] = None
+    errors: Optional[List[str]] = None
+    exception: Optional[ExceptionModel] = None
+
+    @classmethod
+    def from_exception(cls, exception: Exception):
+        """
+        Create a CanonicalResponse with an exception serialized into ExceptionModel.
+        """
+        return cls(
+            exception=ExceptionModel.from_exception(exception),
+            errors=None,
+            value=None,
+        )
 
     @property
     def is_error(self):
-        return hasattr(self, 'errors') and self.errors is not None
+        return self.exception is not None or self.errors is not None
+
+    @property
+    def is_exception(self):
+        return self.exception is not None
 
     @property
     def succeeded(self):
-        return self.errors is None
+        return self.value is not None
 
     @property
     def failed(self):
-        return self.errors is not None
+        return self.exception is not None or self.errors is not None
 
     @property
     def failure(self) -> List[str] | str | None:
-        return self.errors
+        if self.exception is not None:
+            return str(self.exception)
+        elif self.errors:
+            return self.errors
 
 
 CanonicalResponse_Ok: CanonicalResponse = CanonicalResponse(value='ok')
@@ -497,28 +531,21 @@ def wslpath(path: str, to_windows: bool = False) -> str | None:
         print(f"Error: {e.stderr.strip()}")
         return None
 
-def canonic_unit_name(name: str) -> str | None:
-    """
-    Tries to make a canonic MAST unit name, accepting
-    - mastw
-    - mast1 to mast20 (with or w/out leading zero)
 
-    :param name: The input name
-    :return: canonic name ('mastw', 'mast01'..'mast20') or None
-    """
-    op = function_name()
+def boxed_info(info_logger, ll: str | List[str], center: bool = False):
+    if isinstance(ll, str):
+        ll = [ll]
+    for line in boxed_lines(ll, center):
+        info_logger.info(line)
 
-    if not name:
-        raise ValueError(f"{op}: Empty name")
-    if name.startswith('mast'):
-        suffix = name[4:]
-        if suffix == 'w':
-            return name
-        elif name.isdigit():
-            unit_number = int(name[4:])
-            if 1 >= unit_number <= 20:
-                return name
-            else:
-                return None
-    else:
-        return None
+
+if __name__ == '__main__':
+    try:
+        x = 1 / 0
+    except Exception as e:
+        response = CanonicalResponse.from_exception(exception=e)
+
+    response = CanonicalResponse(errors=['err 1', 'err 2'])
+    response = CanonicalResponse(value={'tf': True, 'val': 17})
+    response = CanonicalResponse_Ok
+    pass
