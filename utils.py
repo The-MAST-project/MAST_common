@@ -60,7 +60,7 @@ class SingletonFactory:
         return SingletonFactory._instances[class_type]
 
 
-filer = Filer()
+filer = Filer(logger)
 path_maker = SingletonFactory.get_instance(PathMaker)
 
 

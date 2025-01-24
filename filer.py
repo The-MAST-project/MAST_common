@@ -37,7 +37,7 @@ class Location:
 
 
 class Filer:
-    def __init__(self):
+    def __init__(self, logger = None):
         self.local = Location('C:\\', 'MAST\\')
         self.shared = Location('Z:\\', f"MAST\\{socket.gethostname()}\\") if is_windows_drive_mapped('Z:') \
             else Location('C:\\', 'MAST\\')
@@ -48,9 +48,21 @@ class Filer:
             FilerTop.Shared: self.shared,
             FilerTop.Ram: self.ram,
         }
+        self.logger = logger
 
-    @staticmethod
-    def move(src: str, dst: str):
+    def info(self, msg):
+        if self.logger:
+            self.logger.info(msg)
+        else:
+            print(msg)
+
+    def error(self, msg):
+        if self.logger:
+            self.logger.error(msg)
+        else:
+            print(msg)
+
+    def move(self, src: str, dst: str):
         """
         Moves a source path (either file or folder) to a destination path
 
@@ -70,10 +82,9 @@ class Filer:
             else:
                 raise Exception(f"{op}: '{src}' is neither a file nor a folder, don't know how to move")
 
-            print(f"moved '{src}' to '{dst}'")
+            self.info(f"moved '{src}' to '{dst}'")
         except Exception as e:
-            print(f"failed to move '{src} to '{dst}' (exception: {e})")
-            pass
+            self.error(f"failed to move '{src} to '{dst}' (exception: {e})")
 
     def change_top_to(self, top: FilerTop, path: str) -> str:
         for t in self.tops:
