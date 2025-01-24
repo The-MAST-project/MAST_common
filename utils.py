@@ -318,7 +318,7 @@ class CanonicalResponse(BaseModel):
     - 'errors' - the method detected one or more errors (no 'value')
     - 'value' - all went well, this is the return value (may be 'None')
     """
-    canonical: bool = True                      # denotes this as a canonical response
+    api_version: str = "1.0"                      # denotes this as a canonical response
     value: Optional[Any] = None
     errors: Optional[List[str]] = None
     exception: Optional[ExceptionModel] = None
