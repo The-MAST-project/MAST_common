@@ -316,7 +316,7 @@ class AssignedTaskModel(BaseModel, Activities):
         else:
             return status_responses
 
-    async def execute_assignments(self):
+    async def execute_assigned_task(self):
         """
         Checks if the allocated components (units and spectrograph) are available and operational
         Dispatches assignments to units and waits for a quorum of them to reach 'guiding'
@@ -441,7 +441,7 @@ async def main():
     # loaded_task = AssignedTaskModel.model_validate_json(transfer_task)
     # print(loaded_task.spec_assignment.model_dump_json(indent=2))
 
-    await assigned_task.execute_assignments()
+    await assigned_task.execute_assigned_task()
 
 if __name__ == '__main__':
     asyncio.run(main())
