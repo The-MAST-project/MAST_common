@@ -1,5 +1,9 @@
 import logging
 from typing import List
+
+import astropy.coordinates
+import astropy.units as u
+
 from common.config import Config, Site
 from common.utils import function_name
 from common.mast_logging import init_log
@@ -7,6 +11,7 @@ import re
 
 logger = logging.Logger('parsers')
 init_log(logger)
+
 
 def parse_units(specifiers: List[str] | str) -> List[str]:
     """
@@ -108,6 +113,7 @@ def parse_units(specifiers: List[str] | str) -> List[str]:
 
     return ret
 
+
 def parse_unit_ids(units_spec: str) -> List[str]:
     """
     Parses and validates a units specifier (a string):
@@ -127,6 +133,22 @@ def parse_unit_ids(units_spec: str) -> List[str]:
             ret.append(spec)
 
     return ret
+
+
+def sexagesimal_hours_to_decimal(value: str | float) -> float:
+    ret: float = float('NaN')
+    try:
+        return astropy.coordinates.Longitude(value, unit=u.hourangle)
+    except:
+        raise
+
+
+def sexagesimal_degrees_to_decimal(value: str | float) -> float:
+    try:
+        return astropy.coordinates.Latitude(value, unit=u.deg)
+    except:
+        raise
+
 
 if __name__ == '__main__':
     units = parse_units(['w', 'ns:10-12', 'ns:1,3,5', 'ns:south:3-5'])
