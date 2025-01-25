@@ -1,4 +1,3 @@
-import json
 from json import JSONDecodeError
 from typing import List, Optional
 import socket
@@ -7,15 +6,17 @@ from common.config import Config
 from common.mast_logging import init_log
 from common.networking import WEIZMANN_DOMAIN
 from common.utils import function_name, canonic_unit_name, Component, RepeatTimer
-from common.utils import TriStateBool
 import httpx
 import logging
 import time
 from threading import Lock
 from enum import IntFlag, auto
 
+TriStateBool = bool | None
+
 logger = logging.getLogger('power-switch')
 init_log(logger)
+logging.getLogger('httpcore').setLevel(logging.WARN)
 logging.getLogger('httpx').setLevel(logging.WARN)
 
 
