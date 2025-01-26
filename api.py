@@ -1,7 +1,7 @@
 import socket
 import asyncio
 import httpx
-from common.utils import BASE_UNIT_PATH, BASE_SPEC_PATH, BASE_CONTROL_PATH, CanonicalResponse
+from common.utils import BASE_UNIT_PATH, BASE_SPEC_PATH, BASE_CONTROL_PATH, CanonicalResponse, function_name
 from common.mast_logging import init_log
 from common.config import Config, Site, WEIZMANN_DOMAIN
 from enum import Enum, auto
@@ -122,28 +122,31 @@ class ApiClient:
 
     async def get(self, method: str, params: Optional[Dict] = None):
         url = f"{self.base_url}/{method}"
+        op = f"{function_name()}, {url=}"
         async with httpx.AsyncClient(trust_env=False) as client:
             try:
                 response = await client.get(url=url, params=params, timeout=self.timeout)
             except httpx.TimeoutException:
-                logger.error(f"timeout after {self.timeout} seconds, {url=}")
+                logger.error(f"{op}: timeout after {self.timeout} seconds, {url=}")
                 raise
             except Exception as e:
-                logger.error(f"exception: {e}")
+                logger.error(f"{op}: exception: {e}")
                 raise
         return self.common_get_put(response)
 
-    async def put(self, method: str, params: Optional[Dict] = None):
+    async def put(self, method: str, params: Optional[Dict] = None, data: Optional[Dict] = None, json: str | None = None):
         url = f"{self.base_url}/{method}"
+        op = f"{function_name()}, {url=}"
+        response = None
         async with httpx.AsyncClient(trust_env=False) as client:
             try:
-                response = await  client.put(url=f"{self.base_url}/{method}", params=params, timeout=self.timeout)
+                response = await client.put(url=f"{self.base_url}/{method}", params=params, data=data, json=json, timeout=self.timeout)
             except httpx.TimeoutException:
-                logger.error(f"timeout after {self.timeout} seconds, {url=}")
+                logger.error(f"{op}: timeout after {self.timeout} seconds, {url=}")
                 # return {'error': 'timeout'}
                 raise
             except Exception as e:
-                logger.error(f"exception: {e}")
+                logger.error(f"{op}: exception: {e}")
                 # return {'error': f"{e}"}
                 raise
         return self.common_get_put(response)
@@ -151,30 +154,31 @@ class ApiClient:
     def common_get_put(self, response: httpx.Response):
         line: str
         value = None
+        op = function_name()
 
         try:
             response.raise_for_status()
             response_dict = response.json()
-            if 'canonical' in response_dict and response_dict['canonical']:
+            if 'api_version' in response_dict and response_dict['api_version'] == '1.0':
                 canonical_response = CanonicalResponse(**response_dict)
                 if hasattr(canonical_response, 'exception') and  canonical_response.exception is not None:
                     e = canonical_response.exception
-                    logger.error(f"Remote Exception     type: {e.type}")
-                    logger.error(f"Remote Exception  message: {e.message}")
+                    logger.error(f"{op}: Remote Exception     type: {e.type}")
+                    logger.error(f"{op}: Remote Exception  message: {e.message}")
                     for arg in e.args:
-                        logger.error(f"Remote Exception      arg: {arg}")
+                        logger.error(f"{op}: Remote Exception      arg: {arg}")
                     for line in e.traceback.split('\n'):
-                        logger.error(f"Remote Exception traceback: {line}")
+                        logger.error(f"{op}: Remote Exception traceback: {line}")
 
                 elif hasattr(canonical_response, 'errors') and canonical_response.errors is not None:
                     for err in canonical_response.errors:
-                        logger.error(f"Remote error: {err}")
+                        logger.error(f"{op}: Remote error: {err}")
 
                 elif hasattr(canonical_response, 'value') and canonical_response.value is not None:
                     value = canonical_response.value
 
                 else:
-                    raise Exception(f"got a canonical response but fields 'exception', 'errors' and 'value' are all None")
+                    raise Exception(f"{op}: got a canonical response but fields 'exception', 'errors' and 'value' are all None")
             else:
                 # shouldn't happen - we received a non-canonical api response
                 value = response_dict
