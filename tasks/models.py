@@ -11,14 +11,16 @@ from pydantic import BaseModel, field_validator, model_validator, ValidationErro
 import logging
 
 from enum import auto
-from common.activities import Activities
+from common.activities import Activities, AssignmentActivities
 from common.config import Config
 from common.mast_logging import init_log
 from common.parsers import parse_units
 from common.spec import SpecGrating, BinningLiteral
 from typing import Literal, List, Optional, Union, Dict
 from common.tasks.target import RemoteAssignment
-from common.remotes import AssignmentInitiator
+from common.models.assignments import AssignmentInitiator, TargetAssignmentModel, AssignedTaskGlobalsModel, UnitAssignmentModel, SpecAssignment
+from common.models.assignments import SpectrographAssignment
+from common.models.constraints import ConstraintsModel
 from common.api import UnitApi, SpecApi, ApiDomain
 from pathlib import Path
 from common.activities import UnitActivities, Timing
@@ -26,46 +28,9 @@ from common.activities import UnitActivities, Timing
 from astropy.coordinates import Longitude, Latitude
 from astropy import units as u
 
-from common.utils import CanonicalResponse
-
 logger = logging.getLogger('tasks')
 init_log(logger)
 
-
-class CalibrationLampModel(BaseModel):
-    on: bool
-    filter: str
-
-    @field_validator('filter')
-    def validate_filter(cls, filter_name: str) -> str | None:
-        thar_filters = Config().get_specs()['wheels']['ThAr']['filters']
-
-        if filter_name not in thar_filters.values():
-            raise ValueError \
-                (f"Invalid filter '{filter_name}', currently mounted ThAr filters are: {[f"{k}:{v}" for k, v in thar_filters.items() if v]}")
-        return filter_name
-
-class SpectrographAssignment(BaseModel):
-    exposure: float
-    lamp: Optional[CalibrationLampModel]
-    instrument: Literal['deepspec', 'highspec']
-    x_binning: BinningLiteral = 1
-    y_binning: BinningLiteral = 1
-
-    @model_validator(mode='after')
-    def validate_model(cls, model):
-        if model.lamp:
-            if not model.lamp.on:
-                raise ValueError("If the lamp is specified, it must be either on or off")
-            if not model.lamp.filter:
-                raise ValueError("If the lamp is specified, it must have a filter")
-        return model
-
-class DeepSpecAssignment(SpectrographAssignment):
-    pass
-
-class HighSpecAssignment(SpectrographAssignment):
-    disperser: SpecGrating
 
 class SettingsModel(BaseModel):
     name: Union[str, None] = None
@@ -84,21 +49,6 @@ class SettingsModel(BaseModel):
         if not 'canOwnTasks' in user['capabilities']:
             raise ValueError(f"User '{user['name']}' cannot own tasks")
         return user['name']
-
-class MoonConstraintModel(BaseModel):
-    max_phase: float
-    min_distance: float
-
-class AirmassConstraintModel(BaseModel):
-    max: float
-
-class SeeingConstraintModel(BaseModel):
-    max: float
-
-class ConstraintsModel(BaseModel):
-    moon: Optional[MoonConstraintModel]
-    airmass: Optional[AirmassConstraintModel]
-    seeing: Optional[SeeingConstraintModel]
 
 class SpecificationModel(BaseModel):
     ra: Union[float, str, None] = None
@@ -142,56 +92,10 @@ class TargetModel(BaseModel):
     constraints: ConstraintsModel
 
 
-
-class TargetAssignmentModel(BaseModel):
-    ra: str | float
-    dec: str | float
-
-    @field_validator('ra')
-    def validate_ra(cls, value):
-        """
-        Validates RightAscension inputs
-        :param value: sexagesimal string or float
-        :return: a float
-        """
-        try:
-            ra = astropy.coordinates.Longitude(value, unit='hour').value
-            # NOTE: convert np.float64 to float
-            return float(ra)
-        except ValueError as e:
-            logger.error(f"invalid ra: {value}")
-
-    @field_validator('dec')
-    def validate_dec(cls, value):
-        """
-        Validates Declination inputs
-        :param value: sexagesimal string or float
-        :return: a float
-        """
-        try:
-            dec = astropy.coordinates.Latitude(value, unit='deg').value
-            # NOTE: convert np.float64 to float
-            return float(dec)
-        except ValueError as e:
-            logger.error(f"invalid dec: {value}")
-
-
-class AssignedTaskGlobalsModel(BaseModel):
-    ulid: Optional[str] = None
-    file: Optional[str] = None
-    owner: Optional[str] = None
-    merit: Optional[int] = 1
-    quorum: Optional[int] = 1
-    timeout_to_guiding: Optional[int] = 600
-    autofocus: Optional[bool] = False
-
-
-class AssignmentActivities(IntFlag):
-    Idle = auto()
-    Probing = auto()
-    Dispatching = auto()
-    Aborting = auto()
-    WaitingForCompletion = auto()
+class TaskModel(BaseModel):
+    ulid: str
+    file: str
+    autofocus: bool = False
 
 
 class AssignedTaskModel(BaseModel, Activities):
@@ -202,6 +106,7 @@ class AssignedTaskModel(BaseModel, Activities):
 
     unit: Dict[str, TargetAssignmentModel]
     task: AssignedTaskGlobalsModel
+    # task: TaskModel
     spec: SpectrographAssignment
 
     @computed_field
@@ -210,18 +115,14 @@ class AssignedTaskModel(BaseModel, Activities):
         ret: List[RemoteAssignment] = []
         for key in list(self.unit.keys()):
             units_specifier = parse_units(key)
-            assignment = {
-                'initiator': AssignmentInitiator(),
-                'ra': self.unit[key].ra,
-                'dec': self.unit[key].dec
-            }
+            pass
+            unit_assignment: UnitAssignmentModel = UnitAssignmentModel(
+                initiator=AssignmentInitiator(),
+                target=TargetAssignmentModel(ra=self.unit[key].ra, dec=self.unit[key].dec),
+                task=self.task
+            )
             if units_specifier:
-                units = RemoteAssignment.from_units_specifier(units_specifier, {
-                    'task': {
-                        'ulid': self.task.ulid,
-                        'file': self.task.file,
-                        'autofocus': self.task.autofocus,
-                    }} | assignment)
+                units = RemoteAssignment.from_units_specifier(units_specifier, unit_assignment)
                 if units:
                     ret += units
         return ret
@@ -269,8 +170,16 @@ class AssignedTaskModel(BaseModel, Activities):
         with open(file, 'r') as fp:
             toml_doc = tomlkit.load(fp)
 
+        file_needs_update = False
         if 'ulid' not in toml_doc['task'] or not toml_doc['task']['ulid']:
             toml_doc['task']['ulid'] = str(ulid.new()).lower()
+            file_needs_update = True
+
+        if 'file' not in toml_doc['task'] or not toml_doc['task']['file']:
+            toml_doc['task']['file'] = file
+            file_needs_update = True
+
+        if file_needs_update:
             with open(file, 'w') as f:
                 f.write(tomlkit.dumps(toml_doc))
 
@@ -286,7 +195,7 @@ class AssignedTaskModel(BaseModel, Activities):
         return f"<AssignedTask>(ulid='{self.task.ulid}')"
 
     @staticmethod
-    async def api_coroutine(api, method: str, sub_url: str, data=None):
+    async def api_coroutine(api, method: str, sub_url: str, data=None, json: str | None = None):
         """
         An asynchronous coroutine for remote APIs
 
@@ -294,21 +203,30 @@ class AssignedTaskModel(BaseModel, Activities):
         :param method:
         :param sub_url:
         :param data:
+        :param json:
         :return:
         """
-        timeout = 2
+
+        DEFAULT_TIMEOUT_SEC = 30
+
+        response = None
         try:
+            # if method == 'GET':
+            #     response = await asyncio.wait_for(api.get(sub_url), timeout=DEFAULT_TIMEOUT_SEC)
+            # elif method == 'POST':
+            #     response = await asyncio.wait_for(api.post(sub_url, data=data), timeout=DEFAULT_TIMEOUT_SEC)
             if method == 'GET':
-                return await asyncio.wait_for(api.get(sub_url), timeout=timeout)
+                response = await api.get(sub_url)
             elif method == 'PUT':
-                return await asyncio.wait_for(api.put(sub_url, data=data), timeout=timeout)
+                response = await api.put(sub_url, data=data, json=json)
         except Exception as e:
             raise
+        return response
 
     async def fetch_statuses(self, units: List[UnitApi], spec: SpecApi | None = None):
-        tasks = [self.api_coroutine(unit, 'GET', 'status') for unit in units]
+        tasks = [self.api_coroutine(api=unit, method='GET', sub_url='status') for unit in units]
         if spec:
-            tasks.append(self.api_coroutine(spec, 'GET', 'status'))
+            tasks.append(self.api_coroutine(api=spec, method='GET', sub_url='status'))
         status_responses = await asyncio.gather(*tasks, return_exceptions=True)
 
         if spec:
@@ -341,12 +259,13 @@ class AssignedTaskModel(BaseModel, Activities):
             if isinstance(response, Exception):     # exception during HTTP fetch
                 logger.error(f"unit api exception: {unit_api.ipaddr}, {response=}")
             elif isinstance(response, dict) and 'operational' in response:
-                if response['operational']:
-                    operational_unit_apis.append(unit_apis[i])
-                    logger.info(f"unit api: {unit_api.ipaddr}, operational")
-                else:
-                    why_not_operational = response['why_not_operational']
-                    logger.info(f"unit api: {unit_api.ipaddr}, not operational: {why_not_operational}")
+                # if response['operational']:
+                #     operational_unit_apis.append(unit_apis[i])
+                #     logger.info(f"unit api: {unit_api.ipaddr}, operational")
+                # else:
+                #     why_not_operational = response['why_not_operational']
+                #     logger.info(f"unit api: {unit_api.ipaddr}, not operational: {why_not_operational}")
+                operational_unit_apis.append(unit_apis[i])
 
         if isinstance(spec_response, Exception):
             logger.error(f"spec api exception: {self.spec_api.ipaddr}, {spec_response=}")
@@ -354,18 +273,18 @@ class AssignedTaskModel(BaseModel, Activities):
             spec_is_responding = True
             logger.info(f"spec api: {self.spec_api.ipaddr}, {spec_response=}")
 
-        if not spec_is_responding:
-            logger.error(f"spec at '{self.spec_api.ipaddr}' not responding, aborting {self.__repr__()}!")
-            self.end_activity(AssignmentActivities.Probing)
-            return
-        if len(operational_unit_apis) == 0:
-            logger.error(f"no units are operational, aborting {self.__repr__()}!")
-            self.end_activity(AssignmentActivities.Probing)
-            return
-        elif len(operational_unit_apis) < self.task.quorum:
-            logger.error(f"only {len(operational_unit_apis)} out of required {self.task.quorum} are operational, aborting {self.__repr__()}!")
-            self.end_activity(AssignmentActivities.Probing)
-            return
+        # if not spec_is_responding:
+        #     logger.error(f"spec at '{self.spec_api.ipaddr}' not responding, aborting {self.__repr__()}!")
+        #     self.end_activity(AssignmentActivities.Probing)
+        #     return
+        # if len(operational_unit_apis) == 0:
+        #     logger.error(f"no units are operational, aborting {self.__repr__()}!")
+        #     self.end_activity(AssignmentActivities.Probing)
+        #     return
+        # elif len(operational_unit_apis) < self.task.quorum:
+        #     logger.error(f"only {len(operational_unit_apis)} out of required {self.task.quorum} are operational, aborting {self.__repr__()}!")
+        #     self.end_activity(AssignmentActivities.Probing)
+        #     return
 
         self.end_activity(AssignmentActivities.Probing)
 
@@ -379,14 +298,14 @@ class AssignedTaskModel(BaseModel, Activities):
             for unit_assignment in self.unit_assignments:
                 if operational_unit_api.ipaddr == unit_assignment.ipaddr:
                     assignment_tasks.append(
-                        self.api_coroutine(operational_unit_api.ipaddr,
+                        self.api_coroutine(operational_unit_api,
                                            method='PUT',
                                            sub_url='execute_assignment',
-                                           data=unit_assignment.assignment))
+                                           json=unit_assignment.assignment.model_dump_json()))
                     break
         responses = await asyncio.gather(*assignment_tasks, return_exceptions=True)
 
-        for i, response in responses:
+        for i, response in enumerate(responses):
             if isinstance(response, dict) and 'value' in response and response['value'] == 'ok':
                 self.commited_unit_apis.append(operational_unit_apis[i])
 
@@ -411,26 +330,8 @@ class AssignedTaskModel(BaseModel, Activities):
             tasks.append(self.api_coroutine(self.spec_api, 'GET', 'abort'))
         status_responses = await asyncio.gather(*tasks, return_exceptions=True)
 
-
-class Target(BaseModel):
-    ra: float
-    dec: float
-
-class UnitsAssignment(BaseModel):
-    units: List[RemoteAssignment]
-    target: Target
-
-# class AssignedTask(BaseModel):
-#     unit_assignments: List[UnitsAssignment]
-#     spec_assignment: SpectrographAssignment
-#
-#     def run(self):
-#         # check if specs are operational
-#         for assignment in self.unit_assignments:
-#             pass
-
 async def main():
-    task_file = 'c:/temp/assigned_task.toml'
+    task_file = os.path.join(os.path.dirname(__file__), 'assigned_task.toml')
     try:
         assigned_task: AssignedTaskModel = AssignedTaskModel.from_toml_file(task_file)
     except ValidationError as e:

@@ -3,13 +3,12 @@ from datetime import datetime, timezone
 import ulid
 from common.config import Config
 from common.mast_logging import init_log
-from common.remotes import RemoteAssignment
+from common.models.assignments import RemoteAssignment
 from typing import List, Optional, Union
 import json
 import common.tasks
 
 from common.tasks.models import TargetModel, SpecificationModel, ConstraintsModel, SpectrographAssignment, parse_units
-from ulid import ULID
 import socket
 
 logger = logging.getLogger('tasks')
