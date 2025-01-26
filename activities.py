@@ -154,3 +154,11 @@ class HighspecActivities(IntFlag):
     WarmingUp = auto()
     Exposing = auto()
     Focusing = auto()
+
+
+class AssignmentActivities(IntFlag):
+    Idle = auto()
+    Probing = auto()
+    Dispatching = auto()
+    Aborting = auto()
+    WaitingForCompletion = auto()
