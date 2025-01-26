@@ -70,6 +70,7 @@ def parse_units(specifiers: List[str] | str) -> List[str]:
                     site = [s for s in sites if s.name == site_name][0]
             else:
                 site = local_site
+                site_name = site.name
 
             if building_name:
                 for b in site.buildings:
@@ -100,9 +101,7 @@ def parse_units(specifiers: List[str] | str) -> List[str]:
 
                 elif unit in site.valid_ids:
                     unit_id = unit
-                    if unit_id not in site.valid_ids:
-                        logger.error(f"{op}: {unit_id=} not valid at '{site.name}' ({site.valid_ids=}), skipped.")
-                    elif unit_id not in site.deployed_units:
+                    if unit_id not in site.deployed_units:
                         logger.error(f"{op}: {unit_id=} not deployed at '{site.name}' ({site.deployed_units=}), skipped.")
                     elif unit_id in site.units_in_maintenance:
                         logger.error(f"{op}: {unit_id=} in maintenance at '{site.name}' ({site.units_in_maintenance=}), skipped.")
