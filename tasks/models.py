@@ -288,7 +288,6 @@ class AssignedTaskModel(BaseModel, Activities):
 
         self.end_activity(AssignmentActivities.Probing)
 
-
         logger.info(f"sending assignments to units")
         #
         # We have a quorum of responding units and a responding spec, we can dispatch the assignments
