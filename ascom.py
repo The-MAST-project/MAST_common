@@ -3,7 +3,7 @@ import re
 import pywintypes
 import win32com.client
 
-from common.utils import CanonicalResponse
+from common.utils import CanonicalResponse, CanonicalResponse_Ok
 from common.mast_logging import init_log
 from abc import ABC, abstractmethod
 
@@ -51,6 +51,7 @@ def ascom_run(o: AscomDispatcher, sentence: str, no_entry_log=True) -> Canonical
         msg = f'{label}'
         if sentence.__contains__("="):
             exec(cmd, globals(), locals())
+            return CanonicalResponse_Ok
         else:
             ret = eval(cmd, globals(), locals())
             msg += f' -> {ret}'
