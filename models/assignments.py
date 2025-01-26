@@ -35,17 +35,40 @@ class TargetAssignmentModel(BaseModel):
 
 
 class AssignmentInitiator(BaseModel):
+    """
+    When the data is empty, populate with the local host
+    """
+    hostname: str
+    fqdn: str
+    ipaddr: str
 
-    @computed_field
-    def hostname(self) -> str:
-        return socket.gethostname()
+    @model_validator(mode='before')
+    def validate_model(cls, values):
+        hostname = values.get('hostname') or socket.gethostname()
+        values['hostname'] = hostname
 
-    @computed_field
-    def fqdn(self) -> str:
-        return socket.gethostname() + '.' + WEIZMANN_DOMAIN
+        values['fqdn'] = values.get('fqdn') or hostname + '.' + WEIZMANN_DOMAIN
+        try:
+            ipaddr = socket.gethostbyname(hostname)
+        except socket.gaierror:
+            try:
+                ipaddr = socket.gethostbyname(values['fqdn'])
+            except socket.gaierror:
+                ipaddr = None
+        values['ipaddr'] = ipaddr
 
-    @computed_field
-    def ipaddr(self) -> str | None:
+        return values
+
+    @field_validator('hostname')
+    def validate_hostname(cls, value) -> str:
+        return value if value else socket.gethostname()
+
+    @field_validator('fqdn')
+    def validate_fqdn(cls, value) -> str:
+        return value if value else socket.gethostname() + '.' + WEIZMANN_DOMAIN
+
+    @field_validator('ipaddr')
+    def validate_ipaddr(self) -> str | None:
         try:
             return socket.gethostbyname(socket.gethostname())
         except socket.gaierror:
