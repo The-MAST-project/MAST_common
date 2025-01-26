@@ -59,21 +59,6 @@ class AssignmentInitiator(BaseModel):
 
         return values
 
-    @field_validator('hostname')
-    def validate_hostname(cls, value) -> str:
-        return value if value else socket.gethostname()
-
-    @field_validator('fqdn')
-    def validate_fqdn(cls, value) -> str:
-        return value if value else socket.gethostname() + '.' + WEIZMANN_DOMAIN
-
-    @field_validator('ipaddr')
-    def validate_ipaddr(self) -> str | None:
-        try:
-            return socket.gethostbyname(socket.gethostname())
-        except socket.gaierror:
-            return None
-
 
 class RemoteAssignment(BaseModel):
     hostname: str
