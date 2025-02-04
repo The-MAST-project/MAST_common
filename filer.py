@@ -76,7 +76,8 @@ class Filer:
                 shutil.copytree(src, dst)
                 shutil.rmtree(src)
             else:
-                raise Exception(f"{op}: '{src}' is neither a file nor a folder, don't know how to move")
+                self.error(f"{op}: not a file or folder, ignoring: '{src}'")
+                return
 
             self.info(f"moved '{src}' to '{dst}'")
         except Exception as e:
