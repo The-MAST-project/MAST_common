@@ -376,14 +376,14 @@ class UnitRoi:
     """
     In unit terms a region-of-interest is centered on a pixel and has width and height
     """
-    fiber_x: int
-    fiber_y: int
+    x: int
+    y: int
     width: int
     height: int
 
-    def __init__(self, fiber_x: int, fiber_y: int, width: int, height: int):
-        self.fiber_x = fiber_x
-        self.fiber_y = fiber_y
+    def __init__(self, x: int, y: int, width: int, height: int):
+        self.x = x
+        self.y = y
         self.width = width
         self.height = height
 
@@ -395,18 +395,18 @@ class UnitRoi:
 
         """
         return CameraRoi(
-            (self.fiber_x - int(self.width / 2)) * binning.x,
-            (self.fiber_y - int(self.height / 2)) * binning.y,
+            (self.x - int(self.width / 2)) * binning.x,
+            (self.y - int(self.height / 2)) * binning.y,
             self.width * binning.x,
             self.height * binning.y
         )
 
     @staticmethod
     def from_dict(d):
-        return UnitRoi(d['fiber_x'], d['fiber_y'], d['width'], d['height'])
+        return UnitRoi(d['sky_x'], d['sky_y'], d['width'], d['height'])
 
     def __repr__(self) -> str:
-        return f"x={self.fiber_x},y={self.fiber_y},w={self.width},h={self.height}"
+        return f"x={self.x},y={self.y},w={self.width},h={self.height}"
 
 
 def cached(timeout_seconds):
