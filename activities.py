@@ -161,4 +161,7 @@ class AssignmentActivities(IntFlag):
     Probing = auto()
     Dispatching = auto()
     Aborting = auto()
-    WaitingForCompletion = auto()
+    WaitingForGuiding = auto()
+    ExposingSpec = auto()
+    Executing = auto()
+    WaitingForSpecDone = auto()
