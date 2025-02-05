@@ -1,7 +1,7 @@
-from enum import IntEnum, IntFlag
+from enum import IntEnum
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from typing_extensions import Literal
 import cameras.greateyes.sdk.greateyesSDK as ge
 
@@ -66,3 +66,7 @@ class GreateyesSettingsModel(BaseModel):
     crop: Optional[CropModeModel]
     shutter: Optional[ShutterModel]
     readout: Optional[ReadoutModel]
+
+    # @model_validator(mode='after')
+    # def validate_deepsepc_camera(cls, values):
+    #     return values
