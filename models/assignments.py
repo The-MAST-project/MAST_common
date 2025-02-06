@@ -2,9 +2,13 @@ from common.config import Config, Site, WEIZMANN_DOMAIN
 from common.parsers import parse_units
 from common.spec import SpecGrating, BinningLiteral
 import socket
-from typing import List, Optional, Dict, Any, Literal
-from pydantic import BaseModel, computed_field, field_validator, model_validator
+from typing import List, Optional, Dict, Any, Literal, Union
+from pydantic import BaseModel, computed_field, field_validator, model_validator, Field
 import astropy.coordinates
+from common.models.spectrographs import SpectrographModel
+from common.models.spectrographs import CalibrationModel
+from common.models.deepspec import DeepspecModel
+from common.models.highspec import HighspecModel
 
 
 class TargetAssignmentModel(BaseModel):
@@ -38,9 +42,9 @@ class AssignmentInitiator(BaseModel):
     """
     When the data is empty, populate with the local host
     """
-    hostname: str
-    fqdn: str
-    ipaddr: str
+    hostname: Optional[str]
+    fqdn: Optional[str]
+    ipaddr: Optional[str]
 
     @model_validator(mode='before')
     def validate_model(cls, values):
@@ -59,12 +63,84 @@ class AssignmentInitiator(BaseModel):
 
         return values
 
+    @classmethod
+    def local_machine(cls):
+        """
+        The current machine as AssignmentInitiator
+        :return:
+        """
+        hostname = socket.gethostname()
+        fqdn = hostname + '.' + WEIZMANN_DOMAIN
+        try:
+            ipaddr = socket.gethostbyname(hostname)
+        except socket.gaierror:
+            try:
+                ipaddr = socket.gethostbyname(fqdn)
+            except socket.gaierror:
+                ipaddr = None
+        return cls(hostname=hostname, fqdn=fqdn, ipaddr=ipaddr)
+
+
+class AssignedTaskSettingsModel(BaseModel):
+    ulid: Optional[str] = None
+    file: Optional[str] = None
+    owner: Optional[str] = None
+    merit: Optional[int] = 1
+    quorum: Optional[int] = 1
+    timeout_to_guiding: Optional[int] = 600
+    autofocus: Optional[bool] = False
+
+
+class AssignmentModel(BaseModel):
+    initiator: AssignmentInitiator
+    task: AssignedTaskSettingsModel
+
+class UnitAssignmentModel(AssignmentModel):
+    target: TargetAssignmentModel
+
+    @computed_field
+    def autofocus(self) -> bool:
+        return self.task.autofocus
+
+
+# class CalibrationLampModel(BaseModel):
+#     on: bool
+#     filter: str
+#
+#     @field_validator('filter')
+#     def validate_filter(cls, filter_name: str) -> str | None:
+#         thar_filters = Config().get_specs()['wheels']['ThAr']['filters']
+#
+#         if filter_name not in thar_filters.values():
+#             raise ValueError \
+#                 (f"Invalid filter '{filter_name}', currently mounted ThAr filters are: {[f"{k}:{v}" for k, v in thar_filters.items() if v]}")
+#         return filter_name
+
+
+class DeepSpecAssignment(BaseModel):
+    instrument: Literal['deepspec']
+    calibration: Optional[CalibrationModel]
+    settings: Optional[DeepspecModel]
+
+class HighSpecAssignment(BaseModel):
+    instrument: Literal['highspec']
+    calibration: Optional[CalibrationModel]
+    disperser: SpecGrating
+    settings: HighspecModel
+
+
+class SpectrographAssignmentModel(BaseModel):
+    instrument: Literal['deepspec', 'highspec']
+    initiator: AssignmentInitiator
+    task: AssignedTaskSettingsModel
+    spec: Any
+
 
 class RemoteAssignment(BaseModel):
     hostname: str
     fqdn: str
     ipaddr: Optional[str]
-    assignment: Any
+    assignment: UnitAssignmentModel | SpectrographAssignmentModel
 
     @classmethod
     def from_site_colon_unit(cls,
@@ -90,7 +166,7 @@ class RemoteAssignment(BaseModel):
     @classmethod
     def from_units_specifier(cls,
                   units_specifier: str | List[str],
-                  assignment) -> list["RemoteAssignment"]:
+                  assignment) -> List["RemoteAssignment"]:
         if isinstance(units_specifier, str):
             units_specifier = [units_specifier]
         ret: List[RemoteAssignment] = []
@@ -100,68 +176,3 @@ class RemoteAssignment(BaseModel):
                 ret.append(remote)
         return ret
 
-
-class AssignedTaskGlobalsModel(BaseModel):
-    ulid: Optional[str] = None
-    file: Optional[str] = None
-    owner: Optional[str] = None
-    merit: Optional[int] = 1
-    quorum: Optional[int] = 1
-    timeout_to_guiding: Optional[int] = 600
-    autofocus: Optional[bool] = False
-
-
-class AssignmentModel(BaseModel):
-    initiator: AssignmentInitiator
-    task: AssignedTaskGlobalsModel
-
-
-class UnitAssignmentModel(AssignmentModel):
-    target: TargetAssignmentModel
-
-    @computed_field
-    def autofocus(self) -> bool:
-        return self.task.autofocus
-
-
-class CalibrationLampModel(BaseModel):
-    on: bool
-    filter: str
-
-    @field_validator('filter')
-    def validate_filter(cls, filter_name: str) -> str | None:
-        thar_filters = Config().get_specs()['wheels']['ThAr']['filters']
-
-        if filter_name not in thar_filters.values():
-            raise ValueError \
-                (f"Invalid filter '{filter_name}', currently mounted ThAr filters are: {[f"{k}:{v}" for k, v in thar_filters.items() if v]}")
-        return filter_name
-
-
-class SpectrographAssignment(BaseModel):
-    exposure: float
-    lamp: Optional[CalibrationLampModel]
-    instrument: Literal['deepspec', 'highspec']
-    x_binning: BinningLiteral = 1
-    y_binning: BinningLiteral = 1
-
-    @model_validator(mode='after')
-    def validate_model(cls, model):
-        if model.lamp:
-            if not model.lamp.on:
-                raise ValueError("If the lamp is specified, it must be either on or off")
-            if not model.lamp.filter:
-                raise ValueError("If the lamp is specified, it must have a filter")
-        return model
-
-
-class DeepSpecAssignment(SpectrographAssignment):
-    pass
-
-
-class HighSpecAssignment(SpectrographAssignment):
-    disperser: SpecGrating
-
-
-class SpecAssignment(AssignmentModel):
-    job: DeepSpecAssignment | HighSpecAssignment
