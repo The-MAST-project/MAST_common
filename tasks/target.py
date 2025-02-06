@@ -8,7 +8,8 @@ from typing import List, Optional, Union
 import json
 import common.tasks
 
-from common.tasks.models import TargetModel, SpecificationModel, ConstraintsModel, SpectrographAssignment, parse_units
+from common.tasks.models import TargetModel, SpecificationModel, ConstraintsModel, parse_units
+from common.models.assignments import SpectrographAssignmentModel
 import socket
 
 logger = logging.getLogger('tasks')
@@ -78,7 +79,7 @@ class Constraints:
         self.time_window = TimeWindow(model.when.start, model.when.end) if hasattr(model, 'when') else None
 
 class Spectrograph:
-    def __init__(self, model: SpectrographAssignment):
+    def __init__(self, model: SpectrographAssignmentModel):
         local_site = None
         sites = Config().get_sites()
         result = {k: v for k, v in sites.items() if 'local' in sites[k] and sites[k]['local'] == True}
