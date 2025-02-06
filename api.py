@@ -134,13 +134,13 @@ class ApiClient:
                 raise
         return self.common_get_put(response)
 
-    async def put(self, method: str, params: Optional[Dict] = None, data: Optional[Dict] = None, json: str | None = None):
+    async def put(self, method: str, params: Optional[Dict] = None, data: Optional[Dict] = None, json: dict | None = None):
         url = f"{self.base_url}/{method}"
         op = f"{function_name()}, {url=}"
         response = None
         async with httpx.AsyncClient(trust_env=False) as client:
             try:
-                response = await client.put(url=f"{self.base_url}/{method}", params=params, data=data, json=json, timeout=self.timeout)
+                response = await client.put(url=f"{self.base_url}/{method}", headers={'Content-Type': 'application/json'}, params=params, data=data, json=json, timeout=self.timeout)
             except httpx.TimeoutException:
                 logger.error(f"{op}: timeout after {self.timeout} seconds, {url=}")
                 # return {'error': 'timeout'}
