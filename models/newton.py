@@ -26,3 +26,5 @@ class NewtonCameraModel(BaseModel):
     shutter: Optional[NewtonShutterModel]
     acquisition_mode: Optional[Literal[0, 1]]
     gain: Optional[int]
+    exposure: Optional[float]
+    number_of_exposures: Optional[int] = 1
