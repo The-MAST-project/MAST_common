@@ -3,14 +3,13 @@ import datetime
 import os.path
 import socket
 import time
-from enum import IntFlag
-import astropy.coordinates
+import json
+
 import tomlkit
 import ulid
-from pydantic import BaseModel, field_validator, model_validator, ValidationError, computed_field, ConfigDict
+from pydantic import BaseModel, field_validator, model_validator, ValidationError, computed_field, ConfigDict, Field
 import logging
 
-from enum import auto
 from common.activities import Activities, AssignmentActivities
 from common.config import Config
 from common.mast_logging import init_log
@@ -18,15 +17,23 @@ from common.parsers import parse_units
 from common.spec import SpecGrating, BinningLiteral
 from typing import Literal, List, Optional, Union, Dict
 from common.tasks.target import RemoteAssignment
-from common.models.assignments import AssignmentInitiator, TargetAssignmentModel, AssignedTaskGlobalsModel, UnitAssignmentModel, SpecAssignment
-from common.models.assignments import SpectrographAssignment
+from common.models.assignments import AssignmentInitiator, TargetAssignmentModel, AssignedTaskSettingsModel, \
+    UnitAssignmentModel, SpectrographAssignmentModel
+from common.models.highspec import HighspecModel
+from common.models.deepspec import DeepspecModel
+from common.spec import DeepspecBands
+from common.models.spectrographs import SpectrographModel
+from common.models.assignments import SpectrographAssignmentModel
 from common.models.constraints import ConstraintsModel
 from common.api import UnitApi, SpecApi, ApiDomain
 from pathlib import Path
 from common.activities import UnitActivities, Timing
+from copy import deepcopy
 
 from astropy.coordinates import Longitude, Latitude
 from astropy import units as u
+
+from common.utils import CanonicalResponse, deep_dict_update
 
 logger = logging.getLogger('tasks')
 init_log(logger)
@@ -88,14 +95,65 @@ class SpecificationModel(BaseModel):
 class TargetModel(BaseModel):
     settings: SettingsModel
     specification: SpecificationModel
-    spectrograph: SpectrographAssignment
     constraints: ConstraintsModel
 
 
-class TaskModel(BaseModel):
-    ulid: str
-    file: str
-    autofocus: bool = False
+def make_spec_model(doc) -> SpectrographModel | None:
+    if not 'instrument' in doc:
+        logger.error(f"missing 'instrument' in {doc=}")
+        return None
+    instrument = doc['instrument']
+    if instrument not in ['highspec', 'deepspec']:
+        logger.error(f"bad '{instrument=}', must be either 'deepspec' or 'highspec")
+        return None
+
+    defaults = Config().get_specs()
+    if instrument == 'highspec':
+        new_dict = {
+            'spec': {
+                'exposure': doc['exposure'] if 'exposure' in doc
+                    else defaults['highspec']['exposure'],
+                'number_of_exposures': doc['camera']['number_of_exposures'] if 'number_of_exposures' in doc['camera']
+                    else defaults['highspec']['settings']['number_of_exposures'],
+                'camera': {}
+            }
+        }
+        camera_settings: dict = defaults['highspec']['settings']
+        if 'camera' in doc:
+            deep_dict_update(camera_settings, doc['camera'])
+        new_dict['spec']['camera'] = camera_settings
+
+    else:
+        new_dict = {
+            'spec': {
+                'exposure': doc['exposure'] if 'exposure' in doc
+                else defaults['deepspec']['exposure'],
+                'number_of_exposures': doc['number_of_exposures'] if 'number_of_exposures' in doc
+                else defaults['deepspec']['common']['settings']['number_of_exposures'],
+                'camera': {}
+            }
+        }
+        common_camera_settings = defaults['deepspec']['common']['settings']
+
+        # get settings common to all cameras from doc
+        for k, v in doc['camera'].items():
+            if k in common_camera_settings:
+                common_camera_settings[k] = doc['camera'][k]
+
+        # get band-specific camera settings
+        for band in DeepspecBands.__args__:
+            band_dict: dict = deepcopy(common_camera_settings)
+            if 'camera' in doc:
+                if band in doc['camera']:
+                    deep_dict_update(band_dict, doc['camera'][band])
+            new_dict['spec']['camera'][band] = band_dict
+
+    new_dict['calibration'] = doc['calibration'] if 'calibration' in doc else {'lamp_on': False, 'filter': None}
+    new_dict['instrument'] = instrument
+    new_dict['spec']['instrument'] = instrument
+
+    # print(json.dumps(new_dict, indent=2))
+    return SpectrographModel(**new_dict)
 
 
 class AssignedTaskModel(BaseModel, Activities):
@@ -105,56 +163,62 @@ class AssignedTaskModel(BaseModel, Activities):
     model_config = ConfigDict(extra='allow')
 
     unit: Dict[str, TargetAssignmentModel]
-    task: AssignedTaskGlobalsModel
-    # task: TaskModel
-    spec: SpectrographAssignment
+    task: AssignedTaskSettingsModel
+    # spec: HighspecModel | DeepspecModel = Field(discriminator='instrument')
+    # _spec: SpectrographModel | None = None
 
     @computed_field
     @property
     def unit_assignments(self) -> List[RemoteAssignment]:
         ret: List[RemoteAssignment] = []
+        initiator = AssignmentInitiator.local_machine()
         for key in list(self.unit.keys()):
-            units_specifier = parse_units(key)
-            pass
             unit_assignment: UnitAssignmentModel = UnitAssignmentModel(
-                initiator=AssignmentInitiator(),
+                initiator=initiator,
                 target=TargetAssignmentModel(ra=self.unit[key].ra, dec=self.unit[key].dec),
                 task=self.task
             )
+
+            units_specifier = parse_units(key)
             if units_specifier:
                 units = RemoteAssignment.from_units_specifier(units_specifier, unit_assignment)
                 if units:
                     ret += units
         return ret
 
+
     @computed_field
     @property
     def spec_assignment(self) -> RemoteAssignment | None:
+        # return self.spec_assignment
         local_site = Config().local_site
         hostname = local_site.spec_host
         if hostname is None:
-            return None
+            return
         fqdn = f"{hostname}.{local_site.domain}"
         try:
             ipaddr = socket.gethostbyname(hostname)
         except socket.gaierror:
             ipaddr = None
 
-        return RemoteAssignment(hostname=hostname,
-                                fqdn=fqdn,
-                                ipaddr=ipaddr,
-                                assignment={
-                                               'task': {
-                                                   'ulid': self.task.ulid,
-                                                   'file': self.task.file}
-                                           } |
-                                           {
-                                               'initiator': AssignmentInitiator()
-                                           } |
-                                           self.spec.__dict__)
+        initiator = AssignmentInitiator.local_machine()
+        spec_model = make_spec_model(self.model_extra['spec'])
+        assignment = SpectrographAssignmentModel(
+            instrument=spec_model.instrument,
+            initiator=initiator,
+            task=self.task,
+            spec=spec_model)
+        return RemoteAssignment(hostname=hostname, fqdn=fqdn, ipaddr=ipaddr, assignment=assignment)
 
     @classmethod
-    def from_toml_file(cls, file:str, activities = 0, timings: List[Timing] = None, commited_unit_apis = None, spec_api = None):
+    def from_toml_file(cls,
+                       file: str,
+                       activities = 0,
+                       timings: List[Timing] = None,
+                       commited_unit_apis = None,
+                       unit_assignments = None,
+                       spec_api = None,
+                       spec_assignment = None):
         """
         Loads a TOML model from an assigned-task file.
 
@@ -164,6 +228,8 @@ class AssignedTaskModel(BaseModel, Activities):
         :param activities:
         :param timings:
         :param commited_unit_apis:
+        :param unit_assignments:
+        :param spec_assignment:
         :param spec_api:
         :return:
         """
@@ -175,27 +241,30 @@ class AssignedTaskModel(BaseModel, Activities):
             toml_doc['task']['ulid'] = str(ulid.new()).lower()
             file_needs_update = True
 
-        if 'file' not in toml_doc['task'] or not toml_doc['task']['file']:
-            toml_doc['task']['file'] = file
+        if 'file' not in toml_doc['task'] or not toml_doc['task']['file'] or toml_doc['task']['file'] != file:
+            toml_doc['task']['file'] = Path(os.path.realpath(file)).as_posix()
             file_needs_update = True
 
         if file_needs_update:
             with open(file, 'w') as f:
                 f.write(tomlkit.dumps(toml_doc))
 
-        new_task = cls(**toml_doc,
+        # spec_model = get_spec_model(toml_doc['spec'])
+
+        new_task = AssignedTaskModel(**toml_doc,
                        activities=0,
                        timings={},
                        commited_unit_apis=[],
-                       spec_api=None)
-        new_task.task.file = Path(os.path.realpath(file)).as_posix()
+                       unit_assignments=[],
+                       spec_assignment=None)
+
         return new_task
 
     def __repr__(self):
         return f"<AssignedTask>(ulid='{self.task.ulid}')"
 
     @staticmethod
-    async def api_coroutine(api, method: str, sub_url: str, data=None, json: str | None = None):
+    async def api_coroutine(api, method: str, sub_url: str, data=None, json: dict | None = None):
         """
         An asynchronous coroutine for remote APIs
 
@@ -211,10 +280,6 @@ class AssignedTaskModel(BaseModel, Activities):
 
         response = None
         try:
-            # if method == 'GET':
-            #     response = await asyncio.wait_for(api.get(sub_url), timeout=DEFAULT_TIMEOUT_SEC)
-            # elif method == 'POST':
-            #     response = await asyncio.wait_for(api.post(sub_url, data=data), timeout=DEFAULT_TIMEOUT_SEC)
             if method == 'GET':
                 response = await api.get(sub_url)
             elif method == 'PUT':
@@ -234,7 +299,18 @@ class AssignedTaskModel(BaseModel, Activities):
         else:
             return status_responses
 
-    async def execute_assigned_task(self):
+    async def get_spec_status(self) -> dict | None:
+        status_response = await self.spec_api.get(method='status')
+        canonical_response = CanonicalResponse(**status_response)
+        if not canonical_response.succeeded:
+            canonical_response.log(_logger=logger, label='spec')
+            await self.abort()
+            self.end_activity(AssignmentActivities.ExposingSpec)
+            return None
+
+        return canonical_response.value
+
+    async def execute(self):
         """
         Checks if the allocated components (units and spectrograph) are available and operational
         Dispatches assignments to units and waits for a quorum of them to reach 'guiding'
@@ -245,17 +321,18 @@ class AssignedTaskModel(BaseModel, Activities):
         """
         self.spec_api = SpecApi(Config().local_site.name)
         unit_apis = []
-        for remote in self.unit_assignments:
-            unit_apis.append(UnitApi(ipaddr=remote.ipaddr, domain=ApiDomain.Unit))
+        for remote_assignment in self.unit_assignments:
+            unit_apis.append(UnitApi(ipaddr=remote_assignment.ipaddr, domain=ApiDomain.Unit))
 
+        self.start_activity(AssignmentActivities.Executing)
         # Phase #1: check the required components are operational
         self.start_activity(AssignmentActivities.Probing)
-
         unit_responses, spec_response = await self.fetch_statuses(unit_apis, self.spec_api)
         operational_unit_apis = []
         spec_is_responding = False
         for i, response in enumerate(unit_responses):
             unit_api = unit_apis[i]
+
             if isinstance(response, Exception):     # exception during HTTP fetch
                 logger.error(f"unit api exception: {unit_api.ipaddr}, {response=}")
             elif isinstance(response, dict) and 'operational' in response:
@@ -288,10 +365,8 @@ class AssignedTaskModel(BaseModel, Activities):
 
         self.end_activity(AssignmentActivities.Probing)
 
-        logger.info(f"sending assignments to units")
-        #
-        # We have a quorum of responding units and a responding spec, we can dispatch the assignments
-        #
+        # Phase #2: we have a quorum of responding units and a responding spec, we can dispatch the assignments
+        self.start_activity(AssignmentActivities.Dispatching)
         assignment_tasks = []
         for operational_unit_api in operational_unit_apis:
             for unit_assignment in self.unit_assignments:
@@ -300,48 +375,118 @@ class AssignedTaskModel(BaseModel, Activities):
                         self.api_coroutine(operational_unit_api,
                                            method='PUT',
                                            sub_url='execute_assignment',
-                                           json=unit_assignment.assignment.model_dump_json()))
+                                           json=unit_assignment.assignment.model_dump()))
                     break
-        responses = await asyncio.gather(*assignment_tasks, return_exceptions=True)
+        unit_responses = await asyncio.gather(*assignment_tasks, return_exceptions=True)
+        self.end_activity(AssignmentActivities.Dispatching)
 
-        for i, response in enumerate(responses):
-            if isinstance(response, dict) and 'value' in response and response['value'] == 'ok':
-                self.commited_unit_apis.append(operational_unit_apis[i])
+        for i, response in enumerate(unit_responses):
+            canonical_response = None
+            try:
+                canonical_response = CanonicalResponse(**response)
+                if canonical_response.succeeded:
+                    self.commited_unit_apis.append(operational_unit_apis[i])
+                else:
+                    canonical_response.log(_logger=logger, label=f"{operational_unit_apis[i].hostname} ({operational_unit_apis[i].ipaddr})")
+
+            except Exception as e:
+                pass  # What to do?  abort the assignment to this unit?
 
         start = datetime.datetime.now()
         reached_guiding = False
+        self.start_activity(AssignmentActivities.WaitingForGuiding)
         while (datetime.datetime.now() - start).seconds < self.task.timeout_to_guiding:
             time.sleep(20)
             statuses: List[Dict] = await self.fetch_statuses(self.commited_unit_apis)
             if all([(status['activities'] & UnitActivities.Guiding) for status in statuses]):
-                logger.info(f"all commited units have reached 'Guiding")
+                logger.info(f"all commited units have reached 'Guiding'")
                 reached_guiding = True
                 break
+        self.end_activity(AssignmentActivities.WaitingForGuiding)
 
         if not reached_guiding:
             logger.error(f"did not reach 'guiding' within {self.task.timeout_to_guiding} seconds, aborting {self.__repr__()}!")
-            await self.end_assignments()
+            self.end_activity(AssignmentActivities.Executing)
+            await self.abort()
+            return
 
+        self.start_activity(AssignmentActivities.ExposingSpec)
 
-    async def end_assignments(self):
-        tasks = [self.api_coroutine(unit_api, 'GET', 'abort') for unit_api in self.commited_unit_apis]
+        # get (again) the spectrograph's status and make sure it is operational and not busy
+        status = await self.get_spec_status()
+        if not status['operational']:
+            logger.error(f"spectrograph became non-operational, aborting!")
+            self.end_activity(AssignmentActivities.Executing)
+            await self.abort()
+            return
+
+        if status['activities'] != Activities.Idle:
+            logger.error(f"spectrograph is busy (activities={status['activities']}), aborting!")
+            self.end_activity(AssignmentActivities.Executing)
+            await self.abort()
+            return
+
+        status_response = await self.spec_api.put(
+            method='execute_assignment',
+            json=self.spec_assignment.assignment.model_dump())
+
+        canonical_response = CanonicalResponse(**status_response)
+        if not canonical_response.succeeded:
+            canonical_response.log(_logger=logger, label="spec rejected assignment")
+            await self.abort()
+            self.end_activity(AssignmentActivities.Executing)
+            return
+
+        self.start_activity(AssignmentActivities.WaitingForSpecDone)
+        while True:
+            time.sleep(60)
+            spec_status = await self.get_spec_status()
+            should_abort = False
+            if not spec_status['operational']:
+                for err in spec_status['why_not_operational']:
+                    logger.error(f"spec not operational: {err}")
+                await self.abort()
+                self.end_activity(AssignmentActivities.WaitingForSpecDone)
+                self.end_activity(AssignmentActivities.Executing)
+                return
+
+            if spec_status['activities'] == Activities.Idle:
+                logger.info('spec is done')
+                self.end_activity(AssignmentActivities.WaitingForSpecDone)
+                self.end_activity(AssignmentActivities.Executing)
+                break
+
+    async def abort(self):
+        self.start_activity(AssignmentActivities.Aborting)
+        tasks = [self.api_coroutine(unit_api, method='GET', sub_url='abort') for unit_api in self.commited_unit_apis]
         if self.spec_api:
-            tasks.append(self.api_coroutine(self.spec_api, 'GET', 'abort'))
+            tasks.append(self.api_coroutine(self.spec_api, method='GET', sub_url='abort'))
         status_responses = await asyncio.gather(*tasks, return_exceptions=True)
+        self.end_activity(AssignmentActivities.Aborting)
 
 async def main():
-    task_file = os.path.join(os.path.dirname(__file__), 'assigned_task.toml')
+    # task_file = os.path.join(os.path.dirname(__file__), 'assigned_deepspec_task.toml')
+    task_file = os.path.join(os.path.dirname(__file__), 'assigned_highspec_task.toml')
     try:
         assigned_task: AssignedTaskModel = AssignedTaskModel.from_toml_file(task_file)
     except ValidationError as e:
         print(e)
-        raise
+        return
 
+    # print(assigned_task.model_dump_json(indent=2))
+    # print(json.dumps(assigned_task, indent=2))
     # transfer_task = assigned_task.model_dump_json()
     # loaded_task = AssignedTaskModel.model_validate_json(transfer_task)
     # print(loaded_task.spec_assignment.model_dump_json(indent=2))
+    for unit_assignment in assigned_task.unit_assignments:
+        print(f"------------ unit_assignment hostname={unit_assignment.hostname}, ipaddr: {unit_assignment.ipaddr} ----------")
+        print(unit_assignment.model_dump_json(indent=2))
 
-    await assigned_task.execute_assigned_task()
+    spec_assignment = assigned_task.spec_assignment
+    print(f"----------- spec_assignment hostname={spec_assignment.hostname}, ipaddr: {spec_assignment.ipaddr} -----------")
+    print(assigned_task.spec_assignment.model_dump_json(indent=2))
+
+    # await assigned_task.execute()
 
 if __name__ == '__main__':
     asyncio.run(main())
