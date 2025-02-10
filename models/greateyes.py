@@ -3,7 +3,6 @@ from typing import Optional
 
 from pydantic import BaseModel, model_validator
 from typing_extensions import Literal
-import cameras.greateyes.sdk.greateyesSDK as ge
 
 class Gain(IntEnum):
     Low = 0,    # Low ( Max. Dyn. Range )
@@ -41,12 +40,12 @@ class ShutterModel(BaseModel):
 
 
 class ReadoutSpeed(IntEnum):
-    ReadoutSpeed_50_kHz = ge.readoutSpeed_50_kHz
-    ReadoutSpeed_100_kHz = ge.readoutSpeed_100_kHz
-    ReadoutSpeed_250_kHz = ge.readoutSpeed_250_kHz
-    ReadoutSpeed_500_kHz = ge.readoutSpeed_500_kHz
-    ReadoutSpeed_1_MHz = ge.readoutSpeed_1_MHz
-    ReadoutSpeed_3_MHz = ge.readoutSpeed_3_MHz
+    ReadoutSpeed_50_kHz = int(50)
+    ReadoutSpeed_100_kHz = int(100)
+    ReadoutSpeed_250_kHz = int(250)
+    ReadoutSpeed_500_kHz = int(500)
+    ReadoutSpeed_1_MHz = int(1000)
+    ReadoutSpeed_3_MHz = int(3000)
 
 
 class ReadoutModel(BaseModel):
