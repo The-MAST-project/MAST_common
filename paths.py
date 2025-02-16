@@ -13,6 +13,7 @@ class PathMaker:
         The sequence may be camera specific or camera agnostic.
         :param folder: Where to maintain the '.seq' file
         :param camera: What camera is the sequence for
+        :param start_with: Start the sequence at this number (default: 1)
         :return: The resulting sequence string
         """
         if camera:
@@ -105,3 +106,11 @@ class PathMaker:
     @staticmethod
     def make_tasks_folder():
         return os.path.join(Filer().shared.root, 'tasks')
+
+    @staticmethod
+    def make_run_folder():
+        daily_run_folder = PathMaker().make_daily_folder_name(root=os.path.join(Filer().shared.root, 'runs'))
+        return os.path.join(daily_run_folder, 'seq=' + PathMaker().make_seq(folder=daily_run_folder))
+
+if __name__ == '__main__':
+    print(PathMaker().make_run_folder())
