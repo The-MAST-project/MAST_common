@@ -18,12 +18,6 @@ class ApiDomain(Enum):
     Spec = auto()
     Control = auto()
 
-
-api_ports = {
-    ApiDomain.Unit: 8000,
-    ApiDomain.Spec: 8000,
-}
-
 api_devices = {
     ApiDomain.Unit: ["mount", "focuser", "camera", "stage", "covers"],
     ApiDomain.Spec: []
@@ -70,6 +64,7 @@ class ApiClient:
     def __init__(self,
                  hostname: Optional[str] = None,
                  ipaddr: Optional[str] = None,
+                 port: Optional[int] = 8000,
                  domain: Optional[ApiDomain] = None,
                  device: Optional[str] = None,
                  timeout: Optional[float] = TIMEOUT):
@@ -99,17 +94,16 @@ class ApiClient:
                     self.domain = ApiDomain.Unit
                     domain_base = BASE_UNIT_PATH
 
+            self.hostname = hostname
             try:
                 self.ipaddr = socket.gethostbyname(hostname)
-                self.hostname = hostname
             except socket.gaierror:
                 try:
                     self.ipaddr = socket.gethostbyname(hostname + '.' + WEIZMANN_DOMAIN)
-                    self.hostname = hostname
                 except socket.gaierror:
                     raise ValueError(f"cannot get 'ipaddr' for {hostname=}")
 
-        self.base_url = f"http://{self.ipaddr}:{api_ports[self.domain]}{domain_base}"
+        self.base_url = f"http://{self.ipaddr}:{port}{domain_base}"
         if device:
             if device in api_devices[self.domain]:
                 self.base_url += f"/{device}"
