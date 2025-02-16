@@ -46,6 +46,7 @@ class Handler(FileSystemEventHandler):
             return None
 
         if event.event_type in self.handlers:
+            # logger.info(f"handling '{event.event_type}' on '{event.src_path}'")
             self.handlers[event.event_type](event)
 
 
