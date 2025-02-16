@@ -1,26 +1,23 @@
 import asyncio
 import datetime
 import os.path
+import shutil
 import socket
 import time
-import json
 
 import tomlkit
 import ulid
-from pydantic import BaseModel, field_validator, model_validator, ValidationError, computed_field, ConfigDict, Field
+from pydantic import BaseModel, field_validator, model_validator, ValidationError, computed_field, ConfigDict
 import logging
 
 from common.activities import Activities, AssignmentActivities
 from common.config import Config
 from common.mast_logging import init_log
 from common.parsers import parse_units
-from common.spec import SpecGrating, BinningLiteral
 from typing import Literal, List, Optional, Union, Dict
 from common.tasks.target import RemoteAssignment
 from common.models.assignments import AssignmentInitiator, TargetAssignmentModel, AssignedTaskSettingsModel, \
-    UnitAssignmentModel, SpectrographAssignmentModel
-from common.models.highspec import HighspecModel
-from common.models.deepspec import DeepspecModel
+    UnitAssignmentModel
 from common.spec import DeepspecBands
 from common.models.spectrographs import SpectrographModel
 from common.models.assignments import SpectrographAssignmentModel
@@ -133,7 +130,7 @@ def make_spec_model(doc) -> SpectrographModel | None:
                 'camera': {}
             }
         }
-        common_camera_settings = defaults['deepspec']['common']['settings']
+        common_camera_settings = deepcopy(defaults['deepspec']['common']['settings'])
 
         # get settings common to all cameras from doc
         for k, v in doc['camera'].items():
@@ -143,8 +140,7 @@ def make_spec_model(doc) -> SpectrographModel | None:
         # get band-specific camera settings
         for band in DeepspecBands.__args__:
             band_dict: dict = deepcopy(common_camera_settings)
-            if 'camera' in doc:
-                if band in doc['camera']:
+            if 'camera' in doc and band in doc['camera']:
                     deep_dict_update(band_dict, doc['camera'][band])
             new_dict['spec']['camera'][band] = band_dict
 
@@ -156,6 +152,10 @@ def make_spec_model(doc) -> SpectrographModel | None:
     return SpectrographModel(**new_dict)
 
 
+class EventModel(BaseModel):
+    when: str   # datetime.isoformat
+    what: str
+
 class AssignedTaskModel(BaseModel, Activities):
     """
     A task ready for execution (already planned and scheduled)
@@ -164,8 +164,8 @@ class AssignedTaskModel(BaseModel, Activities):
 
     unit: Dict[str, TargetAssignmentModel]
     task: AssignedTaskSettingsModel
-    # spec: HighspecModel | DeepspecModel = Field(discriminator='instrument')
-    # _spec: SpectrographModel | None = None
+    events: Optional[List[EventModel]] = None
+    constraints: Optional[ConstraintsModel] = None
 
     @computed_field
     @property
@@ -212,7 +212,7 @@ class AssignedTaskModel(BaseModel, Activities):
 
     @classmethod
     def from_toml_file(cls,
-                       file: str,
+                       toml_file: str,
                        activities = 0,
                        timings: List[Timing] = None,
                        commited_unit_apis = None,
@@ -224,34 +224,39 @@ class AssignedTaskModel(BaseModel, Activities):
 
         If the task doesn't have an ulid, allocates one and updates the file.
 
-        :param file: an assigned-task file in TOML format
+        :param toml_file: an assigned-task file in TOML format
         :param activities:
         :param timings:
         :param commited_unit_apis:
         :param unit_assignments:
         :param spec_assignment:
         :param spec_api:
+        :param run_folder: tells units and spec to what run do their products belong
         :return:
         """
-        with open(file, 'r') as fp:
+        with open(toml_file, 'r') as fp:
             toml_doc = tomlkit.load(fp)
 
-        file_needs_update = False
+        just_created = False
         if 'ulid' not in toml_doc['task'] or not toml_doc['task']['ulid']:
             toml_doc['task']['ulid'] = str(ulid.new()).lower()
-            file_needs_update = True
+            just_created = True
 
-        if 'file' not in toml_doc['task'] or not toml_doc['task']['file'] or toml_doc['task']['file'] != file:
-            toml_doc['task']['file'] = Path(os.path.realpath(file)).as_posix()
-            file_needs_update = True
+        if 'file' not in toml_doc['task'] or not toml_doc['task']['file'] or toml_doc['task']['file'] != toml_file:
+            toml_doc['task']['file'] = Path(os.path.realpath(toml_file)).as_posix()
+            just_created = True
 
-        if file_needs_update:
-            with open(file, 'w') as f:
+        if just_created:
+            if not 'event' in toml_doc:
+                toml_doc['event'] = {
+                    'when': datetime.datetime.now().isoformat(),
+                    'what': 'created'
+                }
+            with open(toml_file, 'w') as f:
                 f.write(tomlkit.dumps(toml_doc))
 
-        # spec_model = get_spec_model(toml_doc['spec'])
-
         new_task = AssignedTaskModel(**toml_doc,
+                       toml_file=toml_file,
                        activities=0,
                        timings={},
                        commited_unit_apis=[],
@@ -276,8 +281,6 @@ class AssignedTaskModel(BaseModel, Activities):
         :return:
         """
 
-        DEFAULT_TIMEOUT_SEC = 30
-
         response = None
         try:
             if method == 'GET':
@@ -285,6 +288,7 @@ class AssignedTaskModel(BaseModel, Activities):
             elif method == 'PUT':
                 response = await api.put(sub_url, data=data, json=json)
         except Exception as e:
+            logger.error(f"api_coroutine: error {e}")
             raise
         return response
 
@@ -310,6 +314,23 @@ class AssignedTaskModel(BaseModel, Activities):
 
         return canonical_response.value
 
+    def fail(self, reasons: List[str]):
+        """
+        Handles failure of an assigned task
+        :param reasons:
+        :return:
+        """
+        # add event to the task
+        logger.error(f"failing task '{self.task.ulid}', reasons:")
+        for reason in reasons:
+            logger.error(f"  {reason}")
+
+        path = Path(self.model_extra['toml_file'])
+        new_path = Path(os.path.join(path.parent.parent, 'failed', path.name))
+        os.makedirs(new_path.parent, exist_ok=True)
+        shutil.move(str(path), str(new_path))
+        logger.info(f"moved task '{self.task.ulid}' from {str(path)} to {str(new_path)}")
+
     async def execute(self):
         """
         Checks if the allocated components (units and spectrograph) are available and operational
@@ -325,43 +346,63 @@ class AssignedTaskModel(BaseModel, Activities):
             unit_apis.append(UnitApi(ipaddr=remote_assignment.ipaddr, domain=ApiDomain.Unit))
 
         self.start_activity(AssignmentActivities.Executing)
+
         # Phase #1: check the required components are operational
         self.start_activity(AssignmentActivities.Probing)
         unit_responses, spec_response = await self.fetch_statuses(unit_apis, self.spec_api)
+
+        # see what units respond at all
+        detected_unit_apis = [unit_api for unit_api in unit_apis if unit_api.detected]
+        n_detected = len(detected_unit_apis)
+        if n_detected < self.task.quorum:
+            self.end_activity(AssignmentActivities.Probing)
+            self.end_activity(AssignmentActivities.Executing)
+            if n_detected == 0:
+                self.fail(reasons=[f"no units quorum, no units were detected (required: {self.task.quorum})"])
+            else:
+                self.fail(reasons=[f"no units quorum, detected only {n_detected} " +
+                           f"({[unit_api.hostname for unit_api in detected_unit_apis]}), required {self.task.quorum}"])
+            return
+        logger.info(f"detected units quorum achieved ({n_detected} units detected out of {self.task.quorum} required)")
+
+        if not self.spec_api.detected:
+            # no units responded
+            self.end_activity(AssignmentActivities.Probing)
+            self.end_activity(AssignmentActivities.Executing)
+            self.fail(reasons=[f"spec not detected"])
+            return
+
+        # enough units were detected (they answered to API calls), now check if they are operational
         operational_unit_apis = []
-        spec_is_responding = False
         for i, response in enumerate(unit_responses):
             unit_api = unit_apis[i]
 
             if isinstance(response, Exception):     # exception during HTTP fetch
-                logger.error(f"unit api exception: {unit_api.ipaddr}, {response=}")
+                logger.error(f"unit '{unit_api.hostname}' ({unit_api.ipaddr}), {response=}")
             elif isinstance(response, dict) and 'operational' in response:
-                # if response['operational']:
-                #     operational_unit_apis.append(unit_apis[i])
-                #     logger.info(f"unit api: {unit_api.ipaddr}, operational")
-                # else:
-                #     why_not_operational = response['why_not_operational']
-                #     logger.info(f"unit api: {unit_api.ipaddr}, not operational: {why_not_operational}")
-                operational_unit_apis.append(unit_apis[i])
+                if response['operational']:
+                    operational_unit_apis.append(unit_apis[i])
+                    logger.info(f"unit '{unit_api.hostname}' ({unit_api.ipaddr}), operational")
+                else:
+                    why_not_operational = response['why_not_operational']
+                    logger.info(f"unit '{unit_api.hostname}' ({unit_api.ipaddr}), not operational: {why_not_operational}")
+
+        if len(operational_unit_apis) < self.task.quorum:
+            # not enough units are operational
+            self.end_activity(AssignmentActivities.Probing)
+            self.end_activity(AssignmentActivities.Executing)
+            n_operational_units = len(operational_unit_apis)
+            if n_operational_units == 0:
+                self.fail(reasons=[f"no operational units (quorum: {self.task.quorum})"])
+            else:
+                self.fail(reasons=[f"only {n_operational_units} operational units (quorum: {self.task.quorum})"])
+            return
 
         if isinstance(spec_response, Exception):
             logger.error(f"spec api exception: {self.spec_api.ipaddr}, {spec_response=}")
-        else:
-            spec_is_responding = True
-            logger.info(f"spec api: {self.spec_api.ipaddr}, {spec_response=}")
-
-        # if not spec_is_responding:
-        #     logger.error(f"spec at '{self.spec_api.ipaddr}' not responding, aborting {self.__repr__()}!")
-        #     self.end_activity(AssignmentActivities.Probing)
-        #     return
-        # if len(operational_unit_apis) == 0:
-        #     logger.error(f"no units are operational, aborting {self.__repr__()}!")
-        #     self.end_activity(AssignmentActivities.Probing)
-        #     return
-        # elif len(operational_unit_apis) < self.task.quorum:
-        #     logger.error(f"only {len(operational_unit_apis)} out of required {self.task.quorum} are operational, aborting {self.__repr__()}!")
-        #     self.end_activity(AssignmentActivities.Probing)
-        #     return
+        elif spec_response and 'operational' in spec_response and not spec_response['operational']:
+            self.fail(reasons=[f"spec is not operational {spec_response['why_not_operational']}"])
+            return
 
         self.end_activity(AssignmentActivities.Probing)
 
@@ -381,7 +422,6 @@ class AssignedTaskModel(BaseModel, Activities):
         self.end_activity(AssignmentActivities.Dispatching)
 
         for i, response in enumerate(unit_responses):
-            canonical_response = None
             try:
                 canonical_response = CanonicalResponse(**response)
                 if canonical_response.succeeded:
@@ -390,8 +430,21 @@ class AssignedTaskModel(BaseModel, Activities):
                     canonical_response.log(_logger=logger, label=f"{operational_unit_apis[i].hostname} ({operational_unit_apis[i].ipaddr})")
 
             except Exception as e:
-                pass  # What to do?  abort the assignment to this unit?
+                logger.error(f"non-canonical response (error: {e}), ignoring!")
+                continue
 
+        n_committed = len(self.commited_unit_apis)
+        if n_committed < self.task.quorum:
+            if n_committed == 0:
+                msg = f"no committed units (quorum: {self.task.quorum})"
+            else:
+                msg = f"only {n_committed} units (quorum: {self.task.quorum})"
+            self.fail(reasons=[msg])
+            self.end_activity(AssignmentActivities.Dispatching)
+            self.end_activity(AssignmentActivities.Executing)
+            return
+
+        # the units are committed to their assignments, now wait for them to reach 'guiding'
         start = datetime.datetime.now()
         reached_guiding = False
         self.start_activity(AssignmentActivities.WaitingForGuiding)
@@ -405,7 +458,7 @@ class AssignedTaskModel(BaseModel, Activities):
         self.end_activity(AssignmentActivities.WaitingForGuiding)
 
         if not reached_guiding:
-            logger.error(f"did not reach 'guiding' within {self.task.timeout_to_guiding} seconds, aborting {self.__repr__()}!")
+            self.fail(reasons=[f"did not reach 'guiding' within {self.task.timeout_to_guiding} seconds"])
             self.end_activity(AssignmentActivities.Executing)
             await self.abort()
             return
@@ -441,7 +494,6 @@ class AssignedTaskModel(BaseModel, Activities):
         while True:
             time.sleep(60)
             spec_status = await self.get_spec_status()
-            should_abort = False
             if not spec_status['operational']:
                 for err in spec_status['why_not_operational']:
                     logger.error(f"spec not operational: {err}")
@@ -461,11 +513,20 @@ class AssignedTaskModel(BaseModel, Activities):
         tasks = [self.api_coroutine(unit_api, method='GET', sub_url='abort') for unit_api in self.commited_unit_apis]
         if self.spec_api:
             tasks.append(self.api_coroutine(self.spec_api, method='GET', sub_url='abort'))
-        status_responses = await asyncio.gather(*tasks, return_exceptions=True)
         self.end_activity(AssignmentActivities.Aborting)
 
+
+class TaskProduct(BaseModel):
+    """
+    Sent by the units and spec as soon as they know the path of either an 'autofocus' ot 'acquisition' folder
+    """
+    unit: str
+    ulid: str
+    type: Literal['autofocus', 'acquisition']
+    path: str
+
+
 async def main():
-    # task_file = os.path.join(os.path.dirname(__file__), 'assigned_deepspec_task.toml')
     task_file = os.path.join(os.path.dirname(__file__), 'assigned_highspec_task.toml')
     try:
         assigned_task: AssignedTaskModel = AssignedTaskModel.from_toml_file(task_file)
