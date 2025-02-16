@@ -1,4 +1,5 @@
 [task]
+name = 'Sample deepspec assigned task'
 quorum = 1
 ulid = "01jj6rzhvkve6ta6xj9jm4cjpw"
 file = "C:/Users/mast/PycharmProjects/MAST_spec/common/tasks/assigned_deepspec_task.toml"

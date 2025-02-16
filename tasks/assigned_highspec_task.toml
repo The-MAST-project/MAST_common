@@ -1,7 +1,8 @@
 [task]
+name = 'Sample highspec assigned task'
 quorum = 1
 ulid = "01jj6rzhvkve6ta6xj9jm4cjpw"
-file = "C:/Users/mast/PycharmProjects/MAST_spec/common/tasks/assigned_highspec_task.toml"
+file = "/home/mast/PycharmProjects/MAST_control/common/tasks/assigned_highspec_task.toml"
 
 #
 # Valid ways of specifiying unit assignments
@@ -33,3 +34,7 @@ gain = 150
 [spec.calibration]
 lamp_on = true
 filter = 'ND4000'
+
+[event]
+when = "2025-02-12T17:49:42.641525"
+what = "created"
