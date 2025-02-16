@@ -89,6 +89,7 @@ class AssignedTaskSettingsModel(BaseModel):
     quorum: Optional[int] = 1
     timeout_to_guiding: Optional[int] = 600
     autofocus: Optional[bool] = False
+    run_folder: Optional[str] = None
 
 
 class AssignmentModel(BaseModel):
