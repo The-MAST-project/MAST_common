@@ -1,3 +1,4 @@
+import select
 import socket
 import asyncio
 import httpx
@@ -111,39 +112,56 @@ class ApiClient:
                 raise Exception(f"bad {device=} for domain {self.domain}, allowed: {api_devices[self.domain]}")
 
         self.detected = False
-        self.operational = False
         self.timeout = timeout
+        self.errors = []
+
+    @property
+    def operational(self) -> bool:
+        return len(self.errors) == 0
 
     async def get(self, method: str, params: Optional[Dict] = None):
         url = f"{self.base_url}/{method}"
         op = f"{function_name()}, {url=}"
+        self.errors = []
         async with httpx.AsyncClient(trust_env=False) as client:
             try:
                 response = await client.get(url=url, params=params, timeout=self.timeout)
+
             except httpx.TimeoutException:
-                logger.error(f"{op}: timeout after {self.timeout} seconds, {url=}")
-                raise
+                self.errors.append(f"{op}: timeout after {self.timeout} seconds, {url=}")
+                self.detected = False
+                return
+
             except Exception as e:
-                logger.error(f"{op}: exception: {e}")
-                raise
+                self.errors.append(f"{op}: exception: {e}")
+                self.detected = False
+                return
+
         return self.common_get_put(response)
 
     async def put(self, method: str, params: Optional[Dict] = None, data: Optional[Dict] = None, json: dict | None = None):
         url = f"{self.base_url}/{method}"
         op = f"{function_name()}, {url=}"
         response = None
+        self.errors = []
         async with httpx.AsyncClient(trust_env=False) as client:
             try:
                 response = await client.put(url=f"{self.base_url}/{method}", headers={'Content-Type': 'application/json'}, params=params, data=data, json=json, timeout=self.timeout)
             except httpx.TimeoutException:
-                logger.error(f"{op}: timeout after {self.timeout} seconds, {url=}")
-                # return {'error': 'timeout'}
-                raise
+                self.append_error(f"{op}: timeout after {self.timeout} seconds, {url=}")
+                self.detected = False
+                return
+
             except Exception as e:
-                logger.error(f"{op}: exception: {e}")
-                # return {'error': f"{e}"}
-                raise
+                self.append_error(f"{op}: exception: {e}")
+                self.detected = False
+                return
+
         return self.common_get_put(response)
+
+    def append_error(self, err: str):
+        self.errors.append(err)
+        logger.error(err)
 
     def common_get_put(self, response: httpx.Response):
         line: str
@@ -153,43 +171,47 @@ class ApiClient:
         try:
             response.raise_for_status()
             response_dict = response.json()
+            self.detected = True
             if 'api_version' in response_dict and response_dict['api_version'] == '1.0':
                 canonical_response = CanonicalResponse(**response_dict)
                 if hasattr(canonical_response, 'exception') and  canonical_response.exception is not None:
                     e = canonical_response.exception
-                    logger.error(f"{op}: Remote Exception     type: {e.type}")
-                    logger.error(f"{op}: Remote Exception  message: {e.message}")
+                    self.append_error(f"{op}: Remote Exception     type: {e.type}")
+                    self.append_error(f"{op}: Remote Exception  message: {e.message}")
                     for arg in e.args:
-                        logger.error(f"{op}: Remote Exception      arg: {arg}")
+                        self.append_error(f"{op}: Remote Exception      arg: {arg}")
                     for line in e.traceback.split('\n'):
-                        logger.error(f"{op}: Remote Exception traceback: {line}")
+                        self.append_error(f"{op}: Remote Exception traceback: {line}")
+                        return
 
                 elif hasattr(canonical_response, 'errors') and canonical_response.errors is not None:
                     for err in canonical_response.errors:
-                        logger.error(f"{op}: Remote error: {err}")
+                        self.append_error(f"{op}: Remote error: {err}")
+                        return
 
                 elif hasattr(canonical_response, 'value') and canonical_response.value is not None:
                     value = canonical_response.value
 
                 else:
-                    raise Exception(f"{op}: got a canonical response but fields 'exception', 'errors' and 'value' are all None")
+                    self.append_error(f"{op}: got a canonical response but fields 'exception', 'errors' and 'value' are all None")
+                    return
             else:
-                # shouldn't happen - we received a non-canonical api response
                 value = response_dict
+                logger.error(f"{op}: received NON canonical response, returning it as 'value'")
 
         except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP error (url={e.request.url}): {e.response.status_code} - {e.response.text}")
-            raise
+            self.append_error(f"HTTP error (url={e.request.url}): {e.response.status_code} - {e.response.text}")
+            return
         except httpx.RequestError as e:
-            logger.error(f"Request error (url={e.request.url}): {e}")
-            raise
+            self.append_error(f"Request error (url={e.request.url}): {e}")
+            return
         except Exception as e:
-            logger.error(f"An error occurred: {e}")
-            raise
+            self.append_error(f"An error occurred: {e}")
+            return
 
         self.detected = True
-        self.operational = True
         return value
+
 
 
 class UnitApi(ApiClient):
@@ -211,7 +233,8 @@ class SpecApi(ApiClient):
             site = [s for s in Config().sites if s.name == site_name][0]
         else:
             site: Site = Config().local_site
-        super().__init__(hostname=f"{site.project}-{site.name}-spec")
+        port = Config().get_service(service_name='spec')['port']
+        super().__init__(hostname=f"{site.project}-{site.name}-spec", port=port)
 
 class ControlApi:
 
@@ -222,8 +245,9 @@ class ControlApi:
             site = [s for s in Config().sites if s.name == site_name][0]
         else:
             site: Site = Config().local_site
+        port = Config().get_service(service_name='control')['port']
         try:
-            self.client = ApiClient(f"{site.project}-{site.name}-control")
+            self.client = ApiClient(f"{site.project}-{site.name}-control", port=port)
         except ValueError as e:
             logger.error(f"{e}")
 
