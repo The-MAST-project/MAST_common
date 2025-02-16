@@ -7,37 +7,38 @@ from .target import Target, Event
 from .models import TargetModel
 import os
 from common.utils import path_maker
-from ulid import ULID
-from copy import deepcopy
+from common.tasks.models import AssignedTaskModel
 
 top_folder = path_maker.make_tasks_folder()
 
 folders = {}
-for sub in ['pending', 'completed', 'in-progress']:
+for sub in ['pending', 'completed', 'in-progress', 'assigned']:
     if not sub in folders:
         folders[sub] = os.path.join(top_folder, sub)
         os.makedirs(folders[sub], exist_ok=True)
 del sub
 
 
-def loads(s, file_name: str | None = None) -> Target:
-    toml = tomlkit.loads(s)
-    return Target(TargetModel(**toml), toml, os.path.realpath(file_name))
+def loads(s, file_name: Optional[str] = None) -> Target:
+    toml_doc = tomlkit.loads(s)
+    return Target(TargetModel(**toml_doc), toml_doc, os.path.realpath(file_name))
+
 
 def load(fp, _from_template: bool = False) -> Target:
     return loads(fp.read(), fp.name)
 
-def load_folder(which: str) -> Optional[List[Target]]:
+
+def load_folder(folder_name: str) -> Optional[List[Target]]:
     """
     Gets all the tasks in the subfolder
-    :param which: folder containing 'TSK_' files
+    :param folder_name: folder containing 'TSK_' files
     :return: a list of Target objects, loaded from the files
     """
-    if not which in folders:
+    if not folder_name in folders:
         return None
 
     tasks: List[Target] = []
-    with os.scandir(folders[which]) as entries:
+    with os.scandir(folders[folder_name]) as entries:
         for entry in entries:
             if entry.is_file() and entry.name.startswith('TSK_'):
                 try:
@@ -48,6 +49,7 @@ def load_folder(which: str) -> Optional[List[Target]]:
                     print(f"Invalid task in '{entry.path}', {e}, skipping ...")
                     continue
     return tasks
+
 
 def new():
     def replace_none_strings_in_toml(data):
