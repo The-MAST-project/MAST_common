@@ -1,5 +1,7 @@
 import socket
-import win32api
+import platform
+if platform.system() == 'Windows':
+    import win32api
 import shutil
 import os
 from typing import List
@@ -10,6 +12,9 @@ from typing import Optional
 
 
 def is_windows_drive_mapped(drive_letter):
+    if platform.system() != 'Windows':
+        raise Exception(f"is_windows_drive_mapped: this is not a Windows platform")
+
     try:
         drives = win32api.GetLogicalDriveStrings()
         drives = drives.split('\000')[:-1]
@@ -26,19 +31,26 @@ class FilerTop(Enum):
 
 
 class Location:
-    def __init__(self, drive: str, prefix: str):
+    def __init__(self, drive: Optional[str], prefix: str):
         self.drive = drive
         self.prefix = prefix
-        self.root = self.drive + self.prefix
+        self.root = os.path.join(self.drive, self.prefix) if self.drive else self.prefix
 
 
 class Filer:
     def __init__(self, logger = None):
-        self.local = Location('C:\\', 'MAST\\')
-        self.shared = Location('Z:\\', f"MAST\\{socket.gethostname()}\\") if is_windows_drive_mapped('Z:') \
-            else Location('C:\\', 'MAST\\')
-        self.ram = Location('D:\\', 'MAST\\') if is_windows_drive_mapped('D:') \
-            else Location('C:\\', 'MAST\\')
+        sys = platform.system()
+        if sys == 'Windows':
+            self.local = Location('C:\\', 'MAST\\')
+            self.shared = Location('Z:\\', f"MAST\\{socket.gethostname()}\\") if is_windows_drive_mapped('Z:') \
+                else Location('C:\\', 'MAST\\')
+            self.ram = Location('D:\\', 'MAST\\') if is_windows_drive_mapped('D:') \
+                else Location('C:\\', 'MAST\\')
+        elif sys == 'Linux':
+            self.local = Location(None, '/Storage/mast-share/MAST')
+            self.shared = self.local
+            self.ram = None
+
         self.tops = {
             FilerTop.Local: self.local,
             FilerTop.Shared: self.shared,
