@@ -1,15 +1,17 @@
 from pydantic import BaseModel, Field, field_validator, ValidationError, model_validator
-from typing import Optional, Literal
-from common.config import Config
+from typing import Optional, Literal, Union
 from common.models.deepspec import DeepspecModel
 from common.models.highspec import HighspecModel
+from common.models.calibration import CalibrationModel
 
 
 class SpectrographModel(BaseModel):
-    instrument: Literal['highspec', 'deepspec']
-    # calibration: Optional[CalibrationModel]
-    spec: HighspecModel | DeepspecModel = Field(discriminator='instrument')
+    exposure: float
+    number_of_exposures: Optional[int] = 1
+    calibration: Optional[CalibrationModel]
+    spec: Union[HighspecModel, DeepspecModel]
 
-    @model_validator(mode='after')
-    def validate(self, values):
-        return self
+    class Config:
+        # Set the discriminating field
+        smart_union = True
+        discriminator = 'instrument'
