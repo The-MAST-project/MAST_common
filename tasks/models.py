@@ -518,11 +518,13 @@ class AssignedTaskModel(BaseModel, Activities):
 
 class TaskProduct(BaseModel):
     """
-    Sent by the units and spec as soon as they know the path of either an 'autofocus' ot 'acquisition' folder
+    Sent to the controller by:
+    - the units, as soon as they know the path of either an 'autofocus' or 'acquisition' folder
+    - the spec, as soon as it has the path of the acquisition
     """
     unit: str
     ulid: str
-    type: Literal['autofocus', 'acquisition']
+    type: Literal['autofocus', 'acquisition', 'spec']
     path: str
 
 
