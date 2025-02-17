@@ -106,6 +106,13 @@ class ApiClient:
                 except socket.gaierror:
                     raise ValueError(f"cannot get 'ipaddr' for {hostname=}")
 
+        if self.ipaddr is not None and hostname is None:
+            try:
+                hostname, _, _  = socket.gethostbyaddr(self.ipaddr)
+                self.hostname = hostname
+            except socket.herror:
+                self.hostname = None
+
         self.base_url = f"http://{self.ipaddr}:{port}{domain_base}"
         if device:
             if device in api_devices[self.domain]:
