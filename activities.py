@@ -148,12 +148,14 @@ class DeepspecActivities(IntFlag):
     CoolingDown = auto()
     WarmingUp = auto()
     Exposing = auto()
+    Positioning = auto()
 
 class HighspecActivities(IntFlag):
     CoolingDown = auto()
     WarmingUp = auto()
     Exposing = auto()
     Focusing = auto()
+    Positioning = auto()
 
 
 class AssignmentActivities(IntFlag):
