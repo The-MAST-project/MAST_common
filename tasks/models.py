@@ -7,15 +7,15 @@ import time
 
 import tomlkit
 import ulid
-from pydantic import BaseModel, field_validator, model_validator, ValidationError, computed_field, ConfigDict
+from pydantic import BaseModel, ValidationError, computed_field, ConfigDict
 import logging
 
 from common.activities import Activities, AssignmentActivities
 from common.config import Config
 from common.mast_logging import init_log
 from common.parsers import parse_units
-from typing import Literal, List, Optional, Union, Dict
-from common.tasks.target import RemoteAssignment
+from typing import Literal, List, Optional, Dict
+from common.models.assignments import RemoteAssignment
 from common.models.assignments import AssignmentInitiator, TargetAssignmentModel, AssignedTaskSettingsModel, \
     UnitAssignmentModel
 from common.spec import DeepspecBands
@@ -27,72 +27,69 @@ from pathlib import Path
 from common.activities import UnitActivities, Timing
 from copy import deepcopy
 
-from astropy.coordinates import Longitude, Latitude
-from astropy import units as u
-
 from common.utils import CanonicalResponse, deep_dict_update
 
 logger = logging.getLogger('tasks')
 init_log(logger)
 
 
-class SettingsModel(BaseModel):
-    name: Union[str, None] = None
-    ulid: Union[str, None] = None
-    owner: Optional[str] = None
-    merit: Union[int, None] = None
-    state: Literal['new', 'in-progress', 'postponed', 'canceled', 'completed'] = 'new'
-    timeout_to_guiding: Union[int, None] = None
+# class SettingsModel(BaseModel):
+#     name: Union[str, None] = None
+#     ulid: Union[str, None] = None
+#     owner: Optional[str] = None
+#     merit: Union[int, None] = None
+#     state: Literal['new', 'in-progress', 'postponed', 'canceled', 'completed'] = 'new'
+#     timeout_to_guiding: Union[int, None] = None
+#
+#     @field_validator('owner')
+#     def validate_owner(cls, user: str) -> str:
+#         valid_users = Config().get_users()
+#         if user not in valid_users:
+#             raise ValueError(f"Invalid user '{user}'")
+#         user = Config().get_user(user)
+#         if not 'canOwnTasks' in user['capabilities']:
+#             raise ValueError(f"User '{user['name']}' cannot own tasks")
+#         return user['name']
 
-    @field_validator('owner')
-    def validate_owner(cls, user: str) -> str:
-        valid_users = Config().get_users()
-        if user not in valid_users:
-            raise ValueError(f"Invalid user '{user}'")
-        user = Config().get_user(user)
-        if not 'canOwnTasks' in user['capabilities']:
-            raise ValueError(f"User '{user['name']}' cannot own tasks")
-        return user['name']
+# class SpecificationModel(BaseModel):
+#     ra: Union[float, str, None] = None
+#     dec: Union[float, str, None] = None
+#     requested_units: Union[str, List[str], None] = None
+#     allocated_units: Union[str, List[str], None] = None
+#     quorum: Optional[int] = 1
+#     exposure: Optional[float] = 5 * 60
+#     priority: Optional[Literal['lowest', 'low', 'normal', 'high', 'highest', 'too']] = 'normal'
+#     magnitude: Optional[float]
+#     magnitude_band: Optional[str]
+#
+#     @model_validator(mode='after')
+#     def validate_target(cls, values):
+#         quorum = values.quorum
+#         units = values.requested_units
+#         if len(units) < quorum:
+#             raise ValueError(f"Expected {quorum} units in 'specifications' section, got only {len(units)=} ({units=})")
+#         return values
+#
+#     @field_validator('requested_units', mode='before')
+#     def validate_input_units(cls, specifiers: Union[str, List[str]]) -> List[str]:
+#         success, value = parse_units(specifiers if isinstance(specifiers, list) else [specifiers])
+#         if success:
+#             return [value]
+#         else:
+#             raise ValueError(f"Invalid units specifier '{specifiers}', errors: {value}")
+#
+#     @field_validator('ra', mode='before')
+#     def validate_ra(cls, value):
+#         return Longitude(value, unit=u.hourangle).value if value is not None else None
+#
+#     @field_validator('dec', mode='before')
+#     def validate_dec(cls, value):
+#         return Latitude(value, unit=u.deg).value if value is not None else None
 
-class SpecificationModel(BaseModel):
-    ra: Union[float, str, None] = None
-    dec: Union[float, str, None] = None
-    requested_units: Union[str, List[str], None] = None
-    allocated_units: Union[str, List[str], None] = None
-    quorum: Optional[int] = 1
-    exposure: Optional[float] = 5 * 60
-    priority: Optional[Literal['lowest', 'low', 'normal', 'high', 'highest', 'too']] = 'normal'
-    magnitude: Optional[float]
-    magnitude_band: Optional[str]
-
-    @model_validator(mode='after')
-    def validate_target(cls, values):
-        quorum = values.quorum
-        units = values.requested_units
-        if len(units) < quorum:
-            raise ValueError(f"Expected {quorum} units in 'specifications' section, got only {len(units)=} ({units=})")
-        return values
-
-    @field_validator('requested_units', mode='before')
-    def validate_input_units(cls, specifiers: Union[str, List[str]]) -> List[str]:
-        success, value = parse_units(specifiers if isinstance(specifiers, list) else [specifiers])
-        if success:
-            return [value]
-        else:
-            raise ValueError(f"Invalid units specifier '{specifiers}', errors: {value}")
-
-    @field_validator('ra', mode='before')
-    def validate_ra(cls, value):
-        return Longitude(value, unit=u.hourangle).value if value is not None else None
-
-    @field_validator('dec', mode='before')
-    def validate_dec(cls, value):
-        return Latitude(value, unit=u.deg).value if value is not None else None
-
-class TargetModel(BaseModel):
-    settings: SettingsModel
-    specification: SpecificationModel
-    constraints: ConstraintsModel
+# class TargetModel(BaseModel):
+#     settings: SettingsModel
+#     specification: SpecificationModel
+#     constraints: ConstraintsModel
 
 
 def make_spec_model(doc) -> SpectrographModel | None:
@@ -144,7 +141,14 @@ def make_spec_model(doc) -> SpectrographModel | None:
                     deep_dict_update(band_dict, doc['camera'][band])
             new_dict['spec']['camera'][band] = band_dict
 
-    new_dict['calibration'] = doc['calibration'] if 'calibration' in doc else {'lamp_on': False, 'filter': None}
+    if 'calibration' in doc:
+        new_dict['spec']['calibration'] = {
+            'lamp_on': doc['lamp_on'] if 'lamp_on' in doc else False,
+            'filter': doc['filter'] if 'filter' in doc else None,
+        }
+    else:
+        new_dict['spec']['calibration'] = {'lamp_on': False, 'filter': None}
+
     new_dict['instrument'] = instrument
     new_dict['spec']['instrument'] = instrument
 
@@ -231,7 +235,6 @@ class AssignedTaskModel(BaseModel, Activities):
         :param unit_assignments:
         :param spec_assignment:
         :param spec_api:
-        :param run_folder: tells units and spec to what run do their products belong
         :return:
         """
         with open(toml_file, 'r') as fp:
@@ -261,7 +264,8 @@ class AssignedTaskModel(BaseModel, Activities):
                        timings={},
                        commited_unit_apis=[],
                        unit_assignments=[],
-                       spec_assignment=None)
+                       spec_assignment=None,
+                       spec_api=None)
 
         return new_task
 
@@ -366,7 +370,7 @@ class AssignedTaskModel(BaseModel, Activities):
         logger.info(f"detected units quorum achieved ({n_detected} units detected out of {self.task.quorum} required)")
 
         if not self.spec_api.detected:
-            # no units responded
+            # spec does not respond
             self.end_activity(AssignmentActivities.Probing)
             self.end_activity(AssignmentActivities.Executing)
             self.fail(reasons=[f"spec not detected"])
@@ -387,22 +391,22 @@ class AssignedTaskModel(BaseModel, Activities):
                     why_not_operational = response['why_not_operational']
                     logger.info(f"unit '{unit_api.hostname}' ({unit_api.ipaddr}), not operational: {why_not_operational}")
 
-        if len(operational_unit_apis) < self.task.quorum:
-            # not enough units are operational
-            self.end_activity(AssignmentActivities.Probing)
-            self.end_activity(AssignmentActivities.Executing)
-            n_operational_units = len(operational_unit_apis)
-            if n_operational_units == 0:
-                self.fail(reasons=[f"no operational units (quorum: {self.task.quorum})"])
-            else:
-                self.fail(reasons=[f"only {n_operational_units} operational units (quorum: {self.task.quorum})"])
-            return
-
-        if isinstance(spec_response, Exception):
-            logger.error(f"spec api exception: {self.spec_api.ipaddr}, {spec_response=}")
-        elif spec_response and 'operational' in spec_response and not spec_response['operational']:
-            self.fail(reasons=[f"spec is not operational {spec_response['why_not_operational']}"])
-            return
+        # if len(operational_unit_apis) < self.task.quorum:
+        #     # not enough units are operational
+        #     self.end_activity(AssignmentActivities.Probing)
+        #     self.end_activity(AssignmentActivities.Executing)
+        #     n_operational_units = len(operational_unit_apis)
+        #     if n_operational_units == 0:
+        #         self.fail(reasons=[f"no operational units (quorum: {self.task.quorum})"])
+        #     else:
+        #         self.fail(reasons=[f"only {n_operational_units} operational units (quorum: {self.task.quorum})"])
+        #     return
+        #
+        # if isinstance(spec_response, Exception):
+        #     logger.error(f"spec api exception: {self.spec_api.ipaddr}, {spec_response=}")
+        # elif spec_response and 'operational' in spec_response and not spec_response['operational']:
+        #     self.fail(reasons=[f"spec is not operational {spec_response['why_not_operational']}"])
+        #     return
 
         self.end_activity(AssignmentActivities.Probing)
 
@@ -529,7 +533,8 @@ class TaskProduct(BaseModel):
 
 
 async def main():
-    task_file = os.path.join(os.path.dirname(__file__), 'assigned_highspec_task.toml')
+    # task_file = os.path.join(os.path.dirname(__file__), 'assigned_highspec_task.toml')
+    task_file = '/Storage/mast-share/MAST/tasks/assigned/TSK_assigned_highspec_task.toml'
     try:
         assigned_task: AssignedTaskModel = AssignedTaskModel.from_toml_file(task_file)
     except ValidationError as e:
@@ -541,15 +546,19 @@ async def main():
     # transfer_task = assigned_task.model_dump_json()
     # loaded_task = AssignedTaskModel.model_validate_json(transfer_task)
     # print(loaded_task.spec_assignment.model_dump_json(indent=2))
-    for unit_assignment in assigned_task.unit_assignments:
-        print(f"------------ unit_assignment hostname={unit_assignment.hostname}, ipaddr: {unit_assignment.ipaddr} ----------")
-        print(unit_assignment.model_dump_json(indent=2))
+    # for unit_assignment in assigned_task.unit_assignments:
+    #     print(f"------------ unit_assignment hostname={unit_assignment.hostname}, ipaddr: {unit_assignment.ipaddr} ----------")
+    #     print(unit_assignment.model_dump_json(indent=2))
 
     spec_assignment = assigned_task.spec_assignment
     print(f"----------- spec_assignment hostname={spec_assignment.hostname}, ipaddr: {spec_assignment.ipaddr} -----------")
-    print(assigned_task.spec_assignment.model_dump_json(indent=2))
+    print(assigned_task.spec_assignment.model_dump())
 
     # await assigned_task.execute()
+    spec_api = SpecApi()
+    status_response = await spec_api.put(
+        method='execute_assignment',
+        json=spec_assignment.assignment.model_dump())
 
 if __name__ == '__main__':
     asyncio.run(main())

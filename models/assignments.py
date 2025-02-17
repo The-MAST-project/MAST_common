@@ -6,7 +6,7 @@ from typing import List, Optional, Dict, Any, Literal, Union
 from pydantic import BaseModel, computed_field, field_validator, model_validator, Field
 import astropy.coordinates
 from common.models.spectrographs import SpectrographModel
-from common.models.spectrographs import CalibrationModel
+from common.models.calibration import CalibrationModel
 from common.models.deepspec import DeepspecModel
 from common.models.highspec import HighspecModel
 
@@ -120,12 +120,12 @@ class UnitAssignmentModel(AssignmentModel):
 
 class DeepSpecAssignment(BaseModel):
     instrument: Literal['deepspec']
-    calibration: Optional[CalibrationModel]
+    # calibration: Optional[CalibrationModel]
     settings: Optional[DeepspecModel]
 
 class HighSpecAssignment(BaseModel):
     instrument: Literal['highspec']
-    calibration: Optional[CalibrationModel]
+    # calibration: Optional[CalibrationModel]
     disperser: SpecGrating
     settings: HighspecModel
 
