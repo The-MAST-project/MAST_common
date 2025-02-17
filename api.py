@@ -182,7 +182,7 @@ class ApiClient:
             self.detected = True
             if 'api_version' in response_dict and response_dict['api_version'] == '1.0':
                 canonical_response = CanonicalResponse(**response_dict)
-                if hasattr(canonical_response, 'exception') and  canonical_response.exception is not None:
+                if hasattr(canonical_response, 'exception') and canonical_response.exception is not None:
                     e = canonical_response.exception
                     self.append_error(f"{op}: Remote Exception     type: {e.type}")
                     self.append_error(f"{op}: Remote Exception  message: {e.message}")
@@ -244,7 +244,8 @@ class SpecApi(ApiClient):
         port = Config().get_service(service_name='spec')['port']
         super().__init__(hostname=f"{site.project}-{site.name}-spec", port=port)
 
-class ControlApi:
+
+class ControlerApi:
 
     def __init__(self, site_name: Optional[str] = None):
         self.client = None
