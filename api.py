@@ -19,6 +19,7 @@ class ApiDomain(Enum):
     Spec = auto()
     Control = auto()
 
+
 api_devices = {
     ApiDomain.Unit: ["mount", "focuser", "camera", "stage", "covers"],
     ApiDomain.Spec: []
@@ -81,7 +82,8 @@ class ApiClient:
         if ipaddr is not None:
             self.domain = domain
             self.ipaddr = ipaddr
-            domain_base = BASE_UNIT_PATH if domain == ApiDomain.Unit else BASE_SPEC_PATH if domain == ApiDomain.Spec else BASE_CONTROL_PATH
+            domain_base = BASE_UNIT_PATH if domain == ApiDomain.Unit else BASE_SPEC_PATH if domain == ApiDomain.Spec \
+                else BASE_CONTROL_PATH
         else:
             if hostname.endswith('-spec'):
                 self.domain = ApiDomain.Spec
@@ -139,14 +141,20 @@ class ApiClient:
 
         return self.common_get_put(response)
 
-    async def put(self, method: str, params: Optional[Dict] = None, data: Optional[Dict] = None, json: dict | None = None):
+    async def put(self, method: str, params: Optional[Dict] = None, data: Optional[Dict] = None,
+                  json: Optional[Dict] = None):
         url = f"{self.base_url}/{method}"
         op = f"{function_name()}, {url=}"
-        response = None
         self.errors = []
         async with httpx.AsyncClient(trust_env=False) as client:
             try:
-                response = await client.put(url=f"{self.base_url}/{method}", headers={'Content-Type': 'application/json'}, params=params, data=data, json=json, timeout=self.timeout)
+                response = await client.put(
+                    url=f"{self.base_url}/{method}",
+                    headers={'Content-Type': 'application/json'},
+                    params=params,
+                    data=data,
+                    json=json,
+                    timeout=self.timeout)
             except httpx.TimeoutException:
                 self.append_error(f"{op}: timeout after {self.timeout} seconds, {url=}")
                 self.detected = False
@@ -193,7 +201,8 @@ class ApiClient:
                     value = canonical_response.value
 
                 else:
-                    self.append_error(f"{op}: got a canonical response but fields 'exception', 'errors' and 'value' are all None")
+                    self.append_error(f"{op}: got a canonical response but fields " +
+                                      f"'exception', 'errors' and 'value' are all None")
                     return
             else:
                 value = response_dict
@@ -211,7 +220,6 @@ class ApiClient:
 
         self.detected = True
         return value
-
 
 
 class UnitApi(ApiClient):
