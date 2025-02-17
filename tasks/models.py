@@ -106,7 +106,7 @@ def make_spec_model(doc) -> SpectrographModel | None:
         new_dict = {
             'spec': {
                 'exposure': doc['exposure'] if 'exposure' in doc
-                    else defaults['highspec']['exposure'],
+                    else deepcopy(defaults['highspec']['exposure']),
                 'number_of_exposures': doc['camera']['number_of_exposures'] if 'number_of_exposures' in doc['camera']
                     else defaults['highspec']['settings']['number_of_exposures'],
                 'camera': {}
@@ -552,7 +552,7 @@ async def main():
 
     spec_assignment = assigned_task.spec_assignment
     print(f"----------- spec_assignment hostname={spec_assignment.hostname}, ipaddr: {spec_assignment.ipaddr} -----------")
-    print(assigned_task.spec_assignment.model_dump())
+    print(assigned_task.spec_assignment.model_dump_json(indent=2))
 
     # await assigned_task.execute()
     spec_api = SpecApi()
