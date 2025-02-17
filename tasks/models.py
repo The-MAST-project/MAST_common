@@ -4,6 +4,7 @@ import os.path
 import shutil
 import socket
 import time
+import json
 
 import tomlkit
 import ulid
@@ -92,37 +93,45 @@ init_log(logger)
 #     constraints: ConstraintsModel
 
 
-def make_spec_model(doc) -> SpectrographModel | None:
-    if not 'instrument' in doc:
-        logger.error(f"missing 'instrument' in {doc=}")
+def make_spec_model(spec_doc) -> SpectrographModel | None:
+    if not 'instrument' in spec_doc:
+        logger.error(f"missing 'instrument' in {spec_doc=}")
         return None
-    instrument = doc['instrument']
+    instrument = spec_doc['instrument']
     if instrument not in ['highspec', 'deepspec']:
         logger.error(f"bad '{instrument=}', must be either 'deepspec' or 'highspec")
         return None
 
     defaults = Config().get_specs()
+    calibration_dict = {
+        'lamp_on': spec_doc['lamp_on'] if 'lamp_on' in spec_doc else False,
+        'filter': spec_doc['filter'] if 'filter' in spec_doc else None,
+    }
+
+    # new_spec_dict['spec']['calibration'] = new_spec_dict['calibration']
     if instrument == 'highspec':
-        new_dict = {
+        new_spec_dict = {
+            'exposure': spec_doc['exposure'] if 'exposure' in spec_doc
+                else deepcopy(defaults['highspec']['exposure']),
+            'number_of_exposures': spec_doc['camera']['number_of_exposures'] if 'number_of_exposures' in spec_doc['camera']
+                else defaults['highspec']['settings']['number_of_exposures'],
+            'calibration': calibration_dict,
             'spec': {
-                'exposure': doc['exposure'] if 'exposure' in doc
-                    else deepcopy(defaults['highspec']['exposure']),
-                'number_of_exposures': doc['camera']['number_of_exposures'] if 'number_of_exposures' in doc['camera']
-                    else defaults['highspec']['settings']['number_of_exposures'],
-                'camera': {}
-            }
+                'calibration': calibration_dict,
+            },
         }
-        camera_settings: dict = defaults['highspec']['settings']
-        if 'camera' in doc:
-            deep_dict_update(camera_settings, doc['camera'])
-        new_dict['spec']['camera'] = camera_settings
+        camera_settings: dict = deepcopy(defaults['highspec']['settings'])
+        if 'camera' in spec_doc:
+            deep_dict_update(camera_settings, spec_doc['camera'])
+        new_spec_dict['spec']['camera'] = camera_settings
 
     else:
-        new_dict = {
+        new_spec_dict = {
+            'calibration': calibration_dict,
             'spec': {
-                'exposure': doc['exposure'] if 'exposure' in doc
+                'exposure': spec_doc['exposure'] if 'exposure' in spec_doc
                 else defaults['deepspec']['exposure'],
-                'number_of_exposures': doc['number_of_exposures'] if 'number_of_exposures' in doc
+                'number_of_exposures': spec_doc['number_of_exposures'] if 'number_of_exposures' in spec_doc
                 else defaults['deepspec']['common']['settings']['number_of_exposures'],
                 'camera': {}
             }
@@ -130,30 +139,27 @@ def make_spec_model(doc) -> SpectrographModel | None:
         common_camera_settings = deepcopy(defaults['deepspec']['common']['settings'])
 
         # get settings common to all cameras from doc
-        for k, v in doc['camera'].items():
+        for k, v in spec_doc['camera'].items():
             if k in common_camera_settings:
-                common_camera_settings[k] = doc['camera'][k]
+                common_camera_settings[k] = spec_doc['camera'][k]
 
         # get band-specific camera settings
         for band in DeepspecBands.__args__:
             band_dict: dict = deepcopy(common_camera_settings)
-            if 'camera' in doc and band in doc['camera']:
-                    deep_dict_update(band_dict, doc['camera'][band])
-            new_dict['spec']['camera'][band] = band_dict
+            if 'camera' in spec_doc and band in spec_doc['camera']:
+                    deep_dict_update(band_dict, spec_doc['camera'][band])
+            new_spec_dict['spec']['camera'][band] = band_dict
 
-    if 'calibration' in doc:
-        new_dict['spec']['calibration'] = {
-            'lamp_on': doc['lamp_on'] if 'lamp_on' in doc else False,
-            'filter': doc['filter'] if 'filter' in doc else None,
-        }
-    else:
-        new_dict['spec']['calibration'] = {'lamp_on': False, 'filter': None}
+    new_spec_dict['instrument'] = instrument
+    new_spec_dict['spec']['instrument'] = instrument
 
-    new_dict['instrument'] = instrument
-    new_dict['spec']['instrument'] = instrument
-
-    # print(json.dumps(new_dict, indent=2))
-    return SpectrographModel(**new_dict)
+    print(json.dumps(new_spec_dict, indent=2))
+    try:
+        spectrograph_model = SpectrographModel(**new_spec_dict)
+    except ValidationError as e:
+        print(json.dumps(e.errors(), indent=2))
+        raise
+    return spectrograph_model
 
 
 class EventModel(BaseModel):
@@ -166,9 +172,9 @@ class AssignedTaskModel(BaseModel, Activities):
     """
     model_config = ConfigDict(extra='allow')
 
-    unit: Dict[str, TargetAssignmentModel]
-    task: AssignedTaskSettingsModel
-    events: Optional[List[EventModel]] = None
+    unit: Dict[str, TargetAssignmentModel]              # indexed by unit name, per-unit target assignment(s)
+    task: AssignedTaskSettingsModel                     # general task stuff (ulid, etc.)
+    events: Optional[List[EventModel]] = None           # things that happened to this task
     constraints: Optional[ConstraintsModel] = None
 
     @computed_field
@@ -194,7 +200,6 @@ class AssignedTaskModel(BaseModel, Activities):
     @computed_field
     @property
     def spec_assignment(self) -> RemoteAssignment | None:
-        # return self.spec_assignment
         local_site = Config().local_site
         hostname = local_site.spec_host
         if hostname is None:
@@ -206,13 +211,17 @@ class AssignedTaskModel(BaseModel, Activities):
             ipaddr = None
 
         initiator = AssignmentInitiator.local_machine()
-        spec_model = make_spec_model(self.model_extra['spec'])
-        assignment = SpectrographAssignmentModel(
-            instrument=spec_model.instrument,
-            initiator=initiator,
-            task=self.task,
-            spec=spec_model)
-        return RemoteAssignment(hostname=hostname, fqdn=fqdn, ipaddr=ipaddr, assignment=assignment)
+        try:
+            spec_model = make_spec_model(self.model_extra['spec'])
+            spec_assignment = SpectrographAssignmentModel(
+                instrument=spec_model.instrument,
+                initiator=initiator,
+                task=self.task,
+                spec=spec_model)
+        except Exception as e:
+            print(json.dumps(e.errors(), indent=2))
+            raise
+        return RemoteAssignment(hostname=hostname, fqdn=fqdn, ipaddr=ipaddr, assignment=spec_assignment)
 
     @classmethod
     def from_toml_file(cls,
@@ -251,7 +260,7 @@ class AssignedTaskModel(BaseModel, Activities):
 
         if just_created:
             if not 'event' in toml_doc:
-                toml_doc['event'] = {
+                toml_doc['events'] = {
                     'when': datetime.datetime.now().isoformat(),
                     'what': 'created'
                 }
@@ -552,7 +561,7 @@ async def main():
 
     spec_assignment = assigned_task.spec_assignment
     print(f"----------- spec_assignment hostname={spec_assignment.hostname}, ipaddr: {spec_assignment.ipaddr} -----------")
-    print(assigned_task.spec_assignment.model_dump_json(indent=2))
+    print(spec_assignment.model_dump_json(indent=2))
 
     # await assigned_task.execute()
     spec_api = SpecApi()

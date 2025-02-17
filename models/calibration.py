@@ -5,17 +5,14 @@ from common.config import Config
 
 class CalibrationModel(BaseModel):
     lamp_on: Optional[bool] = False
-    filter: Optional[str]
-
-    @field_validator('filter')
-    def validate_filter(cls, value):
-        filters: dict = Config().get_specs()['wheels']['ThAr']['filters']
-        if value is not None and value not in filters.values():
-            raise ValidationError(f"filter '{value}' not in {filters.values()}")
-        return value
+    filter: Optional[str] = None
 
     @model_validator(mode='after')
-    def validate_calibration(self, value):
-        if self.lamp_on and not self.filter:
-            raise ValidationError("a filter must be provided when lamp is 'on'")
-        return value
+    def validate_calibration(cls, model):
+        if model.lamp_on:
+            if not model.filter:
+                raise ValidationError("a filter must be provided when lamp is 'on'")
+            filters: dict = Config().get_specs()['wheels']['ThAr']['filters']
+            if model.filter is not None and model.filter not in filters.values():
+                raise ValidationError(f"filter '{model.filter}' not in {filters.values()}")
+        return model
