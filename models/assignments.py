@@ -120,7 +120,6 @@ class UnitAssignmentModel(AssignmentModel):
 
 class DeepSpecAssignment(BaseModel):
     instrument: Literal['deepspec']
-    # calibration: Optional[CalibrationModel]
     settings: Optional[DeepspecModel]
 
 class HighSpecAssignment(BaseModel):
