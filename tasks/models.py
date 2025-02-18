@@ -94,6 +94,17 @@ init_log(logger)
 
 
 def make_spec_model(spec_doc) -> SpectrographModel | None:
+    """
+    Accumulates a dictionary by combining:
+    - a TOML-derived dictionary (parameter) which contains the user's task description
+    - defaults from the configuration database
+
+    The resulting dictionary is fully populated, i.e. ALL the expected fields
+      have a value (either from the task, or the defaults)
+
+    :param spec_doc: a dictionary from a TOML model
+    :return: a spectrograph model built from the accumulated dictionary
+    """
     if not 'instrument' in spec_doc:
         logger.error(f"missing 'instrument' in {spec_doc=}")
         return None
@@ -103,7 +114,7 @@ def make_spec_model(spec_doc) -> SpectrographModel | None:
         return None
 
     defaults = Config().get_specs()
-    calibration_dict = {
+    calibration_settings = {
         'lamp_on': spec_doc['lamp_on'] if 'lamp_on' in spec_doc else False,
         'filter': spec_doc['filter'] if 'filter' in spec_doc else None,
     }
@@ -114,11 +125,12 @@ def make_spec_model(spec_doc) -> SpectrographModel | None:
 
     if instrument == 'highspec':
         new_spec_dict = {
-            'exposure': spec_doc['exposure'] if 'exposure' in spec_doc
-                else defaults['highspec']['exposure'],
+            'instrument': instrument,
+            'calibration': calibration_settings,
+
+            'exposure': spec_doc['exposure'] if 'exposure' in spec_doc else defaults['highspec']['exposure'],
             'number_of_exposures': spec_doc['camera']['number_of_exposures'] if 'number_of_exposures' in spec_doc['camera']
                 else defaults['highspec']['settings']['number_of_exposures'],
-            'calibration': calibration_dict,
             'spec': {
                 'instrument': instrument,
                 'camera': camera_settings
@@ -127,12 +139,18 @@ def make_spec_model(spec_doc) -> SpectrographModel | None:
 
     else:
         new_spec_dict = {
-            'calibration': calibration_dict,
-            'spec': {
-                'exposure': spec_doc['exposure'] if 'exposure' in spec_doc
-                else defaults['deepspec']['exposure'],
-                'number_of_exposures': spec_doc['number_of_exposures'] if 'number_of_exposures' in spec_doc
+            'instrument': instrument,
+            'calibration': calibration_settings,
+
+            'exposure': spec_doc['exposure'] if 'exposure' in spec_doc else defaults['deepspec']['exposure'],
+            'number_of_exposures': spec_doc['camera']['number_of_exposures'] if 'number_of_exposures' in spec_doc['camera']
                 else defaults['deepspec']['common']['settings']['number_of_exposures'],
+
+            'spec': {
+                'instrument': instrument,
+                'exposure': spec_doc['exposure'] if 'exposure' in spec_doc else defaults['deepspec']['exposure'],
+                'number_of_exposures': spec_doc['number_of_exposures'] if 'number_of_exposures' in spec_doc
+                    else defaults['deepspec']['common']['settings']['number_of_exposures'],
                 'camera': {}
             }
         }
@@ -152,12 +170,13 @@ def make_spec_model(spec_doc) -> SpectrographModel | None:
 
     new_spec_dict['instrument'] = instrument
 
-    print("new_spec_dict:\n" + json.dumps(new_spec_dict, indent=2))
+    # print("new_spec_dict:\n" + json.dumps(new_spec_dict, indent=2))
     try:
         spectrograph_model = SpectrographModel(**new_spec_dict)
     except ValidationError as e:
+        print(f"====== ValidationError(s) =======\n")
         for err in e.errors():
-            print(f"====== ValidationError =======\n" + json.dumps(e.errors(), indent=2))
+            print(f"[ERR] {err}\n")
         raise
     return spectrograph_model
 
@@ -543,32 +562,25 @@ class TaskProduct(BaseModel):
 
 
 async def main():
-    # task_file = os.path.join(os.path.dirname(__file__), 'assigned_highspec_task.toml')
-    task_file = '/Storage/mast-share/MAST/tasks/assigned/TSK_assigned_highspec_task.toml'
+    # task_file = '/Storage/mast-share/MAST/tasks/assigned/TSK_assigned_highspec_task.toml'
+    task_file = '/Storage/mast-share/MAST/tasks/assigned/TSK_assigned_deepspec_task.toml'
     try:
         assigned_task: AssignedTaskModel = AssignedTaskModel.from_toml_file(task_file)
     except ValidationError as e:
         print(e)
         return
 
-    # print(assigned_task.model_dump_json(indent=2))
-    # print(json.dumps(assigned_task, indent=2))
-    # transfer_task = assigned_task.model_dump_json()
-    # loaded_task = AssignedTaskModel.model_validate_json(transfer_task)
-    # print(loaded_task.spec_assignment.model_dump_json(indent=2))
-    # for unit_assignment in assigned_task.unit_assignments:
-    #     print(f"------------ unit_assignment hostname={unit_assignment.hostname}, ipaddr: {unit_assignment.ipaddr} ----------")
-    #     print(unit_assignment.model_dump_json(indent=2))
+    remote_assignment = assigned_task.spec_assignment
 
-    spec_assignment = assigned_task.spec_assignment
-    print(f"----------- spec_assignment hostname={spec_assignment.hostname}, ipaddr: {spec_assignment.ipaddr} -----------")
-    print(spec_assignment.model_dump_json(indent=2))
-
-    # await assigned_task.execute()
     spec_api = SpecApi()
-    status_response = await spec_api.put(
-        method='execute_assignment',
-        json=spec_assignment.assignment.model_dump())
+    logger.info(f"sending task '{remote_assignment.assignment.task.ulid}' ({remote_assignment.assignment.spec.instrument}) to '{spec_api.hostname}' ({spec_api.ipaddr})")
+    canonical_response = await spec_api.put(method='execute_assignment', json=remote_assignment.model_dump())
+    if canonical_response.succeeded:
+        logger.info(f"[{spec_api.ipaddr}] ACCEPTED task '{remote_assignment.assignment.task.ulid}'")
+    else:
+        logger.error(f"[{spec_api.ipaddr}] REJECTED task '{remote_assignment.assignment.task.ulid}'")
+        for err in canonical_response.errors:
+            logger.error(f"[{spec_api.ipaddr}] {err}")
 
 if __name__ == '__main__':
     asyncio.run(main())
