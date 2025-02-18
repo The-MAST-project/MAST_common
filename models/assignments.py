@@ -1,6 +1,6 @@
 from common.config import Config, Site, WEIZMANN_DOMAIN
 from common.parsers import parse_units
-from common.spec import SpecGrating, BinningLiteral
+from common.spec import Disperser, BinningLiteral
 import socket
 from typing import List, Optional, Dict, Any, Literal, Union
 from pydantic import BaseModel, computed_field, field_validator, model_validator, Field
@@ -125,8 +125,7 @@ class DeepSpecAssignment(BaseModel):
 
 class HighSpecAssignment(BaseModel):
     instrument: Literal['highspec']
-    # calibration: Optional[CalibrationModel]
-    disperser: SpecGrating
+    disperser: Disperser
     settings: HighspecModel
 
 
