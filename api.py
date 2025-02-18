@@ -139,12 +139,12 @@ class ApiClient:
             except httpx.TimeoutException:
                 self.errors.append(f"{op}: timeout after {self.timeout} seconds, {url=}")
                 self.detected = False
-                return
+                return CanonicalResponse(errors=self.errors)
 
             except Exception as e:
                 self.errors.append(f"{op}: exception: {e}")
                 self.detected = False
-                return
+                return CanonicalResponse(errors=self.errors)
 
         return self.common_get_put(response)
 
@@ -165,18 +165,18 @@ class ApiClient:
             except httpx.TimeoutException:
                 self.append_error(f"{op}: timeout after {self.timeout} seconds, {url=}")
                 self.detected = False
-                return
+                return CanonicalResponse(errors=self.errors)
 
             except Exception as e:
                 self.append_error(f"{op}: exception: {e}")
                 self.detected = False
-                return
+                return CanonicalResponse(errors=self.errors)
 
         return self.common_get_put(response)
 
     def append_error(self, err: str):
         self.errors.append(err)
-        logger.error(err)
+        # logger.error(err)
 
     def common_get_put(self, response: httpx.Response):
         line: str
@@ -197,12 +197,12 @@ class ApiClient:
                         self.append_error(f"{op}: Remote Exception      arg: {arg}")
                     for line in e.traceback.split('\n'):
                         self.append_error(f"{op}: Remote Exception traceback: {line}")
-                        return
+                        return CanonicalResponse(errors=self.errors)
 
                 elif hasattr(canonical_response, 'errors') and canonical_response.errors is not None:
                     for err in canonical_response.errors:
-                        self.append_error(f"{op}: Remote error: {err}")
-                        return
+                        self.append_error(err)
+                    return CanonicalResponse(errors=self.errors)
 
                 elif hasattr(canonical_response, 'value') and canonical_response.value is not None:
                     value = canonical_response.value
@@ -210,23 +210,23 @@ class ApiClient:
                 else:
                     self.append_error(f"{op}: got a canonical response but fields " +
                                       f"'exception', 'errors' and 'value' are all None")
-                    return
+                    return  CanonicalResponse(errors=self.errors)
             else:
                 value = response_dict
                 logger.error(f"{op}: received NON canonical response, returning it as 'value'")
 
         except httpx.HTTPStatusError as e:
             self.append_error(f"HTTP error (url={e.request.url}): {e.response.status_code} - {e.response.text}")
-            return
+            return CanonicalResponse(errors=self.errors)
         except httpx.RequestError as e:
-            self.append_error(f"Request error (url={e.request.url}): {e}")
-            return
+            self.append_error(f"{op}: Request error (url={e.request.url}): {e}")
+            return CanonicalResponse(errors=self.errors)
         except Exception as e:
-            self.append_error(f"An error occurred: {e}")
-            return
+            self.append_error(f"{op}: An error occurred: {e}")
+            return CanonicalResponse(errors=self.errors)
 
         self.detected = True
-        return value
+        return CanonicalResponse(value=value)
 
 
 class UnitApi(ApiClient):
