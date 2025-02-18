@@ -108,22 +108,22 @@ def make_spec_model(spec_doc) -> SpectrographModel | None:
         'filter': spec_doc['filter'] if 'filter' in spec_doc else None,
     }
 
-    # new_spec_dict['spec']['calibration'] = new_spec_dict['calibration']
+    camera_settings: dict = deepcopy(defaults['highspec']['settings'])
+    if 'camera' in spec_doc:
+        deep_dict_update(camera_settings, spec_doc['camera'])
+
     if instrument == 'highspec':
         new_spec_dict = {
             'exposure': spec_doc['exposure'] if 'exposure' in spec_doc
-                else deepcopy(defaults['highspec']['exposure']),
+                else defaults['highspec']['exposure'],
             'number_of_exposures': spec_doc['camera']['number_of_exposures'] if 'number_of_exposures' in spec_doc['camera']
                 else defaults['highspec']['settings']['number_of_exposures'],
             'calibration': calibration_dict,
             'spec': {
-                'calibration': calibration_dict,
-            },
+                'instrument': instrument,
+                'camera': camera_settings
+            }
         }
-        camera_settings: dict = deepcopy(defaults['highspec']['settings'])
-        if 'camera' in spec_doc:
-            deep_dict_update(camera_settings, spec_doc['camera'])
-        new_spec_dict['spec']['camera'] = camera_settings
 
     else:
         new_spec_dict = {
@@ -151,13 +151,13 @@ def make_spec_model(spec_doc) -> SpectrographModel | None:
             new_spec_dict['spec']['camera'][band] = band_dict
 
     new_spec_dict['instrument'] = instrument
-    new_spec_dict['spec']['instrument'] = instrument
 
-    print(json.dumps(new_spec_dict, indent=2))
+    print("new_spec_dict:\n" + json.dumps(new_spec_dict, indent=2))
     try:
         spectrograph_model = SpectrographModel(**new_spec_dict)
     except ValidationError as e:
-        print(json.dumps(e.errors(), indent=2))
+        for err in e.errors():
+            print(f"====== ValidationError =======\n" + json.dumps(e.errors(), indent=2))
         raise
     return spectrograph_model
 
@@ -218,8 +218,9 @@ class AssignedTaskModel(BaseModel, Activities):
                 initiator=initiator,
                 task=self.task,
                 spec=spec_model)
-        except Exception as e:
-            print(json.dumps(e.errors(), indent=2))
+        except ValidationError as e:
+            for err in e.errors():
+                print("ValidationError:\n" + json.dumps(e.errors(), indent=2))
             raise
         return RemoteAssignment(hostname=hostname, fqdn=fqdn, ipaddr=ipaddr, assignment=spec_assignment)
 
