@@ -133,6 +133,7 @@ def make_spec_model(spec_doc) -> SpectrographModel | None:
                 else defaults['highspec']['settings']['number_of_exposures'],
             'spec': {
                 'instrument': instrument,
+                'disperser': spec_doc['disperser'],
                 'camera': camera_settings
             }
         }
@@ -238,8 +239,9 @@ class AssignedTaskModel(BaseModel, Activities):
                 task=self.task,
                 spec=spec_model)
         except ValidationError as e:
+            print("ValidationError(s)")
             for err in e.errors():
-                print("ValidationError:\n" + json.dumps(e.errors(), indent=2))
+                print(f"ERR:\n  {err}")
             raise
         return RemoteAssignment(hostname=hostname, fqdn=fqdn, ipaddr=ipaddr, assignment=spec_assignment)
 
@@ -562,8 +564,8 @@ class TaskProduct(BaseModel):
 
 
 async def main():
-    # task_file = '/Storage/mast-share/MAST/tasks/assigned/TSK_assigned_highspec_task.toml'
-    task_file = '/Storage/mast-share/MAST/tasks/assigned/TSK_assigned_deepspec_task.toml'
+    task_file = '/Storage/mast-share/MAST/tasks/assigned/TSK_assigned_highspec_task.toml'
+    # task_file = '/Storage/mast-share/MAST/tasks/assigned/TSK_assigned_deepspec_task.toml'
     try:
         assigned_task: AssignedTaskModel = AssignedTaskModel.from_toml_file(task_file)
     except ValidationError as e:
@@ -571,6 +573,7 @@ async def main():
         return
 
     remote_assignment = assigned_task.spec_assignment
+    print(remote_assignment.model_dump_json(indent=2))
 
     spec_api = SpecApi()
     logger.info(f"sending task '{remote_assignment.assignment.task.ulid}' ({remote_assignment.assignment.spec.instrument}) to '{spec_api.hostname}' ({spec_api.ipaddr})")
