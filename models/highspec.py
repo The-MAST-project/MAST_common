@@ -1,10 +1,9 @@
 from pydantic import BaseModel
 from typing import Literal, Optional
 
-from common.models.newton import NewtonCameraModel
-from common.spec import Disperser
+from common.models.newton import NewtonCameraSettingsModel
 
 class HighspecModel(BaseModel):
     instrument: Literal['highspec']
-    disperser: Disperser
-    camera: Optional[NewtonCameraModel]
+    disperser: Literal
+    camera: Optional[NewtonCameraSettingsModel]
