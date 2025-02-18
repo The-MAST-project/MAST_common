@@ -19,7 +19,7 @@ class NewtonBinningModel(BaseModel):
     x: Optional[int]
     y: Optional[int]
 
-class NewtonCameraModel(BaseModel):
+class NewtonCameraSettingsModel(BaseModel):
     binning: Optional[NewtonBinningModel]
     roi: Optional[NewtonRoiModel]
     temperature: Optional[NewtonTemperatureModel]
