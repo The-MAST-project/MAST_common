@@ -26,6 +26,8 @@ class SpecExposureSettings:
                  y_binning: Optional[int] = 2,
                  output_folder: Optional[str] = None,
                  ):
+        # TODO: get rid of this class, basically we only use the image_file field
+
         self.exposure_duration = exposure_duration
         self.number_of_exposures = number_of_exposures
         self.x_binning = x_binning
