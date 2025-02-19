@@ -29,7 +29,8 @@ exposure = 12.5
 binning = { x=1, y=2  }
 temperature = { set_point = -15 }
 shutter = {opening_time = 20, closing_time = 30}
-gain = 150
+em_gain = 150
+pre_amp_gain = 0
 
 [spec.calibration]
 lamp_on = true
