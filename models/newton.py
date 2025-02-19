@@ -12,8 +12,8 @@ class NewtonTemperatureModel(BaseModel):
     cooler_mode: Optional[int]
 
 class NewtonShutterModel(BaseModel):
-    opening_time: Optional[float]
-    closing_time: Optional[float]
+    opening_time: Optional[int]
+    closing_time: Optional[int]
 
 class NewtonBinningModel(BaseModel):
     x: Optional[int]
@@ -25,6 +25,6 @@ class NewtonCameraSettingsModel(BaseModel):
     temperature: Optional[NewtonTemperatureModel]
     shutter: Optional[NewtonShutterModel]
     acquisition_mode: Optional[Literal[0, 1]]
-    gain: Optional[int]
+    em_gain: Optional[int]
     exposure: Optional[float]
     number_of_exposures: Optional[int] = 1
