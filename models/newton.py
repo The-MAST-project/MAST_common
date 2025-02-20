@@ -27,5 +27,3 @@ class NewtonCameraSettingsModel(BaseModel):
     acquisition_mode: Optional[Literal[0, 1]]
     em_gain: Optional[int]
     pre_amp_gain: Optional[Literal[0, 1, 2]]
-    exposure: Optional[float]
-    number_of_exposures: Optional[int] = 1
