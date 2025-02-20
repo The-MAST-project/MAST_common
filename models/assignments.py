@@ -1,19 +1,18 @@
-from common.config import Config, Site, WEIZMANN_DOMAIN
+from common.config import Config, WEIZMANN_DOMAIN
 from common.parsers import parse_units
-from common.spec import Disperser, BinningLiteral
+from common.spec import Disperser
 import socket
-from typing import List, Optional, Dict, Any, Literal, Union
+from typing import List, Optional, Any, Literal, Union
 from pydantic import BaseModel, computed_field, field_validator, model_validator, Field
 import astropy.coordinates
-from common.models.spectrographs import SpectrographModel
-from common.models.calibration import CalibrationModel
 from common.models.deepspec import DeepspecModel
 from common.models.highspec import HighspecModel
+from common.models.spectrographs import SpectrographModel
 
 
 class TargetAssignmentModel(BaseModel):
-    ra: str | float
-    dec: str | float
+    ra: Union[str, float] = Field(description='RighAscension [sexagesimal or decimal]')
+    dec: Union[str, float] = Field(description='Declination [sexagesimal or decimal]')
 
     @field_validator('ra')
     def validate_ra(cls, value):
@@ -23,8 +22,7 @@ class TargetAssignmentModel(BaseModel):
         :return: a float
         """
         ra = astropy.coordinates.Longitude(value, unit='hour').value
-        # NOTE: convert np.float64 to float
-        return float(ra)
+        return float(ra)  # converts np.float64 to float
 
     @field_validator('dec')
     def validate_dec(cls, value):
@@ -34,8 +32,7 @@ class TargetAssignmentModel(BaseModel):
         :return: a float
         """
         dec = astropy.coordinates.Latitude(value, unit='deg').value
-        # NOTE: convert np.float64 to float
-        return float(dec)
+        return float(dec)  # converts np.float64 to float
 
 
 class AssignmentInitiator(BaseModel):
@@ -82,14 +79,15 @@ class AssignmentInitiator(BaseModel):
 
 
 class AssignedTaskSettingsModel(BaseModel):
-    ulid: Optional[str] = None
+    ulid: Optional[str] = Field(default=None, description='Unique ID')
     file: Optional[str] = None
     owner: Optional[str] = None
     merit: Optional[int] = 1
-    quorum: Optional[int] = 1
-    timeout_to_guiding: Optional[int] = 600
-    autofocus: Optional[bool] = False
+    quorum: Optional[int] = Field(default=1, description='Least number of units')
+    timeout_to_guiding: Optional[int] = Field(default=600, description="How long [seconds] to wait for all units to achieve 'guiding'")
+    autofocus: Optional[bool] = Field(default=False, description="Should the units start with 'autofocus'")
     run_folder: Optional[str] = None
+    production: Optional[bool] = Field(default=True, description="if 'false' some availability tests are more relaxed")
 
 
 class AssignmentModel(BaseModel):
@@ -102,20 +100,6 @@ class UnitAssignmentModel(AssignmentModel):
     @computed_field
     def autofocus(self) -> bool:
         return self.task.autofocus
-
-
-# class CalibrationLampModel(BaseModel):
-#     on: bool
-#     filter: str
-#
-#     @field_validator('filter')
-#     def validate_filter(cls, filter_name: str) -> str | None:
-#         thar_filters = Config().get_specs()['wheels']['ThAr']['filters']
-#
-#         if filter_name not in thar_filters.values():
-#             raise ValueError \
-#                 (f"Invalid filter '{filter_name}', currently mounted ThAr filters are: {[f"{k}:{v}" for k, v in thar_filters.items() if v]}")
-#         return filter_name
 
 
 class DeepSpecAssignment(BaseModel):
@@ -132,14 +116,17 @@ class SpectrographAssignmentModel(BaseModel):
     instrument: Literal['deepspec', 'highspec']
     initiator: AssignmentInitiator
     task: AssignedTaskSettingsModel
-    spec: Any
+    spec: SpectrographModel
 
 
 class RemoteAssignment(BaseModel):
+    """
+    This is what gets sent out via UnitApi or SpecApi
+    """
     hostname: str
     fqdn: str
     ipaddr: Optional[str]
-    assignment: UnitAssignmentModel | SpectrographAssignmentModel
+    assignment: Union[UnitAssignmentModel, SpectrographAssignmentModel]
 
     @classmethod
     def from_site_colon_unit(cls,
