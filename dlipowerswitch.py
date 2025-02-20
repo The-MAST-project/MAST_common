@@ -300,7 +300,7 @@ class SwitchedOutlet:
         OutletDomain.Spec: [
             'ThArWheel', 'ThArLamp', 'qThWheel', 'qThLamp',
             'DeepspecU', 'DeepspecG', 'DeepspecR', 'DeepspecI',
-            'Highspec', 'Chiller', 'Stage',
+            'Highspec', 'Chiller', 'Stage', 'DeepShutter', 'HighShutter',
         ],
         OutletDomain.Unnamed: [
             'Outlet1', 'Outlet2', 'Outlet3', 'Outlet4',
