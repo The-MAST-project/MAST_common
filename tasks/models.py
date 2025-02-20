@@ -119,17 +119,18 @@ def make_spec_model(spec_doc) -> SpectrographModel | None:
         'filter': spec_doc['filter'] if 'filter' in spec_doc else None,
     }
 
-    camera_settings: dict = deepcopy(defaults['highspec']['settings'])
-    if 'camera' in spec_doc:
-        deep_dict_update(camera_settings, spec_doc['camera'])
-
     if instrument == 'highspec':
+
+        camera_settings: dict = deepcopy(defaults['highspec']['settings'])
+        if 'camera' in spec_doc:
+            deep_dict_update(camera_settings, spec_doc['camera'])
+
         new_spec_dict = {
             'instrument': instrument,
             'calibration': calibration_settings,
 
             'exposure': spec_doc['exposure'] if 'exposure' in spec_doc else defaults['highspec']['exposure'],
-            'number_of_exposures': spec_doc['camera']['number_of_exposures'] if 'number_of_exposures' in spec_doc['camera']
+            'number_of_exposures': spec_doc['number_of_exposures'] if 'number_of_exposures' in spec_doc
                 else defaults['highspec']['settings']['number_of_exposures'],
             'spec': {
                 'instrument': instrument,
@@ -144,7 +145,7 @@ def make_spec_model(spec_doc) -> SpectrographModel | None:
             'calibration': calibration_settings,
 
             'exposure': spec_doc['exposure'] if 'exposure' in spec_doc else defaults['deepspec']['exposure'],
-            'number_of_exposures': spec_doc['camera']['number_of_exposures'] if 'number_of_exposures' in spec_doc['camera']
+            'number_of_exposures': spec_doc['number_of_exposures'] if 'number_of_exposures' in spec_doc
                 else defaults['deepspec']['common']['settings']['number_of_exposures'],
 
             'spec': {
