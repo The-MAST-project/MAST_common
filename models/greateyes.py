@@ -56,7 +56,6 @@ class ReadoutModel(BaseModel):
 class GreateyesSettingsModel(BaseModel):
     binning: Optional[BinningModel]
     boot_delay: Optional[float]
-    gain: Optional[Gain]
     probe_interval: Optional[float]
     bytes_per_pixel: Optional[Literal[2, 3, 4]]
     safe_fifo_mode: Optional[bool]

@@ -144,23 +144,24 @@ def make_spec_model(spec_doc) -> SpectrographModel | None:
         }
 
     else:
+        default_common_settings = defaults['deepspec']['common']['settings']
         new_spec_dict = {
             'instrument': instrument,
             'calibration': calibration_settings,
 
-            'exposure_duration': spec_doc['exposure_duration'] if 'exposure_duration' in spec_doc else defaults['deepspec']['exposure_duration'],
+            'exposure_duration': spec_doc['exposure_duration'] if 'exposure_duration' in spec_doc else default_common_settings['exposure_duration'],
             'number_of_exposures': spec_doc['number_of_exposures'] if 'number_of_exposures' in spec_doc
-                else defaults['deepspec']['common']['settings']['number_of_exposures'],
+                else default_common_settings['number_of_exposures'],
 
             'spec': {
                 'instrument': instrument,
-                'exposure_duration': spec_doc['exposure_duration'] if 'exposure_duration' in spec_doc else defaults['deepspec']['exposure_duration'],
+                'exposure_duration': spec_doc['exposure_duration'] if 'exposure_duration' in spec_doc else default_common_settings['exposure_duration'],
                 'number_of_exposures': spec_doc['number_of_exposures'] if 'number_of_exposures' in spec_doc
-                    else defaults['deepspec']['common']['settings']['number_of_exposures'],
+                    else default_common_settings['number_of_exposures'],
                 'camera': {}
             }
         }
-        common_camera_settings = deepcopy(defaults['deepspec']['common']['settings'])
+        common_camera_settings = deepcopy(default_common_settings)
 
         # get settings common to all cameras from doc
         for k, v in spec_doc['camera'].items():
@@ -569,8 +570,8 @@ class TaskProduct(BaseModel):
 
 
 async def main():
-    task_file = '/Storage/mast-share/MAST/tasks/assigned/TSK_assigned_highspec_task.toml'
-    # task_file = '/Storage/mast-share/MAST/tasks/assigned/TSK_assigned_deepspec_task.toml'
+    # task_file = '/Storage/mast-share/MAST/tasks/assigned/TSK_assigned_highspec_task.toml'
+    task_file = '/Storage/mast-share/MAST/tasks/assigned/TSK_assigned_deepspec_task.toml'
     try:
         assigned_task: AssignedTaskModel = AssignedTaskModel.from_toml_file(task_file)
     except ValidationError as e:
