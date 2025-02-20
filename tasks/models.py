@@ -124,7 +124,7 @@ def make_spec_model(spec_doc) -> SpectrographModel | None:
         camera_settings: dict = deepcopy(defaults['highspec']['settings'])
         if 'camera' in spec_doc:
             deep_dict_update(camera_settings, spec_doc['camera'])
-        exposure_duration = spec_doc['exposure_duration'] if 'exposure_duration' in spec_doc else defaults['highspec']['exposure_duration']
+        exposure_duration = spec_doc['exposure_duration'] if 'exposure_duration' in spec_doc else defaults['highspec']['settings']['exposure_duration']
         number_of_exposures = spec_doc['number_of_exposures'] if 'number_of_exposures' in spec_doc else defaults['highspec']['settings']['number_of_exposures']
 
         # propagate 'exposure_duration' and 'number_of_exposures' to the camera settings
