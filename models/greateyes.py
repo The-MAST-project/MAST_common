@@ -60,7 +60,6 @@ class GreateyesSettingsModel(BaseModel):
     probe_interval: Optional[float]
     bytes_per_pixel: Optional[Literal[2, 3, 4]]
     safe_fifo_mode: Optional[bool]
-    exposure: Optional[float]     # duration
     temp: Optional[TemperatureSettingsModel]
     crop: Optional[CropModeModel]
     shutter: Optional[ShutterModel]
