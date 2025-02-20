@@ -62,6 +62,7 @@ class ProbingModel(BaseModel):
 
 
 class GreateyesSettingsModel(BaseModel):
+    enabled: Optional[bool] = True
     binning: Optional[BinningModel]
     bytes_per_pixel: Optional[Literal[1, 2, 3, 4]]
     temp: Optional[TemperatureSettingsModel]
