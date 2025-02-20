@@ -124,14 +124,18 @@ def make_spec_model(spec_doc) -> SpectrographModel | None:
         camera_settings: dict = deepcopy(defaults['highspec']['settings'])
         if 'camera' in spec_doc:
             deep_dict_update(camera_settings, spec_doc['camera'])
+        exposure_duration = spec_doc['exposure_duration'] if 'exposure_duration' in spec_doc else defaults['highspec']['exposure_duration']
+        number_of_exposures = spec_doc['number_of_exposures'] if 'number_of_exposures' in spec_doc else defaults['highspec']['settings']['number_of_exposures']
+
+        # propagate 'exposure_duration' and 'number_of_exposures' to the camera settings
+        camera_settings['exposure_duration'] = exposure_duration
+        camera_settings['number_of_exposures'] = number_of_exposures
 
         new_spec_dict = {
             'instrument': instrument,
             'calibration': calibration_settings,
-
-            'exposure': spec_doc['exposure'] if 'exposure' in spec_doc else defaults['highspec']['exposure'],
-            'number_of_exposures': spec_doc['number_of_exposures'] if 'number_of_exposures' in spec_doc
-                else defaults['highspec']['settings']['number_of_exposures'],
+            'exposure_duration': exposure_duration,
+            'number_of_exposures': number_of_exposures,
             'spec': {
                 'instrument': instrument,
                 'disperser': spec_doc['disperser'],
@@ -144,13 +148,13 @@ def make_spec_model(spec_doc) -> SpectrographModel | None:
             'instrument': instrument,
             'calibration': calibration_settings,
 
-            'exposure': spec_doc['exposure'] if 'exposure' in spec_doc else defaults['deepspec']['exposure'],
+            'exposure_duration': spec_doc['exposure_duration'] if 'exposure_duration' in spec_doc else defaults['deepspec']['exposure_duration'],
             'number_of_exposures': spec_doc['number_of_exposures'] if 'number_of_exposures' in spec_doc
                 else defaults['deepspec']['common']['settings']['number_of_exposures'],
 
             'spec': {
                 'instrument': instrument,
-                'exposure': spec_doc['exposure'] if 'exposure' in spec_doc else defaults['deepspec']['exposure'],
+                'exposure_duration': spec_doc['exposure_duration'] if 'exposure_duration' in spec_doc else defaults['deepspec']['exposure_duration'],
                 'number_of_exposures': spec_doc['number_of_exposures'] if 'number_of_exposures' in spec_doc
                     else defaults['deepspec']['common']['settings']['number_of_exposures'],
                 'camera': {}

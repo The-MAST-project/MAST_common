@@ -64,6 +64,8 @@ class GreateyesSettingsModel(BaseModel):
     crop: Optional[CropModeModel]
     shutter: Optional[ShutterModel]
     readout: Optional[ReadoutModel]
+    exposure_duration: Optional[float]
+    number_of_exposures: Optional[int] = 1
 
     # @model_validator(mode='after')
     # def validate_deepsepc_camera(cls, values):
