@@ -1,7 +1,7 @@
 from enum import IntEnum
 from typing import Optional
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, model_validator, field_validator
 from typing_extensions import Literal
 
 class Gain(IntEnum):
@@ -49,20 +49,26 @@ class ReadoutSpeed(IntEnum):
 
 
 class ReadoutModel(BaseModel):
-    amplifiers: ReadoutAmplifiers
+    mode: ReadoutAmplifiers
     speed: ReadoutSpeed
+
+    @field_validator('mode')
+    def readout_validator(cls, value):
+        return value
+
+class ProbingModel(BaseModel):
+    interval: Optional[float]
+    boot_delay: Optional[float]
 
 
 class GreateyesSettingsModel(BaseModel):
     binning: Optional[BinningModel]
-    boot_delay: Optional[float]
-    probe_interval: Optional[float]
-    bytes_per_pixel: Optional[Literal[2, 3, 4]]
-    safe_fifo_mode: Optional[bool]
+    bytes_per_pixel: Optional[Literal[1, 2, 3, 4]]
     temp: Optional[TemperatureSettingsModel]
     crop: Optional[CropModeModel]
     shutter: Optional[ShutterModel]
     readout: Optional[ReadoutModel]
+    probing: Optional[ProbingModel]
     exposure_duration: Optional[float]
     number_of_exposures: Optional[int] = 1
 

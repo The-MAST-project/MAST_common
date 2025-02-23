@@ -5,4 +5,4 @@ from common.models.greateyes import GreateyesSettingsModel
 
 class DeepspecModel(BaseModel):
     instrument: Literal['deepspec']
-    camera: Optional[Dict[str, GreateyesSettingsModel] | GreateyesSettingsModel] = None
+    camera: Optional[Dict[str, GreateyesSettingsModel]] = None

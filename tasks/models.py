@@ -3,6 +3,7 @@ import datetime
 import os.path
 import shutil
 import socket
+import sys
 import time
 import json
 
@@ -32,65 +33,6 @@ from common.utils import CanonicalResponse, deep_dict_update
 
 logger = logging.getLogger('tasks')
 init_log(logger)
-
-
-# class SettingsModel(BaseModel):
-#     name: Union[str, None] = None
-#     ulid: Union[str, None] = None
-#     owner: Optional[str] = None
-#     merit: Union[int, None] = None
-#     state: Literal['new', 'in-progress', 'postponed', 'canceled', 'completed'] = 'new'
-#     timeout_to_guiding: Union[int, None] = None
-#
-#     @field_validator('owner')
-#     def validate_owner(cls, user: str) -> str:
-#         valid_users = Config().get_users()
-#         if user not in valid_users:
-#             raise ValueError(f"Invalid user '{user}'")
-#         user = Config().get_user(user)
-#         if not 'canOwnTasks' in user['capabilities']:
-#             raise ValueError(f"User '{user['name']}' cannot own tasks")
-#         return user['name']
-
-# class SpecificationModel(BaseModel):
-#     ra: Union[float, str, None] = None
-#     dec: Union[float, str, None] = None
-#     requested_units: Union[str, List[str], None] = None
-#     allocated_units: Union[str, List[str], None] = None
-#     quorum: Optional[int] = 1
-#     exposure: Optional[float] = 5 * 60
-#     priority: Optional[Literal['lowest', 'low', 'normal', 'high', 'highest', 'too']] = 'normal'
-#     magnitude: Optional[float]
-#     magnitude_band: Optional[str]
-#
-#     @model_validator(mode='after')
-#     def validate_target(cls, values):
-#         quorum = values.quorum
-#         units = values.requested_units
-#         if len(units) < quorum:
-#             raise ValueError(f"Expected {quorum} units in 'specifications' section, got only {len(units)=} ({units=})")
-#         return values
-#
-#     @field_validator('requested_units', mode='before')
-#     def validate_input_units(cls, specifiers: Union[str, List[str]]) -> List[str]:
-#         success, value = parse_units(specifiers if isinstance(specifiers, list) else [specifiers])
-#         if success:
-#             return [value]
-#         else:
-#             raise ValueError(f"Invalid units specifier '{specifiers}', errors: {value}")
-#
-#     @field_validator('ra', mode='before')
-#     def validate_ra(cls, value):
-#         return Longitude(value, unit=u.hourangle).value if value is not None else None
-#
-#     @field_validator('dec', mode='before')
-#     def validate_dec(cls, value):
-#         return Latitude(value, unit=u.deg).value if value is not None else None
-
-# class TargetModel(BaseModel):
-#     settings: SettingsModel
-#     specification: SpecificationModel
-#     constraints: ConstraintsModel
 
 
 def make_spec_model(spec_doc) -> SpectrographModel | None:
@@ -163,11 +105,6 @@ def make_spec_model(spec_doc) -> SpectrographModel | None:
         }
         common_camera_settings = deepcopy(default_common_settings)
 
-        # get settings common to all cameras from doc
-        for k, v in spec_doc['camera'].items():
-            if k in common_camera_settings:
-                common_camera_settings[k] = spec_doc['camera'][k]
-
         # get band-specific camera settings
         for band in DeepspecBands.__args__:
             band_dict: dict = deepcopy(common_camera_settings)
@@ -183,7 +120,7 @@ def make_spec_model(spec_doc) -> SpectrographModel | None:
     except ValidationError as e:
         print(f"====== ValidationError(s) =======\n")
         for err in e.errors():
-            print(f"[ERR] {err}\n")
+            print(f"[ERR] {json.dumps(err, indent=2)}\n")
         raise
     return spectrograph_model
 
@@ -428,22 +365,22 @@ class AssignedTaskModel(BaseModel, Activities):
                     why_not_operational = response['why_not_operational']
                     logger.info(f"unit '{unit_api.hostname}' ({unit_api.ipaddr}), not operational: {why_not_operational}")
 
-        # if len(operational_unit_apis) < self.task.quorum:
-        #     # not enough units are operational
-        #     self.end_activity(AssignmentActivities.Probing)
-        #     self.end_activity(AssignmentActivities.Executing)
-        #     n_operational_units = len(operational_unit_apis)
-        #     if n_operational_units == 0:
-        #         self.fail(reasons=[f"no operational units (quorum: {self.task.quorum})"])
-        #     else:
-        #         self.fail(reasons=[f"only {n_operational_units} operational units (quorum: {self.task.quorum})"])
-        #     return
-        #
-        # if isinstance(spec_response, Exception):
-        #     logger.error(f"spec api exception: {self.spec_api.ipaddr}, {spec_response=}")
-        # elif spec_response and 'operational' in spec_response and not spec_response['operational']:
-        #     self.fail(reasons=[f"spec is not operational {spec_response['why_not_operational']}"])
-        #     return
+        if self.task.production and len(operational_unit_apis) < self.task.quorum:
+            # not enough units are operational
+            self.end_activity(AssignmentActivities.Probing)
+            self.end_activity(AssignmentActivities.Executing)
+            n_operational_units = len(operational_unit_apis)
+            if n_operational_units == 0:
+                self.fail(reasons=[f"no operational units (quorum: {self.task.quorum})"])
+            else:
+                self.fail(reasons=[f"only {n_operational_units} operational units (quorum: {self.task.quorum})"])
+            return
+
+        if isinstance(spec_response, Exception):
+            logger.error(f"spec api exception: {self.spec_api.ipaddr}, {spec_response=}")
+        elif spec_response and 'operational' in spec_response and not spec_response['operational']:
+            self.fail(reasons=[f"spec is not operational {spec_response['why_not_operational']}"])
+            return
 
         self.end_activity(AssignmentActivities.Probing)
 
@@ -475,7 +412,7 @@ class AssignedTaskModel(BaseModel, Activities):
                 continue
 
         n_committed = len(self.commited_unit_apis)
-        if n_committed < self.task.quorum:
+        if self.task.production and n_committed < self.task.quorum:
             if n_committed == 0:
                 msg = f"no committed units (quorum: {self.task.quorum})"
             else:
@@ -508,7 +445,7 @@ class AssignedTaskModel(BaseModel, Activities):
 
         # get (again) the spectrograph's status and make sure it is operational and not busy
         status = await self.get_spec_status()
-        if not status['operational']:
+        if self.task.production and not status['operational']:
             logger.error(f"spectrograph became non-operational, aborting!")
             self.end_activity(AssignmentActivities.Executing)
             await self.abort()
@@ -575,8 +512,9 @@ async def main():
     try:
         assigned_task: AssignedTaskModel = AssignedTaskModel.from_toml_file(task_file)
     except ValidationError as e:
-        print(e)
-        return
+        # for err in e.errors():
+        #     print('ERR: ' + err)
+        raise
 
     remote_assignment = assigned_task.spec_assignment
     print(remote_assignment.model_dump_json(indent=2))

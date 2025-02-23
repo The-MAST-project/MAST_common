@@ -1,0 +1,174 @@
+#
+# This a template for a Deepspec task file.
+# Optional sections/fields are commented out.
+# All possible sections/fields are detailed in comments, along with the respective valid values and defaults.
+# If you need to set a field to anything other than its default, just un-comment and change it.
+#
+# If you need assistance, theblumz@gmail.com is your friend :-)
+#
+
+#
+# A task:
+# - allocates targets to single or groups of MAST units (telescopes)
+# - specifies the spectrograph assignment (number and duration of exposures, possible camera settings)
+#
+
+#
+# SCENARIO:
+#
+#  When a task (picked by its unique ID) is executed, the following takes place:
+#
+# - A status request is sent to all the requested units, the responding units are considered 'detected_units'.  If less
+#    than the requested quorum respond, the task is 'failed'.
+#
+# - Of all the 'detected_units', if less than the quorum are 'operational', the task is 'failed'.
+#
+# - An 'execute_assignment' is sent to all 'operational_units'.  The units may decide to REJECT the assignment (they may
+#    have become 'non-operational' in the meanwhile).  If less than the quorum accept the assignment, the task is 'failed'.
+#    The units that accepted the assignment are considered the 'comitted_units' and they start the acquisition scenario.
+#
+# - The 'comitted_units' are expected to reach 'guiding' status within the 'timeout_to_guiding' period (seconds, default 600)
+#    If less than the quorum do that, the task is 'failed'.
+#
+# - As soon as the 'committed_units' reach 'guiding', the spectrograph is sent the assignment.  If it rejects it (for any
+#    reason) so the task is 'failed'.
+#
+# - If the spectrograph accepts the assignment, it will start performing the requested number of exposures (each of the
+#    requested duration, with the respective camera settings). All this time the SpectrographActivities.Acquiring will be active.
+#
+# - As soon as the SpectrographActivities.Acquiring ends, the 'committed_units' are sent and abort()
+# - The task is 'completed'.
+#
+# At any given time the task may be 'aborted'.  Abort() calls are sent to all the 'committed_units' and the spectrograph.
+#  The task is 'aborted'
+#
+
+
+[task]
+name = 'Deepspec task template'
+quorum = 1                              # Least number of operational units needed
+production = false                      # When 'false', tasks are sent to units and spec even if they are not 'operational' (for debugging)
+ulid = "01jknm5pywgsh9f3v61w4ybffy"     # Unique ID, automatically created
+file = "/Storage/mast-share/MAST/tasks/assigned/TSK_assigned_deepspec_task.toml" # Automatically set
+
+#
+# Unit assignments:
+#   These are allocations of targets to one or more MAST units.  There may be multiple sections.
+#
+# - The section starts with the 'unit' keyword followed by a unit-specifier string
+# - Formally a unit-specifier may be:
+#   - a comma separated list of one or more unit-specifiers, where each unit-specifier may be:
+#     - a single unit name or number, e.g. [unit.w] or [unit.12]
+#     - a space-separated string of specifiers, e.g. [unit.'wis:w ns:north:2 ns:2-5,7,8-10 nam:17']
+#       this example specifies:
+#           - the unit named 'w' at site named 'wis'
+#           - unit '2' at site 'ns' (Neot Smadar) in the 'north' building
+#           - units '2' to '5', '7', and '8' to '10' at 'ns' (Neot Smadar)
+#           - unit '17' at site 'nam' (Namibia)
+#     The valid sites are defined in the configuration database (currently: 'wis', 'ns' and 'nam').  Each site has its
+#      valid range of unit numbers.
+#     Each site may have one or more buildings (each having a valid range of unit numbers)
+#
+# NOTE(s):
+#  - more than one 'unit' specifiers are allowed, each with (potentially, but not mandatory) its own target
+#
+
+#
+# At least one unit specification is expected
+#
+[unit.w]
+ra = '12:34:56.789'                             # sexagesimal or decimal
+dec = -23.45                                    # sexagesimal or decimal
+
+#
+[spec]
+instrument = 'deepspec'                         # selects the instrument, either 'highspec' or 'deepspec'
+exposure_duration = 3                           # decimal seconds
+number_of_exposures = 3
+
+#
+# If no 'spec.camera' sections are present, all camera settings are taken from the configuration database
+#
+
+#
+# This (optional) section affects settings for ALL the 4 deepspec cameras
+#
+[spec.camera]                                   # for all cameras
+binning = { x = 1, y = 2 }                      # sets all cameras binning
+
+#
+# Per-camera (optional) sections (in this case camera 'G')
+#
+[spec.camera.G]                                 # for the 'G' camera
+binning = { x = 3 }                             # sets horizontal binning to 3
+crop = { enabled=false, col=200, line=100  }    # enables/disables crop mode and boundaries
+readout = { mode = 2, speed = 250 }             # sets readout mode to OSR&OSL and speed t0 250 KHz
+
+#
+# Below is the whole range of DEEPSPEC camera settings, their defaults, and how they can be changed:
+#  The parameters and their values are taken from the Greateyes ELSEi SDK document
+#  The lines marked with '>' are in the actual valid format
+#
+
+[spec.camera.U]
+
+# Binning:
+binning = { x = 1, y = 1 }
+
+# Probing cycle, when a camera is not detected:
+#  - every 'interval' seconds, the camera's power is turned OFF
+#  - after a 'boot_delay' interval (seconds) we try to detect the camera
+probing = { interval = 60, boot_delay = 20 }
+
+# Camera resolution
+bytes_per_pixel = 4        # can be 1, 2, 3 or 4 for 8, 16, 24 or 32 bits-per-pixel (default: 32-bpp)
+
+# TBD
+safe_fifo_mode = false
+
+# Temperature control:
+#  - target_cool: target temperature when cooling down
+#  - target_warm: target temperature when warming up
+#  - check_interval: interval (seconds) between temperature checks to determine if the cooing/warming are done
+temp = { target_cool = -80, target_warm = 0, check_interval = 30.0 }
+
+# Image size (cropping)
+rop = { enabled = false, col = 1056, line = 1027 }
+
+# Shutter control
+#  - if enabled (true by default), the camera automates the shutter opening/closing
+#  - The timings are taken from the Uniblitz CS025 shutter specs
+shutter = { automatic = true, close_time = 12, open_time = 9 }
+
+# Readout mode
+#  - The mode can be either 0 (OSR), 1 (OSL) or 2 (OSR&OSL) (default)
+#  - The speed (in KHz) can be one of: 50, 100, 250 (default), 500, 1000 or 3000
+readout = { mode = 2, speed = 250 }
+
+#
+# ThAr calibration lamp.
+# - If this section is not specified, the lamp is turned OFF
+# - The filter names and their positions in the wheel are taken from the configuration database
+#
+[spec.calibration]
+lamp_on = true                                  # if 'true', a filter must be specified
+filter = 'ND1000'
+
+#
+# The events are automatically added whenever something happens to the task
+#
+[[events]]
+when = "2025-02-11T10:13:31.594660"
+what = "created"
+
+[[events]]
+when = "2025-02-11T10:50:46.644487"
+what = "submitted"
+
+[[events]]
+when = "2025-02-11T10:51:46.644487"
+what = "failed"
+details = [
+    "Unit 'w' died",
+    "deepspec ran out of fuel"
+]
