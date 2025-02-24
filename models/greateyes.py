@@ -72,7 +72,4 @@ class GreateyesSettingsModel(BaseModel):
     probing: Optional[ProbingModel]
     exposure_duration: Optional[float]
     number_of_exposures: Optional[int] = 1
-
-    # @model_validator(mode='after')
-    # def validate_deepsepc_camera(cls, values):
-    #     return values
+    image_file: Optional[str] = None
