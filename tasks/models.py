@@ -507,7 +507,8 @@ class TaskAcquisitionPathNotification(BaseModel):
     """
     initiator: Initiator
     task_id: str
-    path: Optional[str]
+    src: str
+    link: Literal['autofocus', 'acquisition', 'spec']
 
 
 async def main():
