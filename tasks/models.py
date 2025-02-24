@@ -110,6 +110,11 @@ def make_spec_model(spec_doc) -> SpectrographModel | None:
             band_dict: dict = deepcopy(common_camera_settings)
             if 'camera' in spec_doc and band in spec_doc['camera']:
                     deep_dict_update(band_dict, spec_doc['camera'][band])
+
+            # propagate 'exposure_duration' and 'number_of_exposures' to the camera settings
+            band_dict['exposure_duration'] = common_camera_settings['exposure_duration']
+            band_dict['number_of_exposures'] = common_camera_settings['number_of_exposures']
+
             new_spec_dict['spec']['camera'][band] = band_dict
 
     new_spec_dict['instrument'] = instrument
