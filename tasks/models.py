@@ -499,16 +499,15 @@ class AssignedTaskModel(BaseModel, Activities):
         self.end_activity(AssignmentActivities.Aborting)
 
 
-class TaskNotification(BaseModel):
+class TaskAcquisitionPathNotification(BaseModel):
     """
     Sent to the controller by:
     - the units, as soon as they know the path of either an 'autofocus' or 'acquisition' folder
     - the spec, as soon as it has the path of the acquisition
     """
-    unit: str
-    ulid: str
-    type: Literal['autofocus', 'acquisition', 'spec']
-    path: str
+    initiator: Initiator
+    task_id: str
+    path: Optional[str]
 
 
 async def main():
