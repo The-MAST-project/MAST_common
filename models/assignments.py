@@ -35,7 +35,7 @@ class TargetAssignmentModel(BaseModel):
         return float(dec)  # converts np.float64 to float
 
 
-class AssignmentInitiator(BaseModel):
+class Initiator(BaseModel):
     """
     When the data is empty, populate with the local host
     """
@@ -91,7 +91,7 @@ class AssignedTaskSettingsModel(BaseModel):
 
 
 class AssignmentModel(BaseModel):
-    initiator: AssignmentInitiator
+    initiator: Initiator
     task: AssignedTaskSettingsModel
 
 class UnitAssignmentModel(AssignmentModel):
@@ -114,7 +114,7 @@ class HighSpecAssignment(BaseModel):
 
 class SpectrographAssignmentModel(BaseModel):
     instrument: Literal['deepspec', 'highspec']
-    initiator: AssignmentInitiator
+    initiator: Initiator
     task: AssignedTaskSettingsModel
     spec: SpectrographModel
 
