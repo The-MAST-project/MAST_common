@@ -1,6 +1,7 @@
 from enum import IntFlag, auto
 from common.mast_logging import init_log
 import datetime
+from typing import Optional
 
 import logging
 
@@ -36,11 +37,12 @@ class Activities:
         self.activities: IntFlag = Activities.Idle
         self.timings = dict()
 
-    def start_activity(self, activity: IntFlag, existing_ok: bool = False):
+    def start_activity(self, activity: IntFlag, existing_ok: bool = False, label: Optional[str] = None):
         """
         Marks the start of an activity.
         :param activity:
         :param existing_ok: If already in progress don't create a new timing structure
+        :param label: Optional label to prefix to log message
         :return:
         """
         if existing_ok and (self.activities & activity) != 0:
@@ -48,19 +50,27 @@ class Activities:
 
         self.activities |= activity
         self.timings[activity] = Timing()
-        logger.info(f"started activity {activity.__repr__()}")
+        if label:
+            logger.info(f"{label}: started activity {activity.__repr__()}")
+        else:
+            logger.info(f"started activity {activity.__repr__()}")
 
-    def end_activity(self, activity: IntFlag):
+
+    def end_activity(self, activity: IntFlag, label: Optional[str] = None):
         """
         Marks the end of an activity
         :param activity:
+        :param label:
         :return:
         """
         if not self.is_active(activity):
             return
         self.activities &= ~activity
         self.timings[activity].end()
-        logger.info(f"ended activity {activity.__repr__()}, duration={self.timings[activity].duration}")
+        if label:
+            logger.info(f"{label}: ended activity {activity.__repr__()}, duration={self.timings[activity].duration}")
+        else:
+            logger.info(f"ended activity {activity.__repr__()}, duration={self.timings[activity].duration}")
 
     def is_active(self, activity):
         """
