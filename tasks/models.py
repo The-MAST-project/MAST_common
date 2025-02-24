@@ -499,7 +499,7 @@ class AssignedTaskModel(BaseModel, Activities):
         self.end_activity(AssignmentActivities.Aborting)
 
 
-class TaskProduct(BaseModel):
+class TaskNotification(BaseModel):
     """
     Sent to the controller by:
     - the units, as soon as they know the path of either an 'autofocus' or 'acquisition' folder
