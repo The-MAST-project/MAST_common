@@ -1,3 +1,4 @@
+import os
 from abc import abstractmethod
 from threading import Timer, Lock
 import logging
@@ -34,11 +35,6 @@ BASE_CONTROL_PATH = '/mast/api/v1/control'
 PLATE_SOLVING_SHM_NAME = 'PlateSolving_Image'
 
 logger = logging.getLogger('mast.unit.' + __name__)
-
-
-class OperatingMode(Enum):
-    Day = auto(),
-    Night = auto()
 
 
 class RepeatTimer(Timer):
@@ -574,6 +570,27 @@ def canonic_unit_name(name: str) -> str | None:
     else:
         return None
 
+class OperatingMode:
+    """
+    If a 'MAST_DEBUG' environment variable exists, we're operating
+     in 'debug' mode, else in 'production' mode.
+    """
+    _instance = None
+
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            cls._instance = super(OperatingMode, cls).__new__(cls)
+        return cls._instance
+
+    @classmethod
+    @property
+    def production(cls):
+        return not OperatingMode.debug
+
+    @classmethod
+    @property
+    def debug(cls):
+        return 'MAST_DEBUG' in os.environ
 
 if __name__ == '__main__':
     try:
