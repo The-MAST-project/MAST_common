@@ -18,7 +18,7 @@ from common.mast_logging import init_log
 from common.parsers import parse_units
 from typing import Literal, List, Optional, Dict
 from common.models.assignments import RemoteAssignment
-from common.models.assignments import AssignmentInitiator, TargetAssignmentModel, AssignedTaskSettingsModel, \
+from common.models.assignments import Initiator, TargetAssignmentModel, AssignedTaskSettingsModel, \
     UnitAssignmentModel
 from common.spec import DeepspecBands
 from common.models.spectrographs import SpectrographModel
@@ -149,7 +149,7 @@ class AssignedTaskModel(BaseModel, Activities):
     @property
     def unit_assignments(self) -> List[RemoteAssignment]:
         ret: List[RemoteAssignment] = []
-        initiator = AssignmentInitiator.local_machine()
+        initiator = Initiator.local_machine()
         for key in list(self.unit.keys()):
             unit_assignment: UnitAssignmentModel = UnitAssignmentModel(
                 initiator=initiator,
@@ -178,7 +178,7 @@ class AssignedTaskModel(BaseModel, Activities):
         except socket.gaierror:
             ipaddr = None
 
-        initiator = AssignmentInitiator.local_machine()
+        initiator = Initiator.local_machine()
         try:
             spec_model = make_spec_model(self.model_extra['spec'])
             spec_assignment = SpectrographAssignmentModel(
