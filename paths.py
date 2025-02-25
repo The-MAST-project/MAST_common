@@ -110,7 +110,7 @@ class PathMaker:
     @staticmethod
     def make_run_folder():
         daily_run_folder = PathMaker().make_daily_folder_name(root=os.path.join(Filer().shared.root, 'runs'))
-        return os.path.join(daily_run_folder, 'seq=' + PathMaker().make_seq(folder=daily_run_folder))
+        return os.path.join(daily_run_folder, 'run-' + PathMaker().make_seq(folder=daily_run_folder))
 
     @staticmethod
     def make_spec_acquisitions_folder(spec_name: Literal['highspec', 'deepspec']):
