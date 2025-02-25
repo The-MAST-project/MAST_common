@@ -118,7 +118,7 @@ class PathMaker:
             raise Exception(f"bad {spec_name=}, should be one of ['highspec', 'deepspec']")
         folder = PathMaker().make_daily_folder_name(os.path.join(Filer().shared.root))
         folder = os.path.join(folder, spec_name)
-        folder = os.path.join(folder, 'acquisition#' + PathMaker().make_seq(folder, None))
+        folder = os.path.join(folder, 'acquisition-' + PathMaker().make_seq(folder, None))
         os.makedirs(folder, exist_ok=True)
         return folder
 
