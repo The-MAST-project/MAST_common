@@ -3,7 +3,6 @@ import datetime
 import os.path
 import shutil
 import socket
-import sys
 import time
 import json
 
@@ -18,8 +17,7 @@ from common.mast_logging import init_log
 from common.parsers import parse_units
 from typing import Literal, List, Optional, Dict
 from common.models.assignments import RemoteAssignment
-from common.models.assignments import Initiator, TargetAssignmentModel, AssignedTaskSettingsModel, \
-    UnitAssignmentModel
+from common.models.assignments import Initiator, TargetAssignmentModel, AssignedTaskSettingsModel, UnitAssignmentModel
 from common.spec import DeepspecBands
 from common.models.spectrographs import SpectrographModel
 from common.models.assignments import SpectrographAssignmentModel
@@ -229,7 +227,7 @@ class AssignedTaskModel(BaseModel, Activities):
             just_created = True
 
         if just_created:
-            if not 'event' in toml_doc:
+            if not 'events' in toml_doc:
                 toml_doc['events'] = {
                     'when': datetime.datetime.now().isoformat(),
                     'what': 'created'
@@ -287,8 +285,7 @@ class AssignedTaskModel(BaseModel, Activities):
             return status_responses
 
     async def get_spec_status(self) -> dict | None:
-        status_response = await self.spec_api.get(method='status')
-        canonical_response = CanonicalResponse(**status_response)
+        canonical_response = await self.spec_api.get(method='status')
         if not canonical_response.succeeded:
             canonical_response.log(_logger=logger, label='spec')
             await self.abort()
@@ -435,7 +432,7 @@ class AssignedTaskModel(BaseModel, Activities):
             time.sleep(20)
             statuses: List[Dict] = await self.fetch_statuses(self.commited_unit_apis)
             if all([(status['activities'] & UnitActivities.Guiding) for status in statuses]):
-                logger.info(f"all commited units have reached 'Guiding'")
+                logger.info(f"all commited units ({[f'{u.hostname} ({u.ipaddr})' for u in self.commited_unit_apis]}) have reached 'Guiding'")
                 reached_guiding = True
                 break
         self.end_activity(AssignmentActivities.WaitingForGuiding)
@@ -462,11 +459,11 @@ class AssignedTaskModel(BaseModel, Activities):
             await self.abort()
             return
 
-        status_response = await self.spec_api.put(
+        # print(f'spec_assignment ({type(self.spec_assignment)}):\n' + self.spec_assignment.model_dump_json(indent=2))
+        canonical_response = await self.spec_api.put(
             method='execute_assignment',
-            json=self.spec_assignment.assignment.model_dump())
+            json=self.spec_assignment.model_dump())
 
-        canonical_response = CanonicalResponse(**status_response)
         if not canonical_response.succeeded:
             canonical_response.log(_logger=logger, label="spec rejected assignment")
             await self.abort()
@@ -475,7 +472,7 @@ class AssignedTaskModel(BaseModel, Activities):
 
         self.start_activity(AssignmentActivities.WaitingForSpecDone)
         while True:
-            time.sleep(60)
+            time.sleep(20)
             spec_status = await self.get_spec_status()
             if not spec_status['operational']:
                 for err in spec_status['why_not_operational']:
@@ -488,11 +485,14 @@ class AssignedTaskModel(BaseModel, Activities):
                 else:
                     logger.info("ignoring non-operational spec (operating in 'debug' mode)")
 
+            print(json.dumps(spec_status, indent=2))
             if spec_status['activities'] == Activities.Idle:
-                logger.info('spec is done')
+                logger.info('spec is Idle')
                 self.end_activity(AssignmentActivities.WaitingForSpecDone)
                 self.end_activity(AssignmentActivities.Executing)
                 break
+            else:
+                logger.info(f"spec is busy: activities: {spec_status['activities']} ({spec_status['activities_verbal']})")
 
     async def abort(self):
         self.start_activity(AssignmentActivities.Aborting)
