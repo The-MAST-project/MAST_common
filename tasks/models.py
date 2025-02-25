@@ -29,7 +29,7 @@ from pathlib import Path
 from common.activities import UnitActivities, Timing
 from copy import deepcopy
 
-from common.utils import CanonicalResponse, deep_dict_update
+from common.utils import CanonicalResponse, deep_dict_update, OperatingMode
 
 logger = logging.getLogger('tasks')
 init_log(logger)
@@ -480,10 +480,13 @@ class AssignedTaskModel(BaseModel, Activities):
             if not spec_status['operational']:
                 for err in spec_status['why_not_operational']:
                     logger.error(f"spec not operational: {err}")
-                await self.abort()
-                self.end_activity(AssignmentActivities.WaitingForSpecDone)
-                self.end_activity(AssignmentActivities.Executing)
-                return
+                if OperatingMode.production:
+                    await self.abort()
+                    self.end_activity(AssignmentActivities.WaitingForSpecDone)
+                    self.end_activity(AssignmentActivities.Executing)
+                    return
+                else:
+                    logger.info("ignoring non-operational spec (operating in 'debug' mode)")
 
             if spec_status['activities'] == Activities.Idle:
                 logger.info('spec is done')
