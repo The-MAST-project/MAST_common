@@ -359,8 +359,7 @@ class CanonicalResponse(BaseModel):
         if self.is_exception:
             _logger.error(f"{label} => exception: {self.exception}")
         elif self.is_error:
-            for err in self.errors:
-                _logger.error(f"{label} => error: {err}")
+            _logger.error(f"{label} => error(s): {self.errors}")
 
 
 CanonicalResponse_Ok: CanonicalResponse = CanonicalResponse(value='ok')
