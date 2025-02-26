@@ -129,10 +129,15 @@ def make_spec_model(spec_doc) -> SpectrographModel | None:
 
 
 class EventModel(BaseModel):
-    when: str   # datetime.isoformat
-    what: str
+    what: Optional[str] = None
+    details: Optional[List[str]] = None
 
-class AssignedTaskModel(BaseModel, Activities):
+    @computed_field
+    @property
+    def when(self) -> str:
+        return datetime.datetime.now(datetime.UTC).isoformat()
+
+class TaskModel(BaseModel, Activities):
     """
     A task ready for execution (already planned and scheduled)
     """
@@ -192,46 +197,28 @@ class AssignedTaskModel(BaseModel, Activities):
         return RemoteAssignment(hostname=hostname, fqdn=fqdn, ipaddr=ipaddr, assignment=spec_assignment)
 
     @classmethod
-    def from_toml_file(cls,
-                       toml_file: str,
-                       activities = 0,
-                       timings: List[Timing] = None,
-                       commited_unit_apis = None,
-                       unit_assignments = None,
-                       spec_api = None,
-                       spec_assignment = None):
+    def from_toml_file(cls, toml_file: str):
         """
         Loads a TOML model from an assigned-task file.
 
         If the task doesn't have an ulid, allocates one and updates the file.
 
         :param toml_file: an assigned-task file in TOML format
-        :param activities:
-        :param timings:
-        :param commited_unit_apis:
-        :param unit_assignments:
-        :param spec_assignment:
-        :param spec_api:
         :return:
         """
         with open(toml_file, 'r') as fp:
             toml_doc = tomlkit.load(fp)
 
-        just_created = False
+        needs_update = False
         if 'ulid' not in toml_doc['task'] or not toml_doc['task']['ulid']:
             toml_doc['task']['ulid'] = str(ulid.new()).lower()
-            just_created = True
+            needs_update = True
 
         if 'file' not in toml_doc['task'] or not toml_doc['task']['file'] or toml_doc['task']['file'] != toml_file:
             toml_doc['task']['file'] = Path(os.path.realpath(toml_file)).as_posix()
-            just_created = True
+            needs_update = True
 
-        if just_created:
-            if not 'events' in toml_doc:
-                toml_doc['events'] = {
-                    'when': datetime.datetime.now().isoformat(),
-                    'what': 'created'
-                }
+        if needs_update:
             with open(toml_file, 'w') as f:
                 f.write(tomlkit.dumps(toml_doc))
 
@@ -296,24 +283,42 @@ class AssignedTaskModel(BaseModel, Activities):
 
         return canonical_response.value
 
-    def fail(self, reasons: List[str]):
+    def terminate(self, reason: Literal['failed', 'rejected', 'completed'], details: List[str]):
         """
-        Handles failure of an assigned task
-        :param reasons:
+        Handles the task's termination
+        :param reason:
+        :param details:
         :return:
         """
-        # add event to the task
-        logger.error(f"failing task '{self.task.ulid}', reasons:")
-        for reason in reasons:
-            logger.error(f"  {reason}")
+        self.controller.task_in_progress = None
 
-        path = Path(self.model_extra['toml_file'])
-        new_path = Path(os.path.join(path.parent.parent, 'failed', path.name))
+        logger.error(f"terminating task '{self.task.ulid}', {reason=}, {details=}")
+
+        self.add_event(EventModel(what=reason, details=details))
+
+        current_path = Path(self.model_extra['toml_file'])
+        sub_folder = 'failed' if reason in ['failed', 'rejected'] else 'completed'
+        new_path = current_path.parent.parent / sub_folder / current_path.name
         os.makedirs(new_path.parent, exist_ok=True)
-        shutil.move(str(path), str(new_path))
-        logger.info(f"moved task '{self.task.ulid}' from {str(path)} to {str(new_path)}")
+        shutil.move(str(current_path), str(new_path))
+        logger.info(f"moved task '{self.task.ulid}' from {str(current_path)} to {str(new_path)}")
 
-    async def execute(self):
+    def add_event(self, event: EventModel):
+        """
+        Adds an event to the task's history
+        :param event:
+        :return:
+        """
+        file = self.model_extra['toml_file']
+        with open(file, 'r') as f:
+            toml_doc = tomlkit.load(f)
+
+        toml_doc['events'].append(event.model_dump())
+
+        with open(file, 'w') as f:
+            f.write(tomlkit.dumps(toml_doc))
+
+    async def execute(self, controller: 'Controller'):
         """
         Checks if the allocated components (units and spectrograph) are available and operational
         Dispatches assignments to units and waits for a quorum of them to reach 'guiding'
@@ -323,6 +328,7 @@ class AssignedTaskModel(BaseModel, Activities):
         :return:
         """
         self.spec_api = SpecApi(Config().local_site.name)
+        self.controller = controller
         unit_apis = []
         for remote_assignment in self.unit_assignments:
             unit_apis.append(UnitApi(ipaddr=remote_assignment.ipaddr, domain=ApiDomain.Unit))
@@ -331,7 +337,9 @@ class AssignedTaskModel(BaseModel, Activities):
 
         # Phase #1: check the required components are operational
         self.start_activity(AssignmentActivities.Probing)
-        unit_responses, spec_response = await self.fetch_statuses(unit_apis, self.spec_api)
+        canonical_unit_responses: List[CanonicalResponse] = []
+        spec_response: CanonicalResponse | None = None
+        canonical_unit_responses, spec_response = await self.fetch_statuses(unit_apis, self.spec_api)
 
         # see what units respond at all
         detected_unit_apis = [unit_api for unit_api in unit_apis if unit_api.detected]
@@ -340,51 +348,70 @@ class AssignedTaskModel(BaseModel, Activities):
             self.end_activity(AssignmentActivities.Probing)
             self.end_activity(AssignmentActivities.Executing)
             if n_detected == 0:
-                self.fail(reasons=[f"no units quorum, no units were detected (required: {self.task.quorum})"])
+                self.terminate(reason='rejected', details=[f"no units quorum, no units were detected (required: {self.task.quorum})"])
             else:
-                self.fail(reasons=[f"no units quorum, detected only {n_detected} " +
-                           f"({[unit_api.hostname for unit_api in detected_unit_apis]}), required {self.task.quorum}"])
+                self.terminate(reason='rejected', details=[f"no units quorum, detected only {n_detected} " +
+                                   f"({[unit_api.hostname for unit_api in detected_unit_apis]}), required {self.task.quorum}"])
             return
-        logger.info(f"detected units quorum achieved ({n_detected} units detected out of {self.task.quorum} required)")
+        logger.info(f"'detected_units' quorum achieved ({n_detected} units detected out of {self.task.quorum} required)")
 
         if not self.spec_api.detected:
             # spec does not respond
             self.end_activity(AssignmentActivities.Probing)
             self.end_activity(AssignmentActivities.Executing)
-            self.fail(reasons=[f"spec not detected"])
+            self.terminate(reason='rejected', details=[f"spec not detected"])
             return
 
         # enough units were detected (they answered to API calls), now check if they are operational
         operational_unit_apis = []
-        for i, response in enumerate(unit_responses):
+        for i, response in enumerate(canonical_unit_responses):
             unit_api = unit_apis[i]
 
-            if isinstance(response, Exception):     # exception during HTTP fetch
-                logger.error(f"unit '{unit_api.hostname}' ({unit_api.ipaddr}), {response=}")
-            elif isinstance(response, dict) and 'operational' in response:
-                if response['operational']:
-                    operational_unit_apis.append(unit_apis[i])
-                    logger.info(f"unit '{unit_api.hostname}' ({unit_api.ipaddr}), operational")
+            # unit_responses are CanonicalResponse
+            if response.failed:
+                continue
+            unit_status = response.value
+            if unit_status['operational']:
+                operational_unit_apis.append(unit_apis[i])
+                logger.info(f"unit '{unit_api.hostname}' ({unit_api.ipaddr}), operational")
+            else:
+                if OperatingMode.production:
+                    logger.info(f"unit '{unit_api.hostname}' ({unit_api.ipaddr}), not operational: {unit_status['why_not_operational']}")
                 else:
-                    why_not_operational = response['why_not_operational']
-                    logger.info(f"unit '{unit_api.hostname}' ({unit_api.ipaddr}), not operational: {why_not_operational}")
+                    operational_unit_apis.append(unit_apis[i])
+                    logger.info(f"using non-operational unit '{unit_api.hostname}' ({unit_api.ipaddr}), operational")
 
-        if self.task.production and len(operational_unit_apis) < self.task.quorum:
-            # not enough units are operational
+
+        if len(operational_unit_apis) == 0:
+            if OperatingMode.production:
+                self.end_activity(AssignmentActivities.Probing)
+                self.end_activity(AssignmentActivities.Executing)
+                self.terminate(reason='rejected', details=[f"no operational units (quorum: {self.task.quorum})"])
+                return
+        elif len(operational_unit_apis) < self.task.quorum:
+            if OperatingMode.production:
+                self.end_activity(AssignmentActivities.Probing)
+                self.end_activity(AssignmentActivities.Executing)
+                self.terminate(reason='rejected', details=[f"only {len(operational_unit_apis)} operational units (quorum: {self.task.quorum})"])
+                return
+        logger.info(f"continuing with {len(operational_unit_apis)} unit(s) (instead of {self.task.quorum}), operating in 'debug' mode")
+
+        if spec_response.failed:
             self.end_activity(AssignmentActivities.Probing)
             self.end_activity(AssignmentActivities.Executing)
-            n_operational_units = len(operational_unit_apis)
-            if n_operational_units == 0:
-                self.fail(reasons=[f"no operational units (quorum: {self.task.quorum})"])
-            else:
-                self.fail(reasons=[f"only {n_operational_units} operational units (quorum: {self.task.quorum})"])
+            self.terminate(reason='rejected', details=[
+                f"cannot talk to spec '{self.spec_api.hostname} ({self.spec_api.ipaddr}) (errors: {spec_response.errors})"])
             return
 
-        if isinstance(spec_response, Exception):
-            logger.error(f"spec api exception: {self.spec_api.ipaddr}, {spec_response=}")
-        elif spec_response and 'operational' in spec_response and not spec_response['operational']:
-            self.fail(reasons=[f"spec is not operational {spec_response['why_not_operational']}"])
-            return
+        spec_status = spec_response.value
+        if not spec_status['operational']:
+            if OperatingMode.production:
+                self.end_activity(AssignmentActivities.Probing)
+                self.end_activity(AssignmentActivities.Executing)
+                self.terminate(reason='rejected', details=[f"spec is not operational {spec_response['why_not_operational']}"])
+                return
+            else:
+                logger.info(f"continuing with non-operational spec, operating in 'debug' mode")
 
         self.end_activity(AssignmentActivities.Probing)
 
@@ -400,12 +427,11 @@ class AssignedTaskModel(BaseModel, Activities):
                                            sub_url='execute_assignment',
                                            json=unit_assignment.assignment.model_dump()))
                     break
-        unit_responses = await asyncio.gather(*assignment_tasks, return_exceptions=True)
+        canonical_unit_responses = await asyncio.gather(*assignment_tasks, return_exceptions=True)
         self.end_activity(AssignmentActivities.Dispatching)
 
-        for i, response in enumerate(unit_responses):
+        for i, canonical_response in enumerate(canonical_unit_responses):
             try:
-                canonical_response = CanonicalResponse(**response)
                 if canonical_response.succeeded:
                     self.commited_unit_apis.append(operational_unit_apis[i])
                 else:
@@ -416,15 +442,21 @@ class AssignedTaskModel(BaseModel, Activities):
                 continue
 
         n_committed = len(self.commited_unit_apis)
-        if self.task.production and n_committed < self.task.quorum:
-            if n_committed == 0:
-                msg = f"no committed units (quorum: {self.task.quorum})"
-            else:
-                msg = f"only {n_committed} units (quorum: {self.task.quorum})"
-            self.fail(reasons=[msg])
+        if n_committed == 0:
+            self.terminate(reason='rejected', details=[f"no committed units (quorum: {self.task.quorum})"])
             self.end_activity(AssignmentActivities.Dispatching)
             self.end_activity(AssignmentActivities.Executing)
             return
+        elif n_committed < self.task.quorum:
+            if OperatingMode.production:
+                self.terminate(reason='rejected', details=[f"only {n_committed} units (quorum: {self.task.quorum})"])
+                self.end_activity(AssignmentActivities.Dispatching)
+                self.end_activity(AssignmentActivities.Executing)
+                return
+        else:
+            logger.info(f"continuing with only {n_committed} 'committed_units' (instead of {self.task.quorum}) (operating in 'debug' mode)")
+
+        self.add_event(EventModel(what='submitted', details=[f"committed_units: {[api.hostname for api in self.commited_unit_apis]}"]))
 
         # the units are committed to their assignments, now wait for them to reach 'guiding'
         start = datetime.datetime.now()
@@ -440,7 +472,7 @@ class AssignedTaskModel(BaseModel, Activities):
         self.end_activity(AssignmentActivities.WaitingForGuiding)
 
         if not reached_guiding:
-            self.fail(reasons=[f"did not reach 'guiding' within {self.task.timeout_to_guiding} seconds"])
+            self.terminate(reason='failed', details=[f"did not reach 'guiding' within {self.task.timeout_to_guiding} seconds"])
             self.end_activity(AssignmentActivities.Executing)
             await self.abort()
             return
@@ -513,7 +545,7 @@ class TaskAcquisitionPathNotification(BaseModel):
     initiator: Initiator
     task_id: str
     src: str
-    link: Literal['autofocus', 'acquisition', 'spec']
+    link: Literal['autofocus', 'acquisition', 'deepspec', 'highspec']
 
 
 async def main():
