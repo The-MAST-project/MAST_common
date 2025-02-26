@@ -17,7 +17,7 @@ from common.mast_logging import init_log
 from common.parsers import parse_units
 from typing import Literal, List, Optional, Dict
 from common.models.assignments import RemoteAssignment
-from common.models.assignments import Initiator, TargetAssignmentModel, AssignedTaskSettingsModel, UnitAssignmentModel
+from common.models.assignments import Initiator, TargetModel, TaskSettingsModel, UnitAssignmentModel
 from common.spec import DeepspecBands
 from common.models.spectrographs import SpectrographModel
 from common.models.assignments import SpectrographAssignmentModel
@@ -138,8 +138,8 @@ class AssignedTaskModel(BaseModel, Activities):
     """
     model_config = ConfigDict(extra='allow')
 
-    unit: Dict[str, TargetAssignmentModel]              # indexed by unit name, per-unit target assignment(s)
-    task: AssignedTaskSettingsModel                     # general task stuff (ulid, etc.)
+    unit: Dict[str, TargetModel]                        # indexed by unit name, per-unit target assignment(s)
+    task: TaskSettingsModel                             # general task stuff (ulid, etc.)
     events: Optional[List[EventModel]] = None           # things that happened to this task
     constraints: Optional[ConstraintsModel] = None
 
@@ -151,7 +151,7 @@ class AssignedTaskModel(BaseModel, Activities):
         for key in list(self.unit.keys()):
             unit_assignment: UnitAssignmentModel = UnitAssignmentModel(
                 initiator=initiator,
-                target=TargetAssignmentModel(ra=self.unit[key].ra, dec=self.unit[key].dec),
+                target=TargetModel(ra=self.unit[key].ra, dec=self.unit[key].dec),
                 task=self.task
             )
 
@@ -235,14 +235,16 @@ class AssignedTaskModel(BaseModel, Activities):
             with open(toml_file, 'w') as f:
                 f.write(tomlkit.dumps(toml_doc))
 
-        new_task = AssignedTaskModel(**toml_doc,
-                       toml_file=toml_file,
-                       activities=0,
-                       timings={},
-                       commited_unit_apis=[],
-                       unit_assignments=[],
-                       spec_assignment=None,
-                       spec_api=None)
+        new_task = TaskModel(**toml_doc,
+                             toml_file=toml_file,
+                             activities=0,
+                             timings={},
+                             commited_unit_apis=[],
+                             unit_assignments=[],
+                             spec_assignment=None,
+                             spec_api=None)
+        if not 'events' in toml_doc:
+            new_task.add_event(EventModel(what='created'))
 
         return new_task
 
@@ -518,7 +520,7 @@ async def main():
     # task_file = '/Storage/mast-share/MAST/tasks/assigned/TSK_assigned_highspec_task.toml'
     task_file = '/Storage/mast-share/MAST/tasks/assigned/TSK_assigned_deepspec_task.toml'
     try:
-        assigned_task: AssignedTaskModel = AssignedTaskModel.from_toml_file(task_file)
+        assigned_task: TaskModel = TaskModel.from_toml_file(task_file)
     except ValidationError as e:
         # for err in e.errors():
         #     print('ERR: ' + err)

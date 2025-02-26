@@ -2,7 +2,7 @@ from common.config import Config, WEIZMANN_DOMAIN
 from common.parsers import parse_units
 from common.spec import Disperser
 import socket
-from typing import List, Optional, Any, Literal, Union
+from typing import List, Optional, Literal, Union
 from pydantic import BaseModel, computed_field, field_validator, model_validator, Field
 import astropy.coordinates
 from common.models.deepspec import DeepspecModel
@@ -10,7 +10,7 @@ from common.models.highspec import HighspecModel
 from common.models.spectrographs import SpectrographModel
 
 
-class TargetAssignmentModel(BaseModel):
+class TargetModel(BaseModel):
     ra: Union[str, float] = Field(description='RighAscension [sexagesimal or decimal]')
     dec: Union[str, float] = Field(description='Declination [sexagesimal or decimal]')
 
@@ -78,7 +78,7 @@ class Initiator(BaseModel):
         return cls(hostname=hostname, fqdn=fqdn, ipaddr=ipaddr)
 
 
-class AssignedTaskSettingsModel(BaseModel):
+class TaskSettingsModel(BaseModel):
     ulid: Optional[str] = Field(default=None, description='Unique ID')
     file: Optional[str] = None
     owner: Optional[str] = None
@@ -92,10 +92,10 @@ class AssignedTaskSettingsModel(BaseModel):
 
 class AssignmentModel(BaseModel):
     initiator: Initiator
-    task: AssignedTaskSettingsModel
+    task: TaskSettingsModel
 
 class UnitAssignmentModel(AssignmentModel):
-    target: TargetAssignmentModel
+    target: TargetModel
 
     @computed_field
     def autofocus(self) -> bool:
@@ -115,7 +115,7 @@ class HighSpecAssignment(BaseModel):
 class SpectrographAssignmentModel(BaseModel):
     instrument: Literal['deepspec', 'highspec']
     initiator: Initiator
-    task: AssignedTaskSettingsModel
+    task: TaskSettingsModel
     spec: SpectrographModel
 
 
