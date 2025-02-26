@@ -7,7 +7,6 @@ import inspect
 from multiprocessing import shared_memory
 import re
 from abc import ABC
-import sys
 from common.activities import Activities
 from common.filer import Filer
 from common.paths import PathMaker
@@ -18,9 +17,8 @@ import subprocess
 import traceback
 
 import datetime
-from typing import List, Any, Optional, Union, NamedTuple
+from typing import List, Any, Optional, NamedTuple
 from pydantic import BaseModel
-from enum import Enum, auto
 
 import astropy.units as u
 
@@ -385,9 +383,9 @@ class UnitRoi:
     width: int
     height: int
 
-    def __init__(self, x: int, y: int, width: int, height: int):
-        self.x = x
-        self.y = y
+    def __init__(self, _x: int, _y: int, width: int, height: int):
+        self.x = _x
+        self.y = _y
         self.width = width
         self.height = height
 
@@ -506,8 +504,8 @@ def cygpath(path: str, to_windows: bool = False) -> str | None:
                                 check=True
                                 )
         return result.stdout.strip()
-    except subprocess.CalledProcessError as e:
-        print(f"Error: {e.stderr.strip()}")
+    except subprocess.CalledProcessError as ex:
+        print(f"Error: {ex.stderr.strip()}")
         return None
 
 
@@ -531,8 +529,8 @@ def wslpath(path: str, to_windows: bool = False) -> str | None:
                                 check=True
                                 )
         return result.stdout.strip().replace('.localhost', r'$')
-    except subprocess.CalledProcessError as e:
-        print(f"Error: {e.stderr.strip()}")
+    except subprocess.CalledProcessError as ex:
+        print(f"Error: {ex.stderr.strip()}")
         return None
 
 
@@ -569,6 +567,7 @@ def canonic_unit_name(name: str) -> str | None:
     else:
         return None
 
+
 class OperatingMode:
     """
     If a 'MAST_DEBUG' environment variable exists, we're operating
@@ -590,6 +589,7 @@ class OperatingMode:
     @property
     def debug(cls):
         return 'MAST_DEBUG' in os.environ
+
 
 if __name__ == '__main__':
     try:

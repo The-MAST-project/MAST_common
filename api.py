@@ -1,6 +1,4 @@
-import select
 import socket
-import asyncio
 import httpx
 from common.utils import BASE_UNIT_PATH, BASE_SPEC_PATH, BASE_CONTROL_PATH, CanonicalResponse, function_name
 from common.mast_logging import init_log
@@ -108,7 +106,7 @@ class ApiClient:
 
         if self.ipaddr is not None and hostname is None:
             try:
-                hostname, _, _  = socket.gethostbyaddr(self.ipaddr)
+                hostname, _, _ = socket.gethostbyaddr(self.ipaddr)
                 self.hostname = hostname
             except socket.herror:
                 self.hostname = None
@@ -210,7 +208,7 @@ class ApiClient:
                 else:
                     self.append_error(f"{op}: got a canonical response but fields " +
                                       f"'exception', 'errors' and 'value' are all None")
-                    return  CanonicalResponse(errors=self.errors)
+                    return CanonicalResponse(errors=self.errors)
             else:
                 value = response_dict
                 logger.error(f"{op}: received NON canonical response, returning it as 'value'")
@@ -286,7 +284,7 @@ def main():
         pass
 
     try:
-        bad = ApiClient(hostname='mast01', device='screwdriver')
+        ApiClient(hostname='mast01', device='screwdriver')
     except Exception as ex:
         print(f"exception: {ex}")
 

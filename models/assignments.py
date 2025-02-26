@@ -11,7 +11,7 @@ from common.models.spectrographs import SpectrographModel
 
 
 class TargetModel(BaseModel):
-    ra: Union[str, float] = Field(description='RighAscension [sexagesimal or decimal]')
+    ra: Union[str, float] = Field(description='RightAscension [sexagesimal or decimal]')
     dec: Union[str, float] = Field(description='Declination [sexagesimal or decimal]')
 
     @field_validator('ra')
@@ -84,7 +84,8 @@ class TaskSettingsModel(BaseModel):
     owner: Optional[str] = None
     merit: Optional[int] = 1
     quorum: Optional[int] = Field(default=1, description='Least number of units')
-    timeout_to_guiding: Optional[int] = Field(default=600, description="How long [seconds] to wait for all units to achieve 'guiding'")
+    timeout_to_guiding: Optional[int] = Field(default=600,
+                                              description="How long to wait for all units to achieve 'guiding'")
     autofocus: Optional[bool] = Field(default=False, description="Should the units start with 'autofocus'")
     run_folder: Optional[str] = None
     production: Optional[bool] = Field(default=True, description="if 'false' some availability tests are more relaxed")
@@ -93,6 +94,7 @@ class TaskSettingsModel(BaseModel):
 class AssignmentModel(BaseModel):
     initiator: Initiator
     task: TaskSettingsModel
+
 
 class UnitAssignmentModel(AssignmentModel):
     target: TargetModel
@@ -105,6 +107,7 @@ class UnitAssignmentModel(AssignmentModel):
 class DeepSpecAssignment(BaseModel):
     instrument: Literal['deepspec']
     settings: Optional[DeepspecModel]
+
 
 class HighSpecAssignment(BaseModel):
     instrument: Literal['highspec']
@@ -151,8 +154,8 @@ class RemoteAssignment(BaseModel):
 
     @classmethod
     def from_units_specifier(cls,
-                  units_specifier: str | List[str],
-                  assignment) -> List["RemoteAssignment"]:
+                             units_specifier: str | List[str],
+                             assignment) -> List["RemoteAssignment"]:
         if isinstance(units_specifier, str):
             units_specifier = [units_specifier]
         ret: List[RemoteAssignment] = []
@@ -161,4 +164,3 @@ class RemoteAssignment(BaseModel):
             if remote:
                 ret.append(remote)
         return ret
-
