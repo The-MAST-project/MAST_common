@@ -135,20 +135,26 @@ def parse_unit_ids(units_spec: str) -> List[str]:
 
 
 def sexagesimal_hours_to_decimal(value: str | float) -> float:
-    ret: float = float('NaN')
+    if isinstance(value, str):
+        value = value.strip()
     try:
-        return astropy.coordinates.Longitude(value, unit=u.hourangle)
-    except:
+        return astropy.coordinates.Longitude(value, unit=u.hourangle).value
+    except ValueError as e:
+        logger.error(f"sexagesimal_hours_to_decimal: bad input '{value}'")
         raise
 
 
 def sexagesimal_degrees_to_decimal(value: str | float) -> float:
+    if isinstance(value, str):
+        value = value.strip()
     try:
-        return astropy.coordinates.Latitude(value, unit=u.deg)
-    except:
+        return astropy.coordinates.Latitude(value, unit=u.deg).value
+    except ValueError as e:
+        logger.error(f"sexagesimal_degrees_to_decimal: bad input '{value}'")
         raise
 
 
 if __name__ == '__main__':
-    units = parse_units(['w', 'ns:10-12', 'ns:1,3,5', 'ns:south:3-5'])
-    print(units)
+    # units = parse_units(['w', 'ns:10-12', 'ns:1,3,5', 'ns:south:3-5'])
+    # print(units)
+    print(sexagesimal_degrees_to_decimal('2:53:32.8 '))
