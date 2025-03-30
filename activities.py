@@ -147,6 +147,7 @@ class StageActivities(IntFlag):
     StartingUp = auto()
     ShuttingDown = auto()
     Moving = auto()
+    Homing = auto()
 
 class SpecActivities(IntFlag):
     StartingUp = auto()
