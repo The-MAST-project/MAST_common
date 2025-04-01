@@ -41,11 +41,11 @@ class Filer:
     def __init__(self, logger = None):
         sys = platform.system()
         if sys == 'Windows':
-            self.local = Location('C:\\', 'MAST\\')
-            self.shared = Location('Z:\\', f"MAST\\{socket.gethostname()}\\") if is_windows_drive_mapped('Z:') \
-                else Location('C:\\', 'MAST\\')
-            self.ram = Location('D:\\', 'MAST\\') if is_windows_drive_mapped('D:') \
-                else Location('C:\\', 'MAST\\')
+            self.local = Location('C:/', 'MAST/')
+            self.shared = Location('Z:/', f"MAST/{socket.gethostname()}/") if is_windows_drive_mapped('Z:') \
+                else Location('C:/', 'MAST/')
+            self.ram = Location('D:/', 'MAST/') if is_windows_drive_mapped('D:') \
+                else Location('C:/', 'MAST/')
         elif sys == 'Linux':
             self.local = Location(None, '/Storage/mast-share/MAST')
             self.shared = self.local
