@@ -3,11 +3,12 @@ import socket
 import pymongo
 from pymongo.errors import ConnectionFailure, PyMongoError
 import logging
-from typing import List
+from typing import List, Optional
 from common.utils import deep_dict_update, deep_dict_difference, deep_dict_is_empty
 from common.mast_logging import init_log
 from copy import deepcopy
 from cachetools import TTLCache, cached
+from pydantic import BaseModel, computed_field, ConfigDict, model_validator
 
 logger = logging.getLogger('mast.unit.' + __name__)
 init_log(logger)
@@ -27,79 +28,69 @@ service_cache = TTLCache(maxsize=100, ttl=30)
 logging.getLogger('pymongo').setLevel(logging.WARNING)
 
 
-class Building:
-    def __init__(self, conf: dict):
-        self.names = conf['names']
-        self.units: List[str] = []
+def normalize_unit_specifier(spec, project: str = None) -> List[str]:
+    """"""
+    ret = []
+    specs = []
+    if isinstance(spec, list):
+        specs = spec
+    elif isinstance(spec, str) and ',' in spec:
+        specs = spec.split(',')
+    elif isinstance(spec, str) and '-' in spec:
+        low, high = spec.split('-')
+        if low.isdigit() and high.isdigit():
+            for i in range(int(low), int(high) + 1):
+                specs.append(str(i))
+    else:
+        specs = [spec]
 
-        units_spec: str = conf['units']
-        for spec in units_spec.split(','):
-            if '-' in spec:
-                word = spec.split('-')
-                if word[0].isdigit() and word[1].isdigit():
-                    for i in range(int(word[0]), int(word[1])+1):
-                        self.units.append(str(i))
+    for specifier in specs:
+        if isinstance(specifier, int):
+            ret.append(f"{project}{specifier:02}")
+        else:
+            if not specifier.startswith(project):
+                ret.append(
+                    f"{project}{int(specifier):02}" if specifier.isdigit() else f"{project}{specifier}")
             else:
-                self.units.append(spec)
+                ret.append(specifier)
+    return ret
+
+class Building(BaseModel):
+    names: List[str]
+    unit_ids: str | List[str]
+    units: Optional[List[str]] = None
+    model_config = ConfigDict(extra='allow')
+
+    @model_validator(mode='after')
+    def validate_building(self):
+        # self.unit_ids = normalize_unit_specifier(self.unit_ids)
+        return self
 
 
-class Site:
+class Site(BaseModel):
+    name: str
+    project: str
+    deployed_units: List[str] = []
+    planned_units: List[str] = []
+    units_in_maintenance: List[str] = []
+    controller_host: str
+    spec_host: str
+    domain: str
+    local: bool = False
+    location: str = 'Unknown'
+    buildings: List[Building] = []
+    unit_ids: str | List[str]
 
-    def __init__(self, conf: dict):
-        self.name = conf['name'] if 'name' in conf else None
-        self.project = conf['project'] if 'project' in conf else None
-        self.deployed_units: List[str] = conf['deployed']
-        self.planned_units: List[str] = conf['planned']
-        self.units_in_maintenance: List[str] = conf['maintenance']
-        self.controller_host = conf['controller_host'] if 'controller_host' in conf else None
-        self.spec_host = conf['spec_host'] if 'spec_host' in conf else None
-        self.domain = conf['domain'] if 'domain' in conf else None
-        self.local = True if 'local' in conf and conf['local'] else False
-        self.location = conf['location'] if 'location' in conf else 'Unknown Location'
-        self.buildings: List[Building] = []
-        for b in conf['buildings']:
-            self.buildings.append(Building(b))
+    @model_validator(mode="after")
+    def validate_site(self):
 
-        # Unit ids may be 1,3,5-7,xyz or just 1-20
-        unit_ids = conf['units']
-        self.valid_ids: List[str] = []
-        word: str = ''
-        for word in unit_ids.split(','):
-            word = word.strip()
-            if word.isdigit():
-                self.valid_ids.append(word)
-            elif '-' in word:
-                sub_word = word.split('-')
-                if len(sub_word) == 2 and sub_word[0].isdigit() and sub_word[1].isdigit():
-                    for i in range(int(sub_word[0]), int(sub_word[1])+1):
-                        self.valid_ids.append(str(i))
-            else:
-                self.valid_ids.append(word)
-
-        full_ids: List[str] = []
-        for i in self.valid_ids:
-            full_ids.append(f"{self.project}{int(i):02}" if i.isdigit() else f"{self.project}{i}")
-        self.valid_ids += full_ids
-
-
-
-    def to_json(self):
-        return json.dumps(self.__dict__)
-
-    def to_dict(self):
-        return {
-        'name': self.name,
-        'project_name': self.project,
-        'deployed_units': self.deployed_units,
-        'planned_units': self.planned_units,
-        'units_in_maintenance': self.units_in_maintenance,
-        'controller_host': self.controller_host,
-        'spec_host': self.spec_host,
-        'domain': self.domain,
-        'local': self.local,
-        'location': self.location,
-        'valid_ids': self.valid_ids,
-        }
+        self.deployed_units = normalize_unit_specifier(self.deployed_units, self.project)
+        self.planned_units = normalize_unit_specifier(self.planned_units, self.project)
+        self.units_in_maintenance = normalize_unit_specifier(self.units_in_maintenance, self.project)
+        self.unit_ids = normalize_unit_specifier(self.unit_ids, self.project)
+        for building in self.buildings:
+            building.units = normalize_unit_specifier(building.unit_ids, self.project)
+        return self
 
 
 class Config:
@@ -182,11 +173,12 @@ class Config:
                 logger.error(f"save_unit_config: failed to update unit config for {unit_name=} with {difference=}")
 
     @cached(sites_cache)
-    def get_sites(self) -> dict:
-        ret = {}
+    def get_sites(self) -> List[Site]:
+        ret = []
         for d in self.db['sites'].find():
-            site_name = d['name']
-            ret[site_name] = {k: v for k, v in d.items() if k != '_id'}
+            del d["_id"]
+            site = Site(**d)
+            ret.append(site)
         return ret
 
     @cached(specs_cache)
@@ -271,12 +263,7 @@ class Config:
 
     @property
     def sites(self) -> List[Site]:
-        conf: dict = self.get_sites()
-        sites: List[Site] = []
-        for name in list(conf.keys()):
-            sites.append(Site(conf[name]))
-
-        return sites
+        return self.get_sites()
 
     @property
     def local_site(self) -> Site:
