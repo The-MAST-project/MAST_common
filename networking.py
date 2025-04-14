@@ -53,7 +53,7 @@ class NetworkDestination:
                         raise
 
         self.ipaddr: str = str(ipaddr)
-        self.hostname: str | None = hostname[0] if isinstance(hostname, list) else None
+        self.hostname: str | None = hostname[0] if isinstance(hostname, list) else hostname
         self.port: int = port
 
     def __repr__(self):
