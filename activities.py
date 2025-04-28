@@ -55,6 +55,11 @@ class Activities:
         else:
             logger.info(f"started activity {activity.__repr__()}")
 
+        data = ActivityNotification(
+            activity=activity,
+            activity_verbal=activity.__repr__(),
+            started=True).model_dump_json()
+        asyncio.run(ControllerApi('wis').client.put('activity_notification', data=data))
 
     def end_activity(self, activity: IntFlag, label: Optional[str] = None):
         """
@@ -67,10 +72,18 @@ class Activities:
             return
         self.activities &= ~activity
         self.timings[activity].end()
-        if label:
-            logger.info(f"{label}: ended activity {activity.__repr__()}, duration={self.timings[activity].duration}")
-        else:
-            logger.info(f"ended activity {activity.__repr__()}, duration={self.timings[activity].duration}")
+
+        duration = humanfriendly.format_timespan(self.timings[activity].duration.total_seconds())
+
+        label = label + ': ' if label else ''
+        logger.info(f"{label}ended activity {activity.__repr__()}, duration='{duration}'")
+
+        data = ActivityNotification(
+            activity=int(activity),
+            activity_verbal=activity.__repr__(),
+            started=False,
+            duration=duration).model_dump_json()
+        asyncio.run(ControllerApi('wis').client.put('activity_notification', data=data))
 
     def is_active(self, activity):
         """
