@@ -1,12 +1,29 @@
+import socket
 from enum import IntFlag, auto
 from common.mast_logging import init_log
 import datetime
-from typing import Optional
+from typing import Optional, Dict
+from pydantic import BaseModel
+from common.api import ControllerApi
+import asyncio
+import humanfriendly
 
 import logging
 
 logger = logging.Logger('mast.' + __name__)
 init_log(logger)
+
+hostname = None
+if not hostname:
+    hostname = socket.gethostname()
+
+
+class ActivityNotification(BaseModel):
+    initiator: str = hostname
+    activity: int
+    activity_verbal: str
+    started: bool = False
+    duration: Optional[str] = None
 
 
 class Timing:
@@ -35,7 +52,7 @@ class Activities:
 
     def __init__(self):
         self.activities: IntFlag = Activities.Idle
-        self.timings = dict()
+        self.timings: Dict[IntFlag, Timing] = {}
 
     def start_activity(self, activity: IntFlag, existing_ok: bool = False, label: Optional[str] = None):
         """
@@ -162,17 +179,20 @@ class StageActivities(IntFlag):
     Moving = auto()
     Homing = auto()
 
+
 class SpecActivities(IntFlag):
     StartingUp = auto()
     ShuttingDown = auto()
     Positioning = auto()
     Exposing = auto()
 
+
 class DeepspecActivities(IntFlag):
     CoolingDown = auto()
     WarmingUp = auto()
     Acquiring = auto()
     Positioning = auto()
+
 
 class HighspecActivities(IntFlag):
     CoolingDown = auto()
