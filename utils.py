@@ -6,8 +6,6 @@ from astropy.coordinates import Angle
 import inspect
 from multiprocessing import shared_memory
 import re
-from abc import ABC
-from common.activities import Activities
 from common.filer import Filer
 from common.paths import PathMaker
 from common.camera import CameraBinning, CameraRoi
