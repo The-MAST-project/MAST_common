@@ -6,6 +6,7 @@ import win32com.client
 from common.utils import CanonicalResponse, CanonicalResponse_Ok
 from common.mast_logging import init_log
 from abc import ABC, abstractmethod
+from pydantic import BaseModel
 
 logger = logging.getLogger('mast.unit.' + __name__)
 init_log(logger)
@@ -17,6 +18,17 @@ def ascom_driver_info(driver):
         'description': driver.Description,
         'version': driver.DriverVersion,
     }
+
+
+class AscomDriverInfoModel(BaseModel):
+    name: str
+    description: str
+    version: str
+    connected: bool = False
+
+
+class AscomStatus(BaseModel):
+    ascom: AscomDriverInfoModel
 
 
 class AscomDispatcher(ABC):
@@ -31,13 +43,11 @@ class AscomDispatcher(ABC):
     def ascom(self) -> win32com.client.Dispatch:
         pass
 
-    def ascom_status(self) -> dict:
-        ret = {
-            'ascom': ascom_driver_info(self.ascom)
-        }
+    def ascom_status(self) -> AscomStatus:
+        info = ascom_driver_info(self.ascom)
         response = ascom_run(self, 'Connected')
-        ret['ascom']['connected'] = response.value if response.succeeded else 'unknown'
-        return ret
+        info['connected'] = response.value if response.succeeded else 'unknown'
+        return AscomStatus(ascom=AscomDriverInfoModel(**info))
 
 
 def ascom_run(o: AscomDispatcher, sentence: str, no_entry_log=True) -> CanonicalResponse:
