@@ -5,12 +5,14 @@ import socket
 from common.config import Config
 from common.mast_logging import init_log
 from common.networking import WEIZMANN_DOMAIN
-from common.utils import function_name, canonic_unit_name, Component, RepeatTimer
+from common.utils import function_name, canonic_unit_name, RepeatTimer
+from common.components import Component
 import httpx
 import logging
 import time
 from threading import Lock
 from enum import IntFlag, auto
+from pydantic import BaseModel
 
 TriStateBool = bool | None
 
@@ -287,6 +289,10 @@ class PowerSwitchFactory:
         pass
 
 
+class PowerStatus(BaseModel):
+    powered: bool = False
+
+
 class OutletDomain(IntFlag):
     Unit = auto()
     Spec = auto()
@@ -402,10 +408,11 @@ class SwitchedOutlet:
         state = self.power_switch.get_outlet_state(self.outlet_name)
         return state == False
 
-    def power_status(self):
-        return {
-            'powered': self.is_on(),
-        }
+    def power_status(self) -> PowerStatus:
+        # return {
+        #     'powered': self.is_on(),
+        # }
+        return PowerStatus(powered=self.is_on())
 
 
 if __name__ == '__main__':
