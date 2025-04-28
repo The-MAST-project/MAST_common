@@ -1,5 +1,4 @@
 import os
-from abc import abstractmethod
 from threading import Timer, Lock
 import logging
 from astropy.coordinates import Angle
