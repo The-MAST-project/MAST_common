@@ -171,8 +171,8 @@ def store_params(memory: shared_memory.SharedMemory, d: dict):
     memory.buf[:len(data)] = bytearray(data.encode(encoding='utf-8'))
 
 
-def time_stamp(d: dict):
-    d['time_stamp'] = datetime.datetime.now().isoformat()
+def time_stamp():
+    return datetime.datetime.now().isoformat()
 
 
 def function_name():
