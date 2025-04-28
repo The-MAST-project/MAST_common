@@ -23,37 +23,9 @@ specs_cache = TTLCache(maxsize=100, ttl=30)
 service_cache = TTLCache(maxsize=100, ttl=30)
 
 
-# Enable debug logging for PyMongo
-# logging.basicConfig(level=logging.DEBUG)
+# Enable warning logging for PyMongo
 logging.getLogger('pymongo').setLevel(logging.WARNING)
 
-
-def normalize_unit_specifier(spec, project: str = None) -> List[str]:
-    """"""
-    ret = []
-    specs = []
-    if isinstance(spec, list):
-        specs = spec
-    elif isinstance(spec, str) and ',' in spec:
-        specs = spec.split(',')
-    elif isinstance(spec, str) and '-' in spec:
-        low, high = spec.split('-')
-        if low.isdigit() and high.isdigit():
-            for i in range(int(low), int(high) + 1):
-                specs.append(str(i))
-    else:
-        specs = [spec]
-
-    for specifier in specs:
-        if isinstance(specifier, int):
-            ret.append(f"{project}{specifier:02}")
-        else:
-            if not specifier.startswith(project):
-                ret.append(
-                    f"{project}{int(specifier):02}" if specifier.isdigit() else f"{project}{specifier}")
-            else:
-                ret.append(specifier)
-    return ret
 
 class Building(BaseModel):
     names: List[str]
@@ -81,15 +53,41 @@ class Site(BaseModel):
     buildings: List[Building] = []
     unit_ids: str | List[str]
 
+    def normalize_unit_specifier(self, spec) -> List[str]:
+        """"""
+        ret = []
+        specs = []
+        if isinstance(spec, list):
+            specs = spec
+        elif isinstance(spec, str) and ',' in spec:
+            specs = spec.split(',')
+        elif isinstance(spec, str) and '-' in spec:
+            low, high = spec.split('-')
+            if low.isdigit() and high.isdigit():
+                for i in range(int(low), int(high) + 1):
+                    specs.append(str(i))
+        else:
+            specs = [spec]
+
+        for specifier in specs:
+            if isinstance(specifier, int):
+                ret.append(f"{self.project}{specifier:02}")
+            else:
+                if not specifier.startswith(self.project):
+                    ret.append(
+                        f"{self.project}{int(specifier):02}" if specifier.isdigit() else f"{self.project}{specifier}")
+                else:
+                    ret.append(specifier)
+        return ret
+
     @model_validator(mode="after")
     def validate_site(self):
-
-        self.deployed_units = normalize_unit_specifier(self.deployed_units, self.project)
-        self.planned_units = normalize_unit_specifier(self.planned_units, self.project)
-        self.units_in_maintenance = normalize_unit_specifier(self.units_in_maintenance, self.project)
-        self.unit_ids = normalize_unit_specifier(self.unit_ids, self.project)
+        self.deployed_units = self.normalize_unit_specifier(self.deployed_units)
+        self.planned_units = self.normalize_unit_specifier(self.planned_units)
+        self.units_in_maintenance = self.normalize_unit_specifier(self.units_in_maintenance)
+        self.unit_ids = self.normalize_unit_specifier(self.unit_ids)
         for building in self.buildings:
-            building.units = normalize_unit_specifier(building.unit_ids, self.project)
+            building.units = self.normalize_unit_specifier(building.unit_ids)
         return self
 
 
@@ -177,8 +175,7 @@ class Config:
         ret = []
         for d in self.db['sites'].find():
             del d["_id"]
-            site = Site(**d)
-            ret.append(site)
+            ret.append(Site(**d))
         return ret
 
     @cached(specs_cache)
