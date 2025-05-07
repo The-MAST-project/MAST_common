@@ -1,16 +1,17 @@
+import asyncio
+import datetime
+import logging
 import socket
 from enum import IntFlag, auto
-from common.mast_logging import init_log
-import datetime
-from typing import Optional, Dict
-from pydantic import BaseModel
-from common.api import ControllerApi
-import asyncio
+from typing import Dict, Optional
+
 import humanfriendly
+from pydantic import BaseModel
 
-import logging
+from common.api import ControllerApi
+from common.mast_logging import init_log
 
-logger = logging.Logger('mast.' + __name__)
+logger = logging.Logger("mast." + __name__)
 init_log(logger)
 
 hostname = None
@@ -54,7 +55,12 @@ class Activities:
         self.activities: IntFlag = Activities.Idle
         self.timings: Dict[IntFlag, Timing] = {}
 
-    def start_activity(self, activity: IntFlag, existing_ok: bool = False, label: Optional[str] = None):
+    async def notify_activity(self, data):
+        await ControllerApi("wis").client.put("activity_notification", data=data)
+
+    def start_activity(
+        self, activity: IntFlag, existing_ok: bool = False, label: Optional[str] = None
+    ):
         """
         Marks the start of an activity.
         :param activity:
@@ -73,10 +79,13 @@ class Activities:
             logger.info(f"started activity {activity.__repr__()}")
 
         data = ActivityNotification(
-            activity=activity,
-            activity_verbal=activity.__repr__(),
-            started=True).model_dump_json()
-        asyncio.run(ControllerApi('wis').client.put('activity_notification', data=data))
+            activity=activity, activity_verbal=activity.__repr__(), started=True
+        ).model_dump_json()
+        try:
+            loop = asyncio.get_event_loop()
+            loop.create_task(self.notify_activity(data))
+        except RuntimeError:
+            asyncio.run(self.notify_activity(data))
 
     def end_activity(self, activity: IntFlag, label: Optional[str] = None):
         """
@@ -88,19 +97,31 @@ class Activities:
         if not self.is_active(activity):
             return
         self.activities &= ~activity
-        self.timings[activity].end()
 
-        duration = humanfriendly.format_timespan(self.timings[activity].duration.total_seconds())
+        if activity in self.timings:
+            self.timings[activity].end()
 
-        label = label + ': ' if label else ''
-        logger.info(f"{label}ended activity {activity.__repr__()}, duration='{duration}'")
+        duration = humanfriendly.format_timespan(
+            self.timings[activity].duration.total_seconds()
+        )
+
+        label = label + ": " if label else ""
+        logger.info(
+            f"{label}ended   activity {activity.__repr__()}, duration='{duration}'"
+        )
 
         data = ActivityNotification(
             activity=int(activity),
             activity_verbal=activity.__repr__(),
             started=False,
-            duration=duration).model_dump_json()
-        asyncio.run(ControllerApi('wis').client.put('activity_notification', data=data))
+            duration=duration,
+        ).model_dump_json()
+
+        try:
+            loop = asyncio.get_event_loop()
+            loop.create_task(self.notify_activity(data))
+        except RuntimeError:
+            asyncio.run(self.notify_activity(data))
 
     def is_active(self, activity):
         """
@@ -130,7 +151,7 @@ class UnitActivities(IntFlag):
     StartingUp = auto()
     ShuttingDown = auto()
     Acquiring = auto()
-    Positioning = auto()    # getting in position (e.g. for acquisition)
+    Positioning = auto()  # getting in position (e.g. for acquisition)
     Solving = auto()
     Correcting = auto()
 
