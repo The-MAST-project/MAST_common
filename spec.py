@@ -1,8 +1,9 @@
-from typing import Optional, Literal
 from enum import IntFlag, auto
+from typing import Literal, Optional
 
-Disperser = Literal['Ca', 'Mg', 'Halpha', 'Empty']
-SpecName = Literal['Deepspec', 'Highspec']
+Disperser = Literal["Ca", "Mg", "Halpha", "Empty"]
+SpecName = Literal["Deepspec", "Highspec"]
+
 
 class SpecActivities(IntFlag):
     Checking = auto()
@@ -15,17 +16,20 @@ class SpecId(IntFlag):
     Deepspec = auto()
     Highspec = auto()
 
+
 class SpecExposureSettings:
     """
     Defines the settings for spectrograph camera exposures
     """
-    def __init__(self,
-                 exposure_duration: float,
-                 number_of_exposures: Optional[int] = 1,
-                 x_binning: Optional[int] = 1,
-                 y_binning: Optional[int] = 2,
-                 output_folder: Optional[str] = None,
-                 ):
+
+    def __init__(
+        self,
+        exposure_duration: float,
+        number_of_exposures: Optional[int] = 1,
+        x_binning: Optional[int] = 1,
+        y_binning: Optional[int] = 2,
+        output_folder: Optional[str] = None,
+    ):
         # TODO: get rid of this class, basically we only use the image_file field
 
         self.exposure_duration = exposure_duration
@@ -47,18 +51,21 @@ class SpecExposureSettings:
 
 
 class SpecAcquisitionSettings:
-    def __init__(self,
-                 spec_name: SpecName,
-                 lamp_on: bool,
-                 exposure_duration: float,
-                 filter_name: Optional[str] = None,
-                 number_of_exposures: Optional[int] = 1,
-                 grating: Optional[Disperser] = None,
-                 x_binning: Optional[int] = 1,
-                 y_binning: Optional[int] = 2,
-                 output_folder: Optional[str] = None,
-                 ):
-        self.spec: SpecId = SpecId.Deepspec if spec_name == 'Deepspec' else SpecId.Highspec
+    def __init__(
+        self,
+        spec_name: SpecName,
+        lamp_on: bool,
+        exposure_duration: float,
+        filter_name: Optional[str] = None,
+        number_of_exposures: Optional[int] = 1,
+        grating: Optional[Disperser] = None,
+        x_binning: Optional[int] = 1,
+        y_binning: Optional[int] = 2,
+        output_folder: Optional[str] = None,
+    ):
+        self.spec: SpecId = (
+            SpecId.Deepspec if spec_name == "Deepspec" else SpecId.Highspec
+        )
         self.grating = grating
         self.lamp_on = lamp_on
         self.filter_name = filter_name
@@ -69,9 +76,9 @@ class SpecAcquisitionSettings:
         self.output_folder = output_folder  # A folder path underneath the Filer().root
 
 
-FiberStageLiteral = Literal['Deepspec', 'Highspec']
+FiberStageLiteral = Literal["Deepspec", "Highspec"]
 StageLiteral = Disperser | FiberStageLiteral
 BinningLiteral = Literal[1, 2, 4]
 
-StageNames = Literal['fiber', 'camera', 'gratings']
-DeepspecBands = Literal['I', 'G', 'R', 'U']
+StageNames = Literal["fiber", "camera", "gratings"]
+DeepspecBands = Literal["I", "G", "R", "U"]
