@@ -4,9 +4,10 @@ from typing import Optional
 from pydantic import BaseModel, model_validator, field_validator
 from typing_extensions import Literal
 
+
 class Gain(IntEnum):
-    Low = 0,    # Low ( Max. Dyn. Range )
-    High = 1,   # Std ( High Sensitivity )
+    Low = (0,)  # Low ( Max. Dyn. Range )
+    High = (1,)  # Std ( High Sensitivity )
 
 
 class GainSettingModel(BaseModel):
@@ -17,20 +18,23 @@ class BinningModel(BaseModel):
     x: int = 1
     y: int = 1
 
+
 class ReadoutAmplifiers(IntEnum):
-    OSR = 0,
-    OSL = 1,
-    OSR_AND_OSL = 2,
+    OSR = (0,)
+    OSL = (1,)
+    OSR_AND_OSL = (2,)
+
 
 class CropModeModel(BaseModel):
     col: int
     line: int
     enabled: bool
 
+
 class TemperatureSettingsModel(BaseModel):
-    target_cool: int            # [centigrade] target when cooling down
-    target_warm: int            # [centigrade] target when warming up
-    check_interval: float       # [seconds] to check backside temperature
+    target_cool: int  # [centigrade] target when cooling down
+    target_warm: int  # [centigrade] target when warming up
+    check_interval: float  # [seconds] to check backside temperature
 
 
 class ShutterModel(BaseModel):
@@ -52,9 +56,10 @@ class ReadoutModel(BaseModel):
     mode: ReadoutAmplifiers
     speed: ReadoutSpeed
 
-    @field_validator('mode')
+    @field_validator("mode")
     def readout_validator(cls, value):
         return value
+
 
 class ProbingModel(BaseModel):
     interval: Optional[float]

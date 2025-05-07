@@ -1,5 +1,6 @@
 from pydantic import BaseModel
-from typing import Optional,Literal
+from typing import Optional, Literal
+
 
 class NewtonRoiModel(BaseModel):
     hstart: Optional[int]
@@ -7,17 +8,21 @@ class NewtonRoiModel(BaseModel):
     vstart: Optional[int]
     vend: Optional[int]
 
+
 class NewtonTemperatureModel(BaseModel):
     set_point: Optional[int]
     cooler_mode: Optional[int]
+
 
 class NewtonShutterModel(BaseModel):
     opening_time: Optional[int]
     closing_time: Optional[int]
 
+
 class NewtonBinningModel(BaseModel):
     x: Optional[int]
     y: Optional[int]
+
 
 class NewtonCameraSettingsModel(BaseModel):
     binning: Optional[NewtonBinningModel]

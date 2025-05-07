@@ -7,8 +7,8 @@ from common.models.calibration import CalibrationModel
 
 
 class SpectrographModel(BaseModel):
-    instrument: Literal['highspec', 'deepspec']
+    instrument: Literal["highspec", "deepspec"]
     exposure_duration: float
     number_of_exposures: Optional[int] = 1
     calibration: Optional[CalibrationModel]
-    spec: Union[HighspecModel, DeepspecModel] = Field(discriminator='instrument')
+    spec: Union[HighspecModel, DeepspecModel] = Field(discriminator="instrument")

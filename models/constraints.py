@@ -2,6 +2,7 @@ from pydantic import BaseModel
 from typing import Optional
 import datetime
 
+
 class MoonConstraintModel(BaseModel):
     max_phase: Optional[float] = None
     min_distance: Optional[float] = None
