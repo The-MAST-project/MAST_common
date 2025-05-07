@@ -23,20 +23,24 @@ class Config:
     def __init__(self):
         if self._initialized:
             return
-        project = os.getenv('MAST_PROJECT')
+        project = os.getenv("MAST_PROJECT")
         if project is None:
             raise Exception(f"Missing 'MAST_PROJECT' environment variable")
 
-        if project == 'unit' or project == 'control':
+        if project == "unit" or project == "control":
             folder = os.path.dirname(os.path.dirname(__file__))
-        elif project == 'spec':
+        elif project == "spec":
             folder = os.path.dirname(os.path.dirname(__file__))
         else:
-            raise Exception(f"Bad MAST_PROJECT environment variable ('{project}') " +
-                            f"must be one of 'unit', 'spec' or 'control'")
+            raise Exception(
+                f"Bad MAST_PROJECT environment variable ('{project}') "
+                + f"must be one of 'unit', 'spec' or 'control'"
+            )
 
-        self.global_file = os.path.join(folder, 'config', f'{project}.toml')
-        self.specific_file = os.path.join(folder, 'config', f'{socket.gethostname()}.toml')
+        self.global_file = os.path.join(folder, "config", f"{project}.toml")
+        self.specific_file = os.path.join(
+            folder, "config", f"{socket.gethostname()}.toml"
+        )
         if not os.path.exists(self.global_file):
             raise Exception(f"missing global config file '{self.global_file}'")
 
@@ -46,14 +50,18 @@ class Config:
 
     def reload(self):
         self.toml.clear()
-        file = self.specific_file if os.path.exists(self.specific_file) else self.global_file
+        file = (
+            self.specific_file
+            if os.path.exists(self.specific_file)
+            else self.global_file
+        )
         if os.path.exists(file):
-            with open(file, 'r') as f:
+            with open(file, "r") as f:
                 self.toml = tomlkit.load(f)
 
     def save(self):
-        self.toml['global']['saved_at'] = datetime.datetime.now()
-        with open(self.specific_file, 'w') as f:
+        self.toml["global"]["saved_at"] = datetime.datetime.now()
+        with open(self.specific_file, "w") as f:
             tomlkit.dump(self.toml, f)
 
         repo_path = os.path.dirname(os.path.dirname(self.global_file))
@@ -63,7 +71,7 @@ class Config:
             try:
                 repo.git.add(file_path)
                 repo.index.commit(f"Saved changes to '{self.specific_file}'")
-                origin = repo.remotes['origin']
+                origin = repo.remotes["origin"]
                 origin.push(str(repo.active_branch))
             except Exception as e:
                 print(f"Exception: {e}")
@@ -76,7 +84,9 @@ class DeepSearchResult:
         self.value = value
 
 
-def deep_search(d: dict, what: str, path: str = None, found: list = None) -> List[DeepSearchResult]:
+def deep_search(
+    d: dict, what: str, path: str = None, found: list = None
+) -> List[DeepSearchResult]:
     """
     Performs a deep search of a keyword in a dictionary
     :param d: The dictionary to be searched
@@ -91,16 +101,16 @@ def deep_search(d: dict, what: str, path: str = None, found: list = None) -> Lis
 
     for key, value in d.items():
         if isinstance(d[key], dict):
-            deep_search(d[key], what, key if path is None else path + '.' + key, found)
+            deep_search(d[key], what, key if path is None else path + "." + key, found)
         else:
             if key == what:
-                f = DeepSearchResult(key if path is None else path + '.' + key, value)
+                f = DeepSearchResult(key if path is None else path + "." + key, value)
                 found.append(f)
                 return found
     return found
 
 
-if __name__ == '__main__':
-    results = deep_search(Config().toml, 'address')
+if __name__ == "__main__":
+    results = deep_search(Config().toml, "address")
     for result in results:
         print(f"{result.path=}, {result.value=}")
