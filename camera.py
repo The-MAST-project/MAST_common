@@ -13,6 +13,7 @@ class CameraRoi(NamedTuple):
     """
     An ASCOM compatible region-of-interest
     """
+
     startX: int = 0
     startY: int = 0
     numX: int | None = None
