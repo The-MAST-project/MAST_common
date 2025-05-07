@@ -1,9 +1,9 @@
 import datetime
 import json
-from typing import List
 import random
+from typing import List
 
-correction_phases = ['sky', 'spec', 'guiding', 'testing']
+correction_phases = ["sky", "spec", "guiding", "testing"]
 
 
 class Correction:
@@ -16,7 +16,7 @@ class Correction:
         return {
             "time": datetime.datetime.isoformat(self.time),
             "ra_delta": self.ra_delta,
-            "dec_delta": self.dec_delta
+            "dec_delta": self.dec_delta,
         }
 
     @classmethod
@@ -29,7 +29,14 @@ class Correction:
 
 
 class Corrections:
-    def __init__(self, phase: str, target_ra: float, target_dec: float, tolerance_ra: float, tolerance_dec: float):
+    def __init__(
+        self,
+        phase: str,
+        target_ra: float,
+        target_dec: float,
+        tolerance_ra: float,
+        tolerance_dec: float,
+    ):
         self.phase = phase
         self.target_ra = target_ra
         self.target_dec = target_dec
@@ -56,26 +63,38 @@ class Corrections:
             target_ra=data["target_ra"],
             target_dec=data["target_dec"],
             tolerance_ra=data["tolerance_ra"],
-            tolerance_dec=data["tolerance_dec"]
+            tolerance_dec=data["tolerance_dec"],
         )
         # Convert the sequence list of dictionaries into Correction objects
         corrs.sequence = [Correction.from_dict(corr) for corr in data["sequence"]]
 
-        corrs.last_delta = Correction.from_dict(data["last_delta"]) \
-            if 'last_delta' in data and data["last_delta"] is not None else None
+        corrs.last_delta = (
+            Correction.from_dict(data["last_delta"])
+            if "last_delta" in data and data["last_delta"] is not None
+            else None
+        )
         return corrs
 
 
-if __name__ == '__main__':
-    corrections = Corrections('testing', target_ra=1.2345, target_dec=2.3456, tolerance_ra=0.3, tolerance_dec=0.3)
+if __name__ == "__main__":
+    corrections = Corrections(
+        "testing",
+        target_ra=1.2345,
+        target_dec=2.3456,
+        tolerance_ra=0.3,
+        tolerance_dec=0.3,
+    )
     for i in range(5):
         corrections.sequence.append(
             Correction(
                 time=datetime.datetime.now(datetime.UTC),
                 ra_arcsec=random.uniform(0, 10),
-                dec_arcsec=random.uniform(0, 10)
-            ))
-    corrections.last_delta = Correction(datetime.datetime.now(datetime.UTC), ra_arcsec=0.13, dec_arcsec=0.21)
+                dec_arcsec=random.uniform(0, 10),
+            )
+        )
+    corrections.last_delta = Correction(
+        datetime.datetime.now(datetime.UTC), ra_arcsec=0.13, dec_arcsec=0.21
+    )
 
     out_json = json.dumps(corrections.to_dict(), indent=2)
     in_json = Corrections.from_dict(json.loads(out_json))
