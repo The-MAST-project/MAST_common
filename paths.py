@@ -1,8 +1,9 @@
-import os
-from common.filer import Filer
 import datetime
-from typing import List, Literal
+import os
 from pathlib import Path
+from typing import List, Literal
+
+from common.filer import Filer
 
 
 class PathMaker:
@@ -16,7 +17,7 @@ class PathMaker:
         :param start_with: Start the sequence at this number (default: 1)
         :return: The resulting sequence string
         """
-        seq_file = Path(folder) / 'seq.txt'
+        seq_file = Path(folder) / "seq.txt"
         seq_file.parent.mkdir(parents=True, exist_ok=True)
 
         if seq_file.exists():
@@ -32,52 +33,70 @@ class PathMaker:
     def make_daily_folder_name(root: str | None = None) -> str:
         if not root:
             root = Filer().ram.root
-        d = Path(root) / datetime.datetime.now().strftime('%Y-%m-%d')
+        d = Path(root) / datetime.datetime.now().strftime("%Y-%m-%d")
         d.mkdir(parents=True, exist_ok=True)
         return str(d)
 
     def make_exposures_folder(self, root: str | None = None) -> str:
-        folder = Path(self.make_daily_folder_name(root=root)) / 'Exposures'
+        folder = Path(self.make_daily_folder_name(root=root)) / "Exposures"
         folder.mkdir(parents=True, exist_ok=True)
         return str(folder)
 
     def make_autofocus_folder(self, root: str | None = None) -> str:
-        autofocus_folder = Path(self.make_daily_folder_name(root=root)) / 'Autofocus'
+        autofocus_folder = Path(self.make_daily_folder_name(root=root)) / "Autofocus"
         folder = autofocus_folder / self.make_seq(str(autofocus_folder))
         folder.mkdir(parents=True, exist_ok=True)
         return str(folder)
 
-    def make_acquisition_folder(self, phase: str | None = None, tags: dict | None = None) -> str:
-        acquisitions_folder = Path(self.make_daily_folder_name()) / 'Acquisitions'
+    def make_acquisition_folder(
+        self, phase: str | None = None, tags: dict | None = None
+    ) -> str:
+        acquisitions_folder = Path(self.make_daily_folder_name()) / "Acquisitions"
         acquisitions_folder.mkdir(parents=True, exist_ok=True)
         parts: List[str] = [
             f"seq={PathMaker.make_seq(folder=str(acquisitions_folder))}",
-            f"time={self.current_utc()}"
+            f"time={self.current_utc()}",
         ]
         if tags:
             for k, v in tags.items():
                 parts.append(f"{k}={v}" if v else "{k}")
 
-        folder = acquisitions_folder / ','.join(parts)
+        folder = acquisitions_folder / ",".join(parts)
         if phase:
             folder = folder / phase
             folder.mkdir(parents=True, exist_ok=True)
         return str(folder)
 
-    def make_guidings_folder(self, root: str | None = None, base_folder: str | None = None) -> str:
+    def make_guidings_folder(
+        self, root: str | None = None, base_folder: str | None = None
+    ) -> str:
         if base_folder is not None:
-            guiding_folder = Path(base_folder) / 'Guidings'
+            guiding_folder = Path(base_folder) / "Guidings"
         else:
             if not root:
                 root = Filer().ram.root
-            guiding_folder = Path(self.make_daily_folder_name(root=root)) / 'Guidings'
+            guiding_folder = Path(self.make_daily_folder_name(root=root)) / "Guidings"
 
         guiding_folder.mkdir(parents=True, exist_ok=True)
         return str(guiding_folder)
 
+    def make_spirals_folder(
+        self, root: str | None = None, base_folder: str | None = None
+    ) -> str:
+        if base_folder is not None:
+            spirals_folder = Path(base_folder) / "Spirals"
+        else:
+            if not root:
+                root = Filer().ram.root
+            spirals_folder = Path(self.make_daily_folder_name(root=root)) / "Spirals"
+
+        spirals_folder = spirals_folder / PathMaker().make_seq(str(spirals_folder))
+        spirals_folder.mkdir(parents=True, exist_ok=True)
+        return str(spirals_folder)
+
     @staticmethod
     def current_utc():
-        return datetime.datetime.now(datetime.timezone.utc).strftime('%H-%M-%S_%f')[:-3]
+        return datetime.datetime.now(datetime.timezone.utc).strftime("%H-%M-%S_%f")[:-3]
 
     # def make_guiding_root_name(self, root: str | None = None):
     #     if not root:
@@ -100,23 +119,31 @@ class PathMaker:
 
     @staticmethod
     def make_tasks_folder() -> str:
-        return str(Path(Filer().shared.root) / 'tasks')
+        return str(Path(Filer().shared.root) / "tasks")
 
     @staticmethod
     def make_run_folder():
-        daily_run_folder = PathMaker().make_daily_folder_name(root=os.path.join(Filer().shared.root, 'runs'))
-        return os.path.join(daily_run_folder, 'run-' + PathMaker().make_seq(folder=daily_run_folder))
+        daily_run_folder = PathMaker().make_daily_folder_name(
+            root=os.path.join(Filer().shared.root, "runs")
+        )
+        return os.path.join(
+            daily_run_folder, "run-" + PathMaker().make_seq(folder=daily_run_folder)
+        )
 
     @staticmethod
-    def make_spec_acquisitions_folder(spec_name: Literal['highspec', 'deepspec']):
-        if spec_name not in ['highspec', 'deepspec']:
-            raise Exception(f"bad {spec_name=}, should be one of ['highspec', 'deepspec']")
+    def make_spec_acquisitions_folder(spec_name: Literal["highspec", "deepspec"]):
+        if spec_name not in ["highspec", "deepspec"]:
+            raise Exception(
+                f"bad {spec_name=}, should be one of ['highspec', 'deepspec']"
+            )
         folder = PathMaker().make_daily_folder_name(os.path.join(Filer().shared.root))
         folder = os.path.join(folder, spec_name)
-        folder = os.path.join(folder, 'acquisition-' + PathMaker().make_seq(folder, None))
+        folder = os.path.join(
+            folder, "acquisition-" + PathMaker().make_seq(folder, None)
+        )
         os.makedirs(folder, exist_ok=True)
         return folder
 
 
-if __name__ == '__main__':
-    print(PathMaker().make_spec_acquisitions_folder(spec_name='highspec'))
+if __name__ == "__main__":
+    print(PathMaker().make_spec_acquisitions_folder(spec_name="highspec"))
