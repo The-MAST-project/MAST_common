@@ -1,22 +1,23 @@
 import logging
 import re
+from abc import ABC, abstractmethod
+
 import pywintypes
 import win32com.client
-
-from common.utils import CanonicalResponse, CanonicalResponse_Ok
-from common.mast_logging import init_log
-from abc import ABC, abstractmethod
 from pydantic import BaseModel
 
-logger = logging.getLogger('mast.unit.' + __name__)
+from common.mast_logging import init_log
+from common.utils import CanonicalResponse, CanonicalResponse_Ok
+
+logger = logging.getLogger("mast.unit." + __name__)
 init_log(logger)
 
 
 def ascom_driver_info(driver):
     return {
-        'name': driver.Name,
-        'description': driver.Description,
-        'version': driver.DriverVersion,
+        "name": driver.Name,
+        "description": driver.Description,
+        "version": driver.DriverVersion,
     }
 
 
@@ -45,34 +46,36 @@ class AscomDispatcher(ABC):
 
     def ascom_status(self) -> AscomStatus:
         info = ascom_driver_info(self.ascom)
-        response = ascom_run(self, 'Connected')
-        info['connected'] = response.value if response.succeeded else 'unknown'
+        response = ascom_run(self, "Connected")
+        info["connected"] = response.value if response.succeeded else "unknown"
         return AscomStatus(ascom=AscomDriverInfoModel(**info))
 
 
-def ascom_run(o: AscomDispatcher, sentence: str, no_entry_log=True) -> CanonicalResponse:
-    ascom_dispatcher = f'{o.ascom}'
-    ascom_dispatcher = re.sub('COMObject ', '', ascom_dispatcher)
-    label = f'{ascom_dispatcher}.{sentence}'
+def ascom_run(
+    o: AscomDispatcher, sentence: str, no_entry_log=True
+) -> CanonicalResponse:
+    ascom_dispatcher = f"{o.ascom}"
+    ascom_dispatcher = re.sub("COMObject ", "", ascom_dispatcher)
+    label = f"{ascom_dispatcher}.{sentence}"
 
     cmd = f"o.ascom.{sentence}"
     ret = None
     try:
-        msg = f'{label}'
+        msg = f"{label}"
         if sentence.__contains__("="):
             exec(cmd, globals(), locals())
             return CanonicalResponse_Ok
         else:
             ret = eval(cmd, globals(), locals())
-            msg += f' -> {ret}'
+            msg += f" -> {ret}"
         if not no_entry_log:
             logger.debug(msg)
         return CanonicalResponse(value=ret)
 
     except pywintypes.com_error as e:
-        logger.debug(f"{label}: ASCOM error (cmd='{cmd.removeprefix('o.ascom.')}')")
-        logger.debug(f"{label}: Message: '{e.excepinfo[2]}'")
-        logger.debug(f"{label}:    Code: 0x{(e.hresult & 0xffffffff):08X}")
+        logger.debug(f"{label}: ASCOM error: (cmd='{cmd.removeprefix('o.ascom.')}')")
+        logger.debug(f"{label}:     Message: '{e.excepinfo[2]}'")
+        logger.debug(f"{label}:        Code: 0x{(e.hresult & 0xffffffff):08X}")
         return CanonicalResponse(errors=[f"{e}"])
 
     except Exception as e:
