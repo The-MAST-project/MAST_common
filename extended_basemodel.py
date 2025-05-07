@@ -1,7 +1,8 @@
-from pydantic import BaseModel, Field
-from typing import Optional
-import math
 import json
+import math
+from typing import Optional
+
+from pydantic import BaseModel, Field
 
 
 class ExtendedBaseModel(BaseModel):
@@ -9,9 +10,13 @@ class ExtendedBaseModel(BaseModel):
     class Config:
         json_encoders = {
             float: lambda x: (
-                'NaN' if math.isnan(x) else
-                'Infinity' if x == float('inf') else
-                '-Infinity' if x == -float('inf') else x
+                "NaN"
+                if math.isnan(x)
+                else (
+                    "Infinity"
+                    if x == float("inf")
+                    else "-Infinity" if x == -float("inf") else x
+                )
             )
         }
 
@@ -19,12 +24,12 @@ class ExtendedBaseModel(BaseModel):
     def custom_json_decoder(cls, v):
         # Decode 'NaN', 'Infinity', and '-Infinity' strings back to float values
         if isinstance(v, str):
-            if v == 'NaN':
-                return float('nan')
-            elif v == 'Infinity':
-                return float('inf')
-            elif v == '-Infinity':
-                return -float('inf')
+            if v == "NaN":
+                return float("nan")
+            elif v == "Infinity":
+                return float("inf")
+            elif v == "-Infinity":
+                return -float("inf")
         return v
 
     @classmethod
@@ -32,6 +37,7 @@ class ExtendedBaseModel(BaseModel):
         # Recursively apply the custom decoder to handle nested data structures
         obj = json.loads(json.dumps(obj), object_hook=cls.custom_json_decoder)
         return super().parse_obj(obj)
+
 
 # # Example usage
 # class MyModel(CustomBaseModel):
