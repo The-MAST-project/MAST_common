@@ -1,39 +1,39 @@
-import os
-from threading import Timer, Lock
-import logging
-from astropy.coordinates import Angle
+import datetime
 import inspect
-from multiprocessing import shared_memory
-import re
-from common.filer import Filer
-from common.paths import PathMaker
-from common.camera import CameraBinning, CameraRoi
+import logging
+import os
 import random
+import re
 import string
 import subprocess
+import time
 import traceback
-
-import datetime
-from typing import List, Any, Optional, NamedTuple
-from pydantic import BaseModel
+from multiprocessing import shared_memory
+from threading import Lock, Timer
+from typing import Any, List, NamedTuple, Optional
 
 import astropy.units as u
+from astropy.coordinates import Angle
+from pydantic import BaseModel
 
-import time
+from common.camera import CameraBinning, CameraRoi
+from common.filer import Filer
+from common.paths import PathMaker
 
 default_encoding = "utf-8"
 
-BASE_SPEC_PATH = '/mast/api/v1/spec'
-BASE_UNIT_PATH = '/mast/api/v1/unit'
-BASE_CONTROL_PATH = '/mast/api/v1/control'
+BASE_SPEC_PATH = "/mast/api/v1/spec"
+BASE_UNIT_PATH = "/mast/api/v1/unit"
+BASE_CONTROL_PATH = "/mast/api/v1/control"
 
-PLATE_SOLVING_SHM_NAME = 'PlateSolving_Image'
+PLATE_SOLVING_SHM_NAME = "PlateSolving_Image"
 
-logger = logging.getLogger('mast.unit.' + __name__)
+logger = logging.getLogger("mast.unit." + __name__)
 
 
 class RepeatTimer(Timer):
     def run(self):
+        self.function(*self.args, **self.kwargs)
         while not self.finished.wait(self.interval):
             self.function(*self.args, **self.kwargs)
 
@@ -147,11 +147,13 @@ class Subsystem:
 
 def parse_params(memory: shared_memory.SharedMemory, logger_: logging.Logger) -> dict:
     bytes_array = bytearray(memory.buf)
-    string_array = bytes_array.decode(encoding='utf-8')
-    data = string_array[:string_array.find('\x00')]
+    string_array = bytes_array.decode(encoding="utf-8")
+    data = string_array[: string_array.find("\x00")]
     logger_.info(f"data: '{data}'")
 
-    matches = re.findall(r'(\w+(?:\(\d+\))?)\s*=\s*(.*?)(?=(!|$|\w+(\(\d+\))?\s*=))', data)
+    matches = re.findall(
+        r"(\w+(?:\(\d+\))?)\s*=\s*(.*?)(?=(!|$|\w+(\(\d+\))?\s*=))", data
+    )
     d = {}
     for match in matches:
         key = match[0]
@@ -164,10 +166,10 @@ def parse_params(memory: shared_memory.SharedMemory, logger_: logging.Logger) ->
 def store_params(memory: shared_memory.SharedMemory, d: dict):
     params = []
     for k, v in d.items():
-        params.append(f'{k}={v}')
-    data = ' '.join(params)
-    memory.buf[:memory.size] = bytearray(memory.size)  # wipe it clean
-    memory.buf[:len(data)] = bytearray(data.encode(encoding='utf-8'))
+        params.append(f"{k}={v}")
+    data = " ".join(params)
+    memory.buf[: memory.size] = bytearray(memory.size)  # wipe it clean
+    memory.buf[: len(data)] = bytearray(data.encode(encoding="utf-8"))
 
 
 def time_stamp():
@@ -204,7 +206,11 @@ class ExceptionModel(BaseModel):
             type=type(exception).__name__,
             message=str(exception),
             args=list(exception.args),
-            traceback="".join(traceback.format_exception(type(exception), exception, exception.__traceback__)),
+            traceback="".join(
+                traceback.format_exception(
+                    type(exception), exception, exception.__traceback__
+                )
+            ),
         )
 
 
@@ -218,7 +224,8 @@ class CanonicalResponse(BaseModel):
     - 'errors' - the method detected one or more errors (no 'value')
     - 'value' - all went well, this is the return value (may be 'None')
     """
-    api_version: str = "1.0"                      # denotes this as a canonical response
+
+    api_version: str = "1.0"  # denotes this as a canonical response
     value: Optional[Any] = None
     errors: Optional[List[str]] = None
     exception: Optional[ExceptionModel] = None
@@ -259,14 +266,14 @@ class CanonicalResponse(BaseModel):
 
     def log(self, _logger: logging.Logger, label: Optional[str] = None):
         if not label:
-            label = 'CanonicalResponse'
+            label = "CanonicalResponse"
         if self.is_exception:
             _logger.error(f"{label} => exception: {self.exception}")
         elif self.is_error:
             _logger.error(f"{label} => error(s): {self.errors}")
 
 
-CanonicalResponse_Ok: CanonicalResponse = CanonicalResponse(value='ok')
+CanonicalResponse_Ok: CanonicalResponse = CanonicalResponse(value="ok")
 
 
 class Coord(NamedTuple):
@@ -274,16 +281,19 @@ class Coord(NamedTuple):
     dec: Angle
 
     def __repr__(self):
-        return ("[" +
-                f"{self.ra.to_string(u.hourangle, decimal=True, precision=9)}, " +
-                f"{self.dec.to_string(u.deg, decimal=True, precision=9)}" +
-                "]")
+        return (
+            "["
+            + f"{self.ra.to_string(u.hourangle, decimal=True, precision=9)}, "
+            + f"{self.dec.to_string(u.deg, decimal=True, precision=9)}"
+            + "]"
+        )
 
 
 class UnitRoi:
     """
     In unit terms a region-of-interest is centered on a pixel and has width and height
     """
+
     x: int
     y: int
     width: int
@@ -306,12 +316,12 @@ class UnitRoi:
             (self.x - int(self.width / 2)) * binning.x,
             (self.y - int(self.height / 2)) * binning.y,
             self.width * binning.x,
-            self.height * binning.y
+            self.height * binning.y,
         )
 
     @staticmethod
     def from_dict(d):
-        return UnitRoi(d['sky_x'], d['sky_y'], d['width'], d['height'])
+        return UnitRoi(d["sky_x"], d["sky_y"], d["width"], d["height"])
 
     def __repr__(self) -> str:
         return f"x={self.x},y={self.y},w={self.width},h={self.height}"
@@ -327,7 +337,9 @@ def cached(timeout_seconds):
             current_time = time.time()
 
             # If the cache is valid (not expired), return the cached value
-            if cached_value is not None and (current_time - cache_time < timeout_seconds):
+            if cached_value is not None and (
+                current_time - cache_time < timeout_seconds
+            ):
                 return cached_value
 
             # Otherwise, call the function and update the cache
@@ -346,6 +358,7 @@ def cached(timeout_seconds):
         wrapper.clear_cache = clear_cache
 
         return wrapper
+
     return decorator
 
 
@@ -362,16 +375,16 @@ def boxed_lines(lines: str | List[str], center: bool = False) -> List[str]:
     if (max_len % 2) != 0:
         max_len += 1
 
-    ret.append('+-' + '-' * max_len + '-+')
+    ret.append("+-" + "-" * max_len + "-+")
     for line in lines:
         if center:
-            l_padding = ' ' * int((max_len - len(line)) / 2)
-            r_padding = ' ' * (max_len - len(l_padding) - len(line))
+            l_padding = " " * int((max_len - len(line)) / 2)
+            r_padding = " " * (max_len - len(l_padding) - len(line))
         else:
-            l_padding = ''
-            r_padding = ' ' * (max_len - len(line))
-        ret.append('| ' + l_padding + line + r_padding + ' |')
-    ret.append('+-' + '-' * max_len + '-+')
+            l_padding = ""
+            r_padding = " " * (max_len - len(line))
+        ret.append("| " + l_padding + line + r_padding + " |")
+    ret.append("+-" + "-" * max_len + "-+")
 
     return ret
 
@@ -384,7 +397,9 @@ def generate_random_string(prefix="tmp_", length=15) -> str:
         raise ValueError("Length must be greater than the length of the prefix.")
 
     # Generate random characters
-    random_part = ''.join(random.choices(string.ascii_uppercase + string.digits, k=random_part_length))
+    random_part = "".join(
+        random.choices(string.ascii_uppercase + string.digits, k=random_part_length)
+    )
 
     # Combine prefix and random part
     return prefix + random_part.upper()
@@ -400,15 +415,11 @@ def cygpath(path: str, to_windows: bool = False) -> str | None:
     """
     args = [r"\cygwin64\bin\cygpath"]
     if to_windows:
-        args.append('-w')
+        args.append("-w")
     args.append(path)
 
     try:
-        result = subprocess.run(args,
-                                capture_output=True,
-                                text=True,
-                                check=True
-                                )
+        result = subprocess.run(args, capture_output=True, text=True, check=True)
         return result.stdout.strip()
     except subprocess.CalledProcessError as ex:
         print(f"Error: {ex.stderr.strip()}")
@@ -423,18 +434,14 @@ def wslpath(path: str, to_windows: bool = False) -> str | None:
     :param to_windows:  from cygwin to windows
     :return:
     """
-    args = ['wsl', 'wslpath']
+    args = ["wsl", "wslpath"]
     if to_windows:
-        args.append('-w')
+        args.append("-w")
     args.append(path)
 
     try:
-        result = subprocess.run(args,
-                                capture_output=True,
-                                text=True,
-                                check=True
-                                )
-        return result.stdout.strip().replace('.localhost', r'$')
+        result = subprocess.run(args, capture_output=True, text=True, check=True)
+        return result.stdout.strip().replace(".localhost", r"$")
     except subprocess.CalledProcessError as ex:
         print(f"Error: {ex.stderr.strip()}")
         return None
@@ -460,9 +467,9 @@ def canonic_unit_name(name: str) -> str | None:
 
     if not name:
         raise ValueError(f"{op}: Empty name")
-    if name.startswith('mast'):
+    if name.startswith("mast"):
         suffix = name[4:]
-        if suffix == 'w':
+        if suffix == "w":
             return name
         elif name.isdigit():
             unit_number = int(name[4:])
@@ -479,6 +486,7 @@ class OperatingMode:
     If a 'MAST_DEBUG' environment variable exists, we're operating
      in 'debug' mode, else in 'production' mode.
     """
+
     _instance = None
 
     def __new__(cls, *args, **kwargs):
@@ -494,16 +502,16 @@ class OperatingMode:
     @classmethod
     @property
     def debug(cls):
-        return 'MAST_DEBUG' in os.environ
+        return "MAST_DEBUG" in os.environ
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     try:
         x = 1 / 0
     except Exception as e:
         response = CanonicalResponse.from_exception(exception=e)
 
-    response = CanonicalResponse(errors=['err 1', 'err 2'])
-    response = CanonicalResponse(value={'tf': True, 'val': 17})
+    response = CanonicalResponse(errors=["err 1", "err 2"])
+    response = CanonicalResponse(value={"tf": True, "val": 17})
     response = CanonicalResponse_Ok
     pass
