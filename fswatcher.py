@@ -1,11 +1,13 @@
-import time
-from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler
 import logging
-from common.utils import path_maker
-from common.mast_logging import init_log
+import time
 
-logger = logging.getLogger('fswatcher')
+from watchdog.events import FileSystemEventHandler
+from watchdog.observers import Observer
+
+from common.mast_logging import init_log
+from common.utils import path_maker
+
+logger = logging.getLogger("fswatcher")
 init_log(logger)
 
 
@@ -54,10 +56,13 @@ def just_print(event):
     logger.info(f"{event=}")
 
 
-if __name__ == '__main__':
-    w = FsWatcher(path_maker.make_plans_folder(), handlers={
-        # 'created': just_print,
-        'modified': just_print,
-        'deleted': just_print,
-    })
+if __name__ == "__main__":
+    w = FsWatcher(
+        path_maker.make_plans_folder(),
+        handlers={
+            # 'created': just_print,
+            "modified": just_print,
+            "deleted": just_print,
+        },
+    )
     w.run()
