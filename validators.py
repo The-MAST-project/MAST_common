@@ -1,10 +1,12 @@
-from fastapi import Query, HTTPException
-from typing import Annotated
 import re
+from typing import Annotated
 
+from fastapi import HTTPException, Query
 
 # Regex for valid hour angle in sexagesimal format with optional fractional seconds
-RA_SEXAGESIMAL_REGEX = r"^(2[0-3]|1[0-9]|0?[0-9]):([0-5]?[0-9]):([0-5]?[0-9])(\.\d{1,3})?$"
+RA_SEXAGESIMAL_REGEX = (
+    r"^(2[0-3]|1[0-9]|0?[0-9]):([0-5]?[0-9]):([0-5]?[0-9])(\.\d{1,3})?$"
+)
 
 # Dependency to validate Right Ascension
 
@@ -25,7 +27,7 @@ def validate_ra(ra: str):
     # If neither float nor regex matches, raise an error
     raise HTTPException(
         status_code=400,
-        detail="Invalid Right Ascension format. Must be a float (0 <= RA < 24) or 'hh:mm:ss[.fff]'."
+        detail="Invalid Right Ascension format. Must be a float (0 <= RA < 24) or 'hh:mm:ss[.fff]'.",
     )
 
 
@@ -49,5 +51,5 @@ def validate_dec(dec: str):
     # If neither float nor regex matches, raise an error
     raise HTTPException(
         status_code=400,
-        detail="Invalid Declination format. Must be a float (-90 <= DEC <= 90) or '+dd:mm:ss[.fff]'."
+        detail="Invalid Declination format. Must be a float (-90 <= DEC <= 90) or '+dd:mm:ss[.fff]'.",
     )
