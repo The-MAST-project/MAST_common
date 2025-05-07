@@ -13,7 +13,7 @@ class ComponentStatus(BaseModel):
     operational: bool = False
     why_not_operational: List[str] = []
     was_shut_down: bool = False
-    model_config = {'arbitrary_types_allowed': True}
+    model_config = {"arbitrary_types_allowed": True}
 
 
 class Component(ABC, Activities):
@@ -103,5 +103,5 @@ class Component(ABC, Activities):
             activities_verbal=self.activities.__repr__(),
             operational=self.operational,
             why_not_operational=self.why_not_operational,
-            was_shut_down=self.was_shut_down
+            was_shut_down=self.was_shut_down,
         )
