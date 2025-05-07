@@ -1,13 +1,14 @@
-import logging
 import ipaddress
+import logging
 import socket
+
 from common.mast_logging import init_log
 from common.utils import function_name
 
-logger = logging.getLogger('networking')
+logger = logging.getLogger("networking")
 init_log(logger, logging.DEBUG)
 
-WEIZMANN_DOMAIN = 'weizmann.ac.il'
+WEIZMANN_DOMAIN = "weizmann.ac.il"
 
 
 class NetworkDestination:
@@ -43,8 +44,8 @@ class NetworkDestination:
                 ipaddr = socket.gethostbyname(addr)
                 hostname = addr
             except socket.gaierror:
-                if not addr.endswith('.' + WEIZMANN_DOMAIN):
-                    full_host = addr + '.' + WEIZMANN_DOMAIN
+                if not addr.endswith("." + WEIZMANN_DOMAIN):
+                    full_host = addr + "." + WEIZMANN_DOMAIN
                     try:
                         ipaddr = socket.gethostbyname(full_host)
                         hostname = full_host
@@ -53,7 +54,9 @@ class NetworkDestination:
                         raise
 
         self.ipaddr: str = str(ipaddr)
-        self.hostname: str | None = hostname[0] if isinstance(hostname, list) else hostname
+        self.hostname: str | None = (
+            hostname[0] if isinstance(hostname, list) else hostname
+        )
         self.port: int = port
 
     def __repr__(self):
@@ -77,13 +80,16 @@ class NetworkedDevice:
         """
         op = function_name()
 
-        if 'network' not in conf:
+        if "network" not in conf:
             raise ValueError(f"{op}: no 'network' in {conf=}")
-        network_conf = conf['network']
-        address = network_conf['ipaddr'] if 'ipaddr' in network_conf else network_conf['host'] if 'host' in network_conf else None
+        network_conf = conf["network"]
+        address = (
+            network_conf["ipaddr"]
+            if "ipaddr" in network_conf
+            else network_conf["host"] if "host" in network_conf else None
+        )
         if not address:
             raise Exception(f"both 'ipaddr' and 'host' missing in {network_conf=}")
-        port = network_conf['port'] if 'port' in network_conf else 80
+        port = network_conf["port"] if "port" in network_conf else 80
 
         self.network = NetworkDestination(address, port)
-
