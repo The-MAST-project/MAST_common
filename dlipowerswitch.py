@@ -1,25 +1,26 @@
-from json import JSONDecodeError
-from typing import List, Optional
+import logging
 import socket
+import time
+from enum import IntFlag, auto
+from json import JSONDecodeError
+from threading import Lock
+from typing import List, Optional
 
+import httpx
+from pydantic import BaseModel
+
+from common.components import Component
 from common.config import Config
 from common.mast_logging import init_log
 from common.networking import WEIZMANN_DOMAIN
-from common.utils import function_name, canonic_unit_name, RepeatTimer
-from common.components import Component
-import httpx
-import logging
-import time
-from threading import Lock
-from enum import IntFlag, auto
-from pydantic import BaseModel
+from common.utils import RepeatTimer, canonic_unit_name, function_name
 
 TriStateBool = bool | None
 
-logger = logging.getLogger('power-switch')
+logger = logging.getLogger("power-switch")
 init_log(logger)
-logging.getLogger('httpcore').setLevel(logging.WARN)
-logging.getLogger('httpx').setLevel(logging.WARN)
+logging.getLogger("httpcore").setLevel(logging.WARN)
+logging.getLogger("httpx").setLevel(logging.WARN)
 
 
 class DliPowerSwitch(Component):
@@ -31,12 +32,12 @@ class DliPowerSwitch(Component):
         self.hostname = hostname
         self.ipaddr = ipaddr
         self.conf = conf
-        self.fqdn = self.hostname + '.' + WEIZMANN_DOMAIN
+        self.fqdn = self.hostname + "." + WEIZMANN_DOMAIN
         self._detected = False
-        self.auth = httpx.DigestAuth('admin', '1234')
+        self.auth = httpx.DigestAuth("admin", "1234")
         self.headers = {
-            'X-CSRF': 'x',
-            'Accept': 'application/json',
+            "X-CSRF": "x",
+            "Accept": "application/json",
         }
         if not ipaddr:
             try:
@@ -49,10 +50,10 @@ class DliPowerSwitch(Component):
 
         self.lock = Lock()
         self.max_age_seconds = 30  # seconds
-        self.outlet_names = list(self.conf['outlets'].values())
+        self.outlet_names = list(self.conf["outlets"].values())
 
         self.timer = RepeatTimer(5, function=self.on_timer)
-        self.timer.name = f'power-switch-timer-thread'
+        self.timer.name = f"power-switch-timer-thread"
         self.timer.start()
         self.probe()
 
@@ -62,7 +63,9 @@ class DliPowerSwitch(Component):
     def probe(self):
         if not self.detected:
             result = self.get(f"restapi/relay/outlets/0/state/")
-            self._detected = False if isinstance(result, dict) and 'error' in result else True
+            self._detected = (
+                False if isinstance(result, dict) and "error" in result else True
+            )
             if self.detected:
                 logger.info(f"{self} detected")
                 self.upload_outlet_names()
@@ -88,11 +91,11 @@ class DliPowerSwitch(Component):
             except httpx.TimeoutException:
                 # logger.error(f"timeout after {self.timeout} seconds, {url=}")
                 self._detected = False
-                return {'error': 'timeout'}
+                return {"error": "timeout"}
             except Exception as e:
                 # logger.error(f"exception: {e}")
                 self._detected = False
-                return {'error': f"{e}"}
+                return {"error": f"{e}"}
         return self.common_get_put(response)
 
     # def put(self, url: str, data: dict | None = None) -> object:
@@ -102,16 +105,18 @@ class DliPowerSwitch(Component):
         with httpx.Client(trust_env=False, auth=self.auth) as client:
             try:
                 # logger.info(f"PUT {url=}, {data=}")
-                response = client.put(url=url, headers=self.headers, data=data, timeout=self.timeout)
+                response = client.put(
+                    url=url, headers=self.headers, data=data, timeout=self.timeout
+                )
                 self._detected = True
             except httpx.TimeoutException:
                 # logger.error(f"timeout after {self.timeout} seconds, {url=}")
                 self._detected = False
-                return {'error': 'timeout'}
+                return {"error": "timeout"}
             except Exception as e:
                 logger.error(f"exception: {e}")
                 self._detected = False
-                return {'error': f"{e}"}
+                return {"error": f"{e}"}
 
         return self.common_get_put(response)
 
@@ -123,7 +128,9 @@ class DliPowerSwitch(Component):
             response.raise_for_status()
             s = response.json()
         except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP error (url={e.request.url}): {e.response.status_code} - {e.response.text}")
+            logger.error(
+                f"HTTP error (url={e.request.url}): {e.response.status_code} - {e.response.text}"
+            )
             return None
         except httpx.RequestError as e:
             logger.error(f"Request error (url={e.request.url}): {e}")
@@ -147,7 +154,7 @@ class DliPowerSwitch(Component):
             raise
 
         result = self.get(f"restapi/relay/outlets/{idx}/state/")
-        if isinstance(result, dict) and 'error' in result:
+        if isinstance(result, dict) and "error" in result:
             return None
         return result
 
@@ -157,7 +164,9 @@ class DliPowerSwitch(Component):
         """
         for idx in range(len(self.outlet_names)):
             # self.put(f'restapi/relay/outlets/{idx}/name/', data=json.dumps({'value': self.outlet_names[idx]}))
-            self.put(f'restapi/relay/outlets/{idx}/name/', data=f'{self.outlet_names[idx]}')
+            self.put(
+                f"restapi/relay/outlets/{idx}/name/", data=f"{self.outlet_names[idx]}"
+            )
 
     def set_outlet_state(self, outlet_name: str, state: bool):
         if not self.detected:
@@ -168,7 +177,7 @@ class DliPowerSwitch(Component):
         except ValueError:
             raise
 
-        self.put(url=f"restapi/relay/outlets/{idx}/state/", data={'value': state})
+        self.put(url=f"restapi/relay/outlets/{idx}/state/", data={"value": state})
 
     def toggle_outlet(self, outlet_name: str):
         if not self.detected:
@@ -191,7 +200,7 @@ class DliPowerSwitch(Component):
     def why_not_operational(self) -> List[str]:
         errors = []
         if not self.detected:
-            errors.append(f'power-switch: {self} not detected')
+            errors.append(f"power-switch: {self} not detected")
         return errors
 
     @property
@@ -200,9 +209,9 @@ class DliPowerSwitch(Component):
 
     def status(self):
         return {
-            'detected': self.detected,
-            'operational': self.operational,
-            'why_not_operational': self.why_not_operational,
+            "detected": self.detected,
+            "operational": self.operational,
+            "why_not_operational": self.why_not_operational,
         }
 
     @property
@@ -243,16 +252,19 @@ class PowerSwitchFactory:
         ps_name = None
         if name is None:
             unit_name = socket.gethostname()
-            ps_name = unit_name.replace('mast', 'mastps')
-            conf = Config().get_unit(unit_name)['power_switch']
+            ps_name = unit_name.replace("mast", "mastps")
+            conf = Config().get_unit(unit_name)["power_switch"]
         else:
             unit_name = canonic_unit_name(name)
             if unit_name is not None:
-                ps_name = unit_name.replace('mast', 'mastps')
-                conf = Config().get_unit(unit_name)['power_switch']
-            elif name.startswith('mast-spec-ps') and name[len('mast-spec-ps'):].isdigit():
+                ps_name = unit_name.replace("mast", "mastps")
+                conf = Config().get_unit(unit_name)["power_switch"]
+            elif (
+                name.startswith("mast-spec-ps")
+                and name[len("mast-spec-ps") :].isdigit()
+            ):
                 ps_name = name
-                conf = Config().get_specs()['power_switch'][name]
+                conf = Config().get_specs()["power_switch"][name]
 
         if not ps_name:
             raise ValueError(f"{op}: Bad name '{name}'")
@@ -264,15 +276,15 @@ class PowerSwitchFactory:
         except socket.gaierror:
             try:
                 # try to GAI solve the fully qualified name
-                ipaddr = socket.gethostbyname(ps_name + '.' + WEIZMANN_DOMAIN)
+                ipaddr = socket.gethostbyname(ps_name + "." + WEIZMANN_DOMAIN)
             except socket.gaierror:
                 pass
 
         if ipaddr is None:
             # We could not GAI resolve the name, maybe it's in the configuration database
-            conf = Config().get_specs()['power_switch']
-            if ps_name in conf and 'ipaddr' in conf[ps_name]['network']:
-                ipaddr = conf[ps_name]['network']['ipaddr']
+            conf = Config().get_specs()["power_switch"]
+            if ps_name in conf and "ipaddr" in conf[ps_name]["network"]:
+                ipaddr = conf[ps_name]["network"]["ipaddr"]
                 conf = conf[ps_name]
 
         if ipaddr is None:
@@ -281,7 +293,9 @@ class PowerSwitchFactory:
         # We have an 'ipaddr'
         if ipaddr not in cls._instances:
             # we don't have an instance for this 'ipaddr', make a new one
-            cls._instances[ipaddr] = DliPowerSwitch(hostname=ps_name, ipaddr=ipaddr, conf=conf)
+            cls._instances[ipaddr] = DliPowerSwitch(
+                hostname=ps_name, ipaddr=ipaddr, conf=conf
+            )
 
         return cls._instances[ipaddr]
 
@@ -302,19 +316,44 @@ class OutletDomain(IntFlag):
 class SwitchedOutlet:
 
     valid_names = {
-        OutletDomain.Unit: ['Mount', 'Stage', 'Camera', 'Focuser', 'Covers', 'Computer'],
+        OutletDomain.Unit: [
+            "Mount",
+            "Stage",
+            "Camera",
+            "Focuser",
+            "Covers",
+            "Computer",
+        ],
         OutletDomain.Spec: [
-            'ThArWheel', 'ThArLamp', 'qThWheel', 'qThLamp',
-            'DeepspecU', 'DeepspecG', 'DeepspecR', 'DeepspecI',
-            'Highspec', 'Chiller', 'Stage', 'DeepShutter', 'HighShutter',
+            "ThArWheel",
+            "ThArLamp",
+            "qThWheel",
+            "qThLamp",
+            "DeepspecU",
+            "DeepspecG",
+            "DeepspecR",
+            "DeepspecI",
+            "Highspec",
+            "Chiller",
+            "Stage",
+            "DeepShutter",
+            "HighShutter",
         ],
         OutletDomain.Unnamed: [
-            'Outlet1', 'Outlet2', 'Outlet3', 'Outlet4',
-            'Outlet5', 'Outlet6', 'Outlet7', 'Outlet8',
+            "Outlet1",
+            "Outlet2",
+            "Outlet3",
+            "Outlet4",
+            "Outlet5",
+            "Outlet6",
+            "Outlet7",
+            "Outlet8",
         ],
     }
 
-    def __init__(self, domain: OutletDomain, outlet_name: str, unit_name: Optional[str] = None):
+    def __init__(
+        self, domain: OutletDomain, outlet_name: str, unit_name: Optional[str] = None
+    ):
         """
         SwitchedOutlets belong to an OutletDomain and have a canonical name,
           valid within that domain.
@@ -324,11 +363,15 @@ class SwitchedOutlet:
         self.power_switch: DliPowerSwitch | None = None
         self.outlet_name = outlet_name
 
-        if (self.outlet_name not in SwitchedOutlet.valid_names[domain] and self.outlet_name
-                not in SwitchedOutlet.valid_names[OutletDomain.Unnamed]):
-            raise ValueError(f"{op}: bad outlet name '{self.outlet_name}' for {domain=}, " +
-                             f"not in {SwitchedOutlet.valid_names[domain]} or " +
-                             f"{SwitchedOutlet.valid_names[OutletDomain.Unnamed]}")
+        if (
+            self.outlet_name not in SwitchedOutlet.valid_names[domain]
+            and self.outlet_name not in SwitchedOutlet.valid_names[OutletDomain.Unnamed]
+        ):
+            raise ValueError(
+                f"{op}: bad outlet name '{self.outlet_name}' for {domain=}, "
+                + f"not in {SwitchedOutlet.valid_names[domain]} or "
+                + f"{SwitchedOutlet.valid_names[OutletDomain.Unnamed]}"
+            )
 
         if domain == OutletDomain.Unit:
             # Unit outlets have always the same names but the socket number may differ from unit to unit
@@ -339,21 +382,29 @@ class SwitchedOutlet:
             except ValueError:
                 raise
             try:
-                conf = Config().get_unit(unit_name=unit_name)['power_switch']
-                if self.outlet_name not in conf['outlets'].values():
-                    raise ValueError(f"outlet name '{self.outlet_name}' not in {list(conf['outlets'].values())}")
+                conf = Config().get_unit(unit_name=unit_name)["power_switch"]
+                if self.outlet_name not in conf["outlets"].values():
+                    raise ValueError(
+                        f"outlet name '{self.outlet_name}' not in {list(conf['outlets'].values())}"
+                    )
             except:
                 raise
 
         elif domain == OutletDomain.Spec:
             # Spec outlets have pre-defined names but may belong to any one of the spec power switches
-            conf = Config().get_specs()['power_switch']
+            conf = Config().get_specs()["power_switch"]
             for switch_name in conf.keys():
-                if self.outlet_name in conf[switch_name]['outlets'].values():
+                if self.outlet_name in conf[switch_name]["outlets"].values():
                     # we located the switch
-                    self.power_switch = PowerSwitchFactory.get_instance(name=switch_name)
+                    self.power_switch = PowerSwitchFactory.get_instance(
+                        name=switch_name
+                    )
 
-        self.delay_after_on = self.power_switch.conf['delay_after_on'] if 'delay_after_on' in self.power_switch.conf else 0
+        self.delay_after_on = (
+            self.power_switch.conf["delay_after_on"]
+            if "delay_after_on" in self.power_switch.conf
+            else 0
+        )
 
     def __repr__(self):
         # logger.info(f"__repr__: {self.outlet_name=}")
@@ -380,7 +431,9 @@ class SwitchedOutlet:
         if current_state != new_state:
             self.power_switch.set_outlet_state(self.outlet_name, new_state)
             if new_state == True and self.delay_after_on:
-                logger.info(f"{op}: delaying {self.delay_after_on} sec. after powering ON  ({self.name})")
+                logger.info(
+                    f"{op}: delaying {self.delay_after_on} sec. after powering ON  ({self.name})"
+                )
                 time.sleep(self.delay_after_on)
 
     def power_on(self):
@@ -415,8 +468,10 @@ class SwitchedOutlet:
         return PowerStatus(powered=self.is_on())
 
 
-if __name__ == '__main__':
-    o8 = SwitchedOutlet(domain=OutletDomain.Unit, unit_name='mastw', outlet_name='Outlet8')
+if __name__ == "__main__":
+    o8 = SwitchedOutlet(
+        domain=OutletDomain.Unit, unit_name="mastw", outlet_name="Outlet8"
+    )
     print(f"Original: {o8}")
     o8.toggle()
     print(f"After toggle: {o8}")
