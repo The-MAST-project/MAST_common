@@ -1,23 +1,25 @@
-import socket
 import platform
-if platform.system() == 'Windows':
+import socket
+
+if platform.system() == "Windows":
     import win32api
-import shutil
-import os
-from typing import List
-from threading import Thread
+
 import fnmatch
+import os
+import shutil
 from enum import Enum, auto
-from typing import Optional
+from pathlib import Path
+from threading import Thread
+from typing import List, Optional
 
 
 def is_windows_drive_mapped(drive_letter):
-    if platform.system() != 'Windows':
+    if platform.system() != "Windows":
         raise Exception(f"is_windows_drive_mapped: this is not a Windows platform")
 
     try:
         drives = win32api.GetLogicalDriveStrings()
-        drives = drives.split('\000')[:-1]
+        drives = drives.split("\000")[:-1]
         return drive_letter.upper() + "\\" in drives
     except Exception as e:
         print(f"is_windows_drive_mapped: An error occurred: {e}")
@@ -38,16 +40,22 @@ class Location:
 
 
 class Filer:
-    def __init__(self, logger = None):
+    def __init__(self, logger=None):
         sys = platform.system()
-        if sys == 'Windows':
-            self.local = Location('C:/', 'MAST/')
-            self.shared = Location('Z:/', f"MAST/{socket.gethostname()}/") if is_windows_drive_mapped('Z:') \
-                else Location('C:/', 'MAST/')
-            self.ram = Location('D:/', 'MAST/') if is_windows_drive_mapped('D:') \
-                else Location('C:/', 'MAST/')
-        elif sys == 'Linux':
-            self.local = Location(None, '/Storage/mast-share/MAST')
+        if sys == "Windows":
+            self.local = Location("C:/", "MAST/")
+            self.shared = (
+                Location("Z:/", f"MAST/{socket.gethostname()}/")
+                if is_windows_drive_mapped("Z:")
+                else Location("C:/", "MAST/")
+            )
+            self.ram = (
+                Location("D:/", "MAST/")
+                if is_windows_drive_mapped("D:")
+                else Location("C:/", "MAST/")
+            )
+        elif sys == "Linux":
+            self.local = Location(None, "/Storage/mast-share/MAST")
             self.shared = self.local
             self.ram = None
 
@@ -78,7 +86,7 @@ class Filer:
         :param dst: Destination
         :return:
         """
-        op = 'move'
+        op = "move"
 
         try:
             if os.path.isfile(src):
@@ -116,7 +124,7 @@ class Filer:
         for src_path in src_paths:
             src_root = None
             if src_path.startswith(dst_root):
-                continue    # it's already on the destination root
+                continue  # it's already on the destination root
             for top in self.tops.keys():
                 if src_path.startswith(self.tops[top].root):
                     src_root = self.tops[top].root
@@ -140,15 +148,20 @@ class Filer:
             paths = [paths]
 
         for file in paths:
-            src = file
-            dst = file.replace(self.ram.root, self.shared.root)
-            os.makedirs(os.path.dirname(dst), exist_ok=True)
-            Thread(name='ram-to-shared-mover', target=self.move, args=[src, dst]).start()
+            src = Path(file).as_posix()
+            dst = Path(str(src).replace(self.ram.root, self.shared.root))
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            Thread(
+                name="ram-to-shared-mover", target=self.move, args=[str(src), str(dst)]
+            ).start()
 
-    def find_latest(self,
-                    root: str,
-                    name: str | None = None,
-                    pattern=None, qualifier: callable = os.path.isfile) -> str:
+    def find_latest(
+        self,
+        root: str,
+        name: str | None = None,
+        pattern=None,
+        qualifier: callable = os.path.isfile,
+    ) -> str:
         matches = []
         roots = [self.ram.root, self.shared.root, self.local.root]
 
