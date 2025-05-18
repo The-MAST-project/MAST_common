@@ -1,15 +1,15 @@
 import logging
 import socket
 from copy import deepcopy
-from typing import List, Optional
 
 import pymongo
 from cachetools import TTLCache, cached
-from pydantic import BaseModel, ConfigDict, computed_field, model_validator
+from pydantic import BaseModel, ConfigDict, model_validator
 from pymongo.errors import ConnectionFailure, PyMongoError
 
 from common.mast_logging import init_log
-from common.utils import deep_dict_difference, deep_dict_is_empty, deep_dict_update
+from common.utils import (deep_dict_difference, deep_dict_is_empty,
+                          deep_dict_update)
 
 logger = logging.getLogger("mast.unit." + __name__)
 init_log(logger)
@@ -28,10 +28,61 @@ service_cache = TTLCache(maxsize=100, ttl=30)
 logging.getLogger("pymongo").setLevel(logging.WARNING)
 
 
+class StagePresets(BaseModel):
+    sky: int
+    spec: int
+
+
+class StageConfig(BaseModel):
+    presets: StagePresets
+
+
+class FocuserConfig(BaseModel):
+    ascom_driver: str
+    known_as_good_position: int
+
+
+class ClientNetworkConfig(BaseModel):
+    host: str
+    port: int
+
+
+class PowerSwitchConfig(BaseModel):
+    network: ClientNetworkConfig
+    userid: str
+    password: str
+    timeout: int
+    cycle_time: int
+    delay_after_on: int
+    outlets: dict[int, str]  # {outlet_number: outlet_name}
+
+
+class CoversConfig(BaseModel):
+    ascom_driver: str
+
+
+class UnitConfig(BaseModel):
+    name: str
+    power_switch: PowerSwitchConfig
+    camera: dict
+    stage: StageConfig
+    focuser: FocuserConfig
+    covers: CoversConfig
+
+    def __init__(self, **data):
+        super().__init__(**data)
+        self.stage = StageConfig(**data["stage"])
+        self.focuser = FocuserConfig(**data["focuser"])
+        self.power_switch = PowerSwitchConfig(**data["power_switch"])
+        self.camera = data["camera"]
+        self.covers = CoversConfig(**data["covers"])
+        self.name = data["name"]
+
+
 class Building(BaseModel):
-    names: List[str]
-    unit_ids: str | List[str]
-    units: Optional[List[str]] = None
+    names: list[str]
+    unit_ids: str | list[str]
+    units: list[str] | None = None
     model_config = ConfigDict(extra="allow")
 
     @model_validator(mode="after")
@@ -43,18 +94,18 @@ class Building(BaseModel):
 class Site(BaseModel):
     name: str
     project: str
-    deployed_units: List[str] = []
-    planned_units: List[str] = []
-    units_in_maintenance: List[str] = []
+    deployed_units: list[str] = []
+    planned_units: list[str] = []
+    units_in_maintenance: list[str] = []
     controller_host: str
     spec_host: str
     domain: str
     local: bool = False
     location: str = "Unknown"
-    buildings: List[Building] = []
-    unit_ids: str | List[str]
+    buildings: list[Building] = []
+    unit_ids: str | list[str]
 
-    def normalize_unit_specifier(self, spec) -> List[str]:
+    def normalize_unit_specifier(self, spec) -> list[str]:
         """"""
         ret = []
         specs = []
@@ -105,7 +156,7 @@ class Config:
 
     def __new__(cls, *args, **kwargs):
         if cls._instance is None:
-            cls._instance = super(Config, cls).__new__(cls)
+            cls._instance = super().__new__(cls)
         return cls._instance
 
     def __init__(self, site: str = "wis"):
@@ -161,9 +212,9 @@ class Config:
 
     def set_unit(self, unit_name: str = None, unit_conf: dict = None):
         if not unit_name:
-            raise Exception(f"save_unit_config: 'unit_name' cannot be None")
+            raise Exception("save_unit_config: 'unit_name' cannot be None")
         if not unit_conf:
-            raise Exception(f"save_unit_config: 'unit_conf' cannot be None")
+            raise Exception("save_unit_config: 'unit_conf' cannot be None")
 
         common_conf = self.db["units"].find_one({"name": "common"})
         del common_conf["_id"]
@@ -185,7 +236,7 @@ class Config:
                 )
 
     @cached(sites_cache)
-    def get_sites(self) -> List[Site]:
+    def get_sites(self) -> list[Site]:
         ret = []
         for d in self.db["sites"].find():
             del d["_id"]
@@ -202,7 +253,7 @@ class Config:
         #
         deepspec_conf = doc["deepspec"]
         common = deepspec_conf["common"]
-        bands = [k for k in deepspec_conf.keys() if k != "common"]
+        bands = [k for k in deepspec_conf if k != "common"]
         for band in bands:
             d = deepcopy(common)
             deep_dict_update(d, deepspec_conf[band])
@@ -272,14 +323,14 @@ class Config:
         return {"name": name, "groups": groups, "capabilities": capabilities}
 
     @cached(users_cache)
-    def get_users(self) -> List[str]:
+    def get_users(self) -> list[str]:
         users = []
         for user in self.db["users"].find():
             users.append(user["name"])
         return users
 
     @property
-    def sites(self) -> List[Site]:
+    def sites(self) -> list[Site]:
         return self.get_sites()
 
     @property

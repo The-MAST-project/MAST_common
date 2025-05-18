@@ -10,7 +10,7 @@ import time
 import traceback
 from multiprocessing import shared_memory
 from threading import Lock, Timer
-from typing import Any, List, NamedTuple, Optional
+from typing import Any, NamedTuple
 
 import astropy.units as u
 from astropy.coordinates import Angle
@@ -98,7 +98,7 @@ def deep_dict_difference(old: dict, new: dict):
 
 
 def deep_dict_is_empty(d):
-    if not isinstance(d, (dict, list)):
+    if not isinstance(d, dict | list):
         return False  # Not a dictionary or list
 
     if not d:
@@ -108,7 +108,7 @@ def deep_dict_is_empty(d):
         return all(deep_dict_is_empty(item) for item in d)
 
     for value in d.values():
-        if isinstance(value, (dict, list)):
+        if isinstance(value, dict | list):
             if not deep_dict_is_empty(value):
                 return False  # Nested dictionary or list is not empty
         elif value:
@@ -198,7 +198,7 @@ class ExceptionModel(BaseModel):
     type: str
     message: str
     args: list
-    traceback: Optional[str]
+    traceback: str | None
 
     @classmethod
     def from_exception(cls, exception: Exception):
@@ -226,9 +226,9 @@ class CanonicalResponse(BaseModel):
     """
 
     api_version: str = "1.0"  # denotes this as a canonical response
-    value: Optional[Any] = None
-    errors: Optional[List[str]] = None
-    exception: Optional[ExceptionModel] = None
+    value: Any | None = None
+    errors: list[str] | None = None
+    exception: ExceptionModel | None = None
 
     @classmethod
     def from_exception(cls, exception: Exception):
@@ -258,13 +258,13 @@ class CanonicalResponse(BaseModel):
         return self.exception is not None or self.errors is not None
 
     @property
-    def failure(self) -> List[str] | str | None:
+    def failure(self) -> list[str] | str | None:
         if self.exception is not None:
             return str(self.exception)
         elif self.errors:
             return self.errors
 
-    def log(self, _logger: logging.Logger, label: Optional[str] = None):
+    def log(self, _logger: logging.Logger, label: str | None = None):
         if not label:
             label = "CanonicalResponse"
         if self.is_exception:
@@ -305,13 +305,16 @@ class UnitRoi:
         self.width = width
         self.height = height
 
-    def to_camera_roi(self, binning: CameraBinning = CameraBinning(1, 1)) -> CameraRoi:
+    def to_camera_roi(self, binning: CameraBinning | None = None) -> CameraRoi:
         """
         An ASCOM camera ROI has a starting pixel (x, y) at lower left corner, width and height
         Returns The corresponding camera region-of-interest
         -------
 
         """
+        if not binning:
+            binning = CameraBinning(1, 1)
+
         return CameraRoi(
             (self.x - int(self.width / 2)) * binning.x,
             (self.y - int(self.height / 2)) * binning.y,
@@ -362,8 +365,8 @@ def cached(timeout_seconds):
     return decorator
 
 
-def boxed_lines(lines: str | List[str], center: bool = False) -> List[str]:
-    ret: List[str] = []
+def boxed_lines(lines: str | list[str], center: bool = False) -> list[str]:
+    ret: list[str] = []
     max_len = 0
 
     if isinstance(lines, str):
@@ -447,7 +450,7 @@ def wslpath(path: str, to_windows: bool = False) -> str | None:
         return None
 
 
-def boxed_info(info_logger, ll: str | List[str], center: bool = False):
+def boxed_info(info_logger, ll: str | list[str], center: bool = False):
     if isinstance(ll, str):
         ll = [ll]
     for line in boxed_lines(ll, center):
@@ -491,7 +494,7 @@ class OperatingMode:
 
     def __new__(cls, *args, **kwargs):
         if cls._instance is None:
-            cls._instance = super(OperatingMode, cls).__new__(cls)
+            cls._instance = super().__new__(cls)
         return cls._instance
 
     @classmethod
