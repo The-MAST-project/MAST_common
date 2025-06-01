@@ -14,10 +14,10 @@ class CameraRoi(NamedTuple):
     An ASCOM compatible region-of-interest
     """
 
-    startX: int = 0
-    startY: int = 0
-    numX: int | None = None
-    numY: int | None = None
+    start_x: int = 0
+    start_y: int = 0
+    num_x: int | None = None
+    num_y: int | None = None
 
     def __repr__(self) -> str:
-        return f"x={self.startX},y={self.startY},w={self.numX},h={self.numY}"
+        return f"x={self.start_x},y={self.start_y},w={self.num_x},h={self.num_y}"

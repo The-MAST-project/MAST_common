@@ -1,17 +1,17 @@
-from common.activities import Activities
-from enum import IntFlag
-from pydantic import BaseModel
-from typing import List
 from abc import ABC, abstractmethod
+
+from pydantic import BaseModel
+
+from common.activities import Activities
 
 
 class ComponentStatus(BaseModel):
     detected: bool = False
     connected: bool = False
     activities: int = 0
-    activities_verbal: str = None
+    activities_verbal: str | None = None
     operational: bool = False
-    why_not_operational: List[str] = []
+    why_not_operational: list[str] = []
     was_shut_down: bool = False
     model_config = {"arbitrary_types_allowed": True}
 
@@ -77,7 +77,7 @@ class Component(ABC, Activities):
 
     @property
     @abstractmethod
-    def why_not_operational(self) -> List[str]:
+    def why_not_operational(self) -> list[str]:
         pass
 
     @property

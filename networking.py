@@ -2,6 +2,7 @@ import ipaddress
 import logging
 import socket
 
+from common.const import Const
 from common.mast_logging import init_log
 from common.utils import function_name
 
@@ -44,8 +45,8 @@ class NetworkDestination:
                 ipaddr = socket.gethostbyname(addr)
                 hostname = addr
             except socket.gaierror:
-                if not addr.endswith("." + WEIZMANN_DOMAIN):
-                    full_host = addr + "." + WEIZMANN_DOMAIN
+                if not addr.endswith("." + Const.WEIZMANN_DOMAIN):
+                    full_host = addr + "." + Const.WEIZMANN_DOMAIN
                     try:
                         ipaddr = socket.gethostbyname(full_host)
                         hostname = full_host
@@ -86,10 +87,10 @@ class NetworkedDevice:
         address = (
             network_conf["ipaddr"]
             if "ipaddr" in network_conf
-            else network_conf["host"] if "host" in network_conf else None
+            else network_conf.get("host", None)
         )
         if not address:
             raise Exception(f"both 'ipaddr' and 'host' missing in {network_conf=}")
-        port = network_conf["port"] if "port" in network_conf else 80
+        port = network_conf.get("port", 80)
 
         self.network = NetworkDestination(address, port)

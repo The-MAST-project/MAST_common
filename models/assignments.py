@@ -1,20 +1,24 @@
-from common.config import Config, WEIZMANN_DOMAIN
-from common.parsers import parse_units
-from common.spec import Disperser
 import socket
-from typing import List, Optional, Literal, Union
-from pydantic import BaseModel, computed_field, field_validator, model_validator, Field
+from typing import Literal
+
 import astropy.coordinates
+from pydantic import BaseModel, Field, computed_field, field_validator, model_validator
+
+from common.config import Config
+from common.const import Const
 from common.models.deepspec import DeepspecModel
 from common.models.highspec import HighspecModel
 from common.models.spectrographs import SpectrographModel
+from common.parsers import parse_units
+from common.spec import Disperser
 
 
 class TargetModel(BaseModel):
-    ra: Union[str, float] = Field(description="RightAscension [sexagesimal or decimal]")
-    dec: Union[str, float] = Field(description="Declination [sexagesimal or decimal]")
+    ra: str | float = Field(description="RightAscension [sexagesimal or decimal]")
+    dec: str | float = Field(description="Declination [sexagesimal or decimal]")
 
     @field_validator("ra")
+    @classmethod
     def validate_ra(cls, value):
         """
         Validates RightAscension inputs
@@ -25,6 +29,7 @@ class TargetModel(BaseModel):
         return float(ra)  # converts np.float64 to float
 
     @field_validator("dec")
+    @classmethod
     def validate_dec(cls, value):
         """
         Validates Declination inputs
@@ -40,16 +45,17 @@ class Initiator(BaseModel):
     When the data is empty, populate with the local host
     """
 
-    hostname: Optional[str]
-    fqdn: Optional[str]
-    ipaddr: Optional[str]
+    hostname: str | None
+    fqdn: str | None
+    ipaddr: str | None
 
     @model_validator(mode="before")
+    @classmethod
     def validate_model(cls, values):
         hostname = values.get("hostname") or socket.gethostname()
         values["hostname"] = hostname
 
-        values["fqdn"] = values.get("fqdn") or hostname + "." + WEIZMANN_DOMAIN
+        values["fqdn"] = values.get("fqdn") or hostname + "." + Const.WEIZMANN_DOMAIN
         try:
             ipaddr = socket.gethostbyname(hostname)
         except socket.gaierror:
@@ -68,7 +74,7 @@ class Initiator(BaseModel):
         :return:
         """
         hostname = socket.gethostname()
-        fqdn = hostname + "." + WEIZMANN_DOMAIN
+        fqdn = hostname + "." + Const.WEIZMANN_DOMAIN
         try:
             ipaddr = socket.gethostbyname(hostname)
         except socket.gaierror:
@@ -80,19 +86,19 @@ class Initiator(BaseModel):
 
 
 class TaskSettingsModel(BaseModel):
-    ulid: Optional[str] = Field(default=None, description="Unique ID")
-    file: Optional[str] = None
-    owner: Optional[str] = None
-    merit: Optional[int] = 1
-    quorum: Optional[int] = Field(default=1, description="Least number of units")
-    timeout_to_guiding: Optional[int] = Field(
+    ulid: str | None = Field(default=None, description="Unique ID")
+    file: str | None = None
+    owner: str | None = None
+    merit: int | None = 1
+    quorum: int | None = Field(default=1, description="Least number of units")
+    timeout_to_guiding: int | None = Field(
         default=600, description="How long to wait for all units to achieve 'guiding'"
     )
-    autofocus: Optional[bool] = Field(
+    autofocus: bool | None = Field(
         default=False, description="Should the units start with 'autofocus'"
     )
-    run_folder: Optional[str] = None
-    production: Optional[bool] = Field(
+    run_folder: str | None = None
+    production: bool | None = Field(
         default=True, description="if 'false' some availability tests are more relaxed"
     )
 
@@ -112,7 +118,7 @@ class UnitAssignmentModel(AssignmentModel):
 
 class DeepSpecAssignment(BaseModel):
     instrument: Literal["deepspec"]
-    settings: Optional[DeepspecModel]
+    settings: DeepspecModel | None
 
 
 class HighSpecAssignment(BaseModel):
@@ -135,8 +141,8 @@ class RemoteAssignment(BaseModel):
 
     hostname: str
     fqdn: str
-    ipaddr: Optional[str]
-    assignment: Union[UnitAssignmentModel, SpectrographAssignmentModel]
+    ipaddr: str | None
+    assignment: UnitAssignmentModel | SpectrographAssignmentModel
 
     @classmethod
     def from_site_colon_unit(
@@ -161,11 +167,11 @@ class RemoteAssignment(BaseModel):
 
     @classmethod
     def from_units_specifier(
-        cls, units_specifier: str | List[str], assignment
-    ) -> List["RemoteAssignment"]:
+        cls, units_specifier: str | list[str], assignment
+    ) -> list["RemoteAssignment"]:
         if isinstance(units_specifier, str):
             units_specifier = [units_specifier]
-        ret: List[RemoteAssignment] = []
+        ret: list[RemoteAssignment] = []
         for site_colon_unit in parse_units(units_specifier):
             remote = RemoteAssignment.from_site_colon_unit(
                 site_colon_unit, assignment=assignment

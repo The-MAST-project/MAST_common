@@ -6,8 +6,8 @@ import pywintypes
 import win32com.client
 from pydantic import BaseModel
 
+from common.canonical import CanonicalResponse, CanonicalResponse_Ok
 from common.mast_logging import init_log
-from common.utils import CanonicalResponse, CanonicalResponse_Ok
 
 logger = logging.getLogger("mast.unit." + __name__)
 init_log(logger)

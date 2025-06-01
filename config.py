@@ -7,14 +7,12 @@ from cachetools import TTLCache, cached
 from pydantic import BaseModel, ConfigDict, model_validator
 from pymongo.errors import ConnectionFailure, PyMongoError
 
+from common.const import Const
+from common.deep import deep_dict_difference, deep_dict_is_empty, deep_dict_update
 from common.mast_logging import init_log
-from common.utils import (deep_dict_difference, deep_dict_is_empty,
-                          deep_dict_update)
 
 logger = logging.getLogger("mast.unit." + __name__)
 init_log(logger)
-
-WEIZMANN_DOMAIN: str = "weizmann.ac.il"
 
 unit_cache = TTLCache(maxsize=100, ttl=30)
 sites_cache = TTLCache(maxsize=100, ttl=30)
@@ -198,7 +196,7 @@ class Config:
             ret["name"] = unit_name
             if ret["power_switch"]["network"]["host"] == "auto":
                 switch_host_name = (
-                    unit_name.replace("mast", "mastps") + "." + WEIZMANN_DOMAIN
+                    unit_name.replace("mast", "mastps") + "." + Const.WEIZMANN_DOMAIN
                 )
                 ret["power_switch"]["network"]["host"] = switch_host_name
                 if "ipaddr" not in ret["power_switch"]["network"]:
@@ -271,7 +269,7 @@ class Config:
         }
 
     @cached(service_cache)
-    def get_service(self, service_name: str):
+    def get_service(self, service_name: str) -> dict:
         try:
             doc = self.db["services"].find_one({"name": service_name})
         except PyMongoError as e:

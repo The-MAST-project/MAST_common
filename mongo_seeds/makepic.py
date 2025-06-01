@@ -1,12 +1,14 @@
-from pymongo import MongoClient
 import argparse
-from bson.binary import Binary
 import os
-from config import WEIZMANN_DOMAIN
+
+from bson.binary import Binary
+from pymongo import MongoClient
+
+from config import Const
 
 
 def store_user_picture(site: str, user: str, img: str):
-    client = MongoClient(f"mongodb://mast-{site}-control.{WEIZMANN_DOMAIN}:27017/")
+    client = MongoClient(f"mongodb://mast-{site}-control.{Const.WEIZMANN_DOMAIN}:27017/")
     db = client["mast"]
     collection = db["users"]
 
@@ -41,7 +43,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.site not in ["wis", "ns"]:
-        raise Exception(f"site must be one of ['wis', 'ns']")
+        raise Exception("site must be one of ['wis', 'ns']")
     if not os.access(args.img, os.R_OK):
         raise Exception(f"no read access to {args.img=}")
 

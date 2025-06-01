@@ -1,18 +1,15 @@
-import socket
-import httpx
-from common.utils import (
-    BASE_UNIT_PATH,
-    BASE_SPEC_PATH,
-    BASE_CONTROL_PATH,
-    CanonicalResponse,
-    function_name,
-)
-from common.mast_logging import init_log
-from common.config import Config, Site, WEIZMANN_DOMAIN
-from enum import Enum, auto
-import re
 import logging
-from typing import Optional, Dict
+import re
+import socket
+from enum import Enum, auto
+
+import httpx
+
+from common.canonical import CanonicalResponse
+from common.config import Config, Site
+from common.const import Const
+from common.mast_logging import init_log
+from common.utils import function_name
 
 logger = logging.getLogger("api")
 init_log(logger)
@@ -73,20 +70,20 @@ class ApiClient:
 
     def __init__(
         self,
-        hostname: Optional[str] = None,
-        ipaddr: Optional[str] = None,
-        port: Optional[int] = 8000,
-        domain: Optional[ApiDomain] = None,
-        device: Optional[str] = None,
-        timeout: Optional[float] = TIMEOUT,
+        hostname: str | None = None,
+        ipaddr: str | None = None,
+        port: int | None = 8000,
+        domain: ApiDomain | None = None,
+        device: str | None = None,
+        timeout: float | None = TIMEOUT,
     ):
 
         if hostname is None and ipaddr is None:
-            raise ValueError(f"both 'hostname' and 'ipaddr' are None")
+            raise ValueError("both 'hostname' and 'ipaddr' are None")
 
         if ipaddr is not None and domain is None:
             raise ValueError(
-                f"if 'ipaddr' is provided a 'domain' must be provided as well"
+                "if 'ipaddr' is provided a 'domain' must be provided as well"
             )
 
         domain_base = None
@@ -95,31 +92,31 @@ class ApiClient:
             self.domain = domain
             self.ipaddr = ipaddr
             domain_base = (
-                BASE_UNIT_PATH
+                Const.BASE_UNIT_PATH
                 if domain == ApiDomain.Unit
-                else BASE_SPEC_PATH if domain == ApiDomain.Spec else BASE_CONTROL_PATH
+                else Const.BASE_SPEC_PATH if domain == ApiDomain.Spec else Const.BASE_CONTROL_PATH
             )
         else:
             if hostname.endswith("-spec"):
                 self.domain = ApiDomain.Spec
-                domain_base = BASE_SPEC_PATH
+                domain_base = Const.BASE_SPEC_PATH
             elif hostname.endswith("-control"):
                 self.domain = ApiDomain.Control
-                domain_base = BASE_CONTROL_PATH
+                domain_base = Const.BASE_CONTROL_PATH
             else:
                 mast_pattern = re.compile(r"^mast(0[1-9]|1[0-9]|20|w)$")
                 if mast_pattern.match(hostname):
                     self.domain = ApiDomain.Unit
-                    domain_base = BASE_UNIT_PATH
+                    domain_base = Const.BASE_UNIT_PATH
 
             self.hostname = hostname
             try:
                 self.ipaddr = socket.gethostbyname(hostname)
             except socket.gaierror:
                 try:
-                    self.ipaddr = socket.gethostbyname(hostname + "." + WEIZMANN_DOMAIN)
-                except socket.gaierror:
-                    raise ValueError(f"cannot get 'ipaddr' for {hostname=}")
+                    self.ipaddr = socket.gethostbyname(hostname + "." + Const.WEIZMANN_DOMAIN)
+                except socket.gaierror as err:
+                    raise ValueError(f"cannot get 'ipaddr' for {hostname=}") from err
 
         if self.ipaddr is not None and hostname is None:
             try:
@@ -145,7 +142,7 @@ class ApiClient:
     def operational(self) -> bool:
         return len(self.errors) == 0
 
-    async def get(self, method: str, params: Optional[Dict] = None):
+    async def get(self, method: str, params: dict | None = None):
         url = f"{self.base_url}/{method}"
         op = f"{function_name()}, {url=}"
         self.errors = []
@@ -172,9 +169,9 @@ class ApiClient:
     async def put(
         self,
         method: str,
-        params: Optional[Dict] = None,
-        data: Optional[Dict] = None,
-        json: Optional[Dict] = None,
+        params: dict | None = None,
+        data: dict | None = None,
+        json: dict | None = None,
     ):
         url = f"{self.base_url}/{method}"
         op = f"{function_name()}, {url=}"
@@ -246,7 +243,7 @@ class ApiClient:
                 else:
                     self.append_error(
                         f"{op}: got a canonical response but fields "
-                        + f"'exception', 'errors' and 'value' are all None"
+                        + "'exception', 'errors' and 'value' are all None"
                     )
                     return CanonicalResponse(errors=self.errors)
             else:
@@ -270,22 +267,21 @@ class ApiClient:
         self.detected = True
         return CanonicalResponse(value=value)
 
-
 class UnitApi(ApiClient):
 
     def __init__(
         self,
-        hostname: Optional[str] = None,
-        ipaddr: Optional[str] = None,
-        domain: Optional[ApiDomain] = None,
-        device: Optional[str] = None,
+        hostname: str | None = None,
+        ipaddr: str | None = None,
+        domain: ApiDomain | None = None,
+        device: str | None = None,
     ):
         super().__init__(hostname=hostname, ipaddr=ipaddr, device=device, domain=domain)
 
 
 class SpecApi(ApiClient):
 
-    def __init__(self, site_name: Optional[str] = None):
+    def __init__(self, site_name: str | None = None):
         self.client = None
 
         if site_name:
@@ -298,7 +294,7 @@ class SpecApi(ApiClient):
 
 class ControllerApi:
 
-    def __init__(self, site_name: Optional[str] = None):
+    def __init__(self, site_name: str | None = None):
         self.client = None
 
         if site_name:

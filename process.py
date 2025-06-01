@@ -1,18 +1,19 @@
+import contextlib
 import logging
 import re
 import shlex
 import subprocess
 import threading
 import time
+from pathlib import Path
 from threading import Thread
-from typing import Dict, Optional
 
 import psutil
 
 
 def find_process(
-    name: str | None = None, patt: str = None, pid: int | None = None
-) -> psutil.Process:
+    name: str | None = None, patt: str | None = None, pid: int | None = None
+) -> psutil.Process | None:
     """
     Searches for a running process either by a pattern in the command line or by pid
 
@@ -32,9 +33,9 @@ def find_process(
             ret = proc
             break
         elif patt:
-            patt = re.compile(patt, re.IGNORECASE)
+            _patt: re.Pattern = re.compile(patt, re.IGNORECASE) # type: ignore
             for arg in proc.info["cmdline"]:
-                if patt.search(arg):
+                if _patt.search(arg):
                     ret = proc
                     break
         elif pid and proc.info["pid"] == pid:
@@ -44,25 +45,25 @@ def find_process(
     return ret
 
 
-def log_stream(stream, logger, log_level):
+def log_stream(label: str, stream, logger, log_level):
     """
     Reads a stream line by line and logs it.
     """
     for line in iter(stream.readline, b""):
-        logger.log(log_level, line.decode().strip())
+        logger.log(log_level, "[" + label + "]: " + line.decode().strip())
     stream.close()
 
 
 def ensure_process_is_running(
     name: str | None = None,
     pattern: str | None = None,
-    cmd: str = None,
+    cmd: str | None = None,
     logger: logging.Logger | None = None,
-    env: dict = None,
-    cwd: str = None,
+    env: dict | None = None,
+    cwd: str | None = None,
     shell: bool = False,
     log_stdout_and_stderr: bool = False,
-) -> psutil.Process:
+) -> psutil.Process | None:
     """
     Makes sure a process containing 'pattern' in the command line exists.
     If it's not running, it starts one using 'cmd' and waits till it is running
@@ -85,8 +86,9 @@ def ensure_process_is_running(
     p = find_process(name, pattern)
     if p is not None:
         if name:
-            logger.debug(f"A process with {name=}exists, pid={p.pid}")
-        elif pattern:
+            if logger:
+                logger.debug(f"A process with {name=}exists, pid={p.pid}")
+        elif pattern and logger:
             logger.debug(
                 f"A process with {pattern=} in the commandline exists, pid={p.pid}"
             )
@@ -96,10 +98,17 @@ def ensure_process_is_running(
         # It's not running, start it
         stdout = subprocess.PIPE if log_stdout_and_stderr else subprocess.DEVNULL
         stderr = subprocess.PIPE if log_stdout_and_stderr else subprocess.DEVNULL
+        cmd = Path(cmd).as_posix() if cmd else None
+        if not cmd:
+            raise ValueError("ensure_process_is_running: cmd must be set")
+        executable = cmd.split("/")[-1].replace('"', "") if "/" in cmd else cmd.split(" ")[0]
 
         if shell:
             process = subprocess.Popen(
-                args=cmd, env=env, shell=True, cwd=cwd, stderr=stderr, stdout=stdout
+                args=cmd,
+                env=env,
+                shell=True,
+                cwd=cwd, stderr=stderr, stdout=stdout
             )
         else:
             args = cmd.split()
@@ -110,16 +119,17 @@ def ensure_process_is_running(
             threading.Thread(
                 name="stdout-logger",
                 target=log_stream,
-                args=(process.stdout, logger, logging.INFO),
+                args=(executable, process.stdout, logger, logging.INFO),
             ).start()
             threading.Thread(
                 name="stderr-logger",
                 target=log_stream,
-                args=(process.stderr, logger, logging.ERROR),
+                args=(executable, process.stderr, logger, logging.ERROR),
             ).start()
 
-        logger.info(f"started process (pid={process.pid}) with cmd: '{cmd}' in {cwd=}")
-    except Exception as ex:
+        if logger:
+            logger.info(f"started process (pid={process.pid}) with cmd: '{cmd}' in {cwd=}")
+    except Exception:
         pass
 
     p = None
@@ -127,10 +137,11 @@ def ensure_process_is_running(
         p = find_process(name, pattern)
         if p:
             return p
-        if name:
-            logger.info(f"waiting for process with {name=} to run")
-        else:
-            logger.info(f"waiting for process with {pattern=} to run")
+        if logger:
+            if name:
+                logger.info(f"waiting for process with {name=} to run")
+            else:
+                logger.info(f"waiting for process with {pattern=} to run")
         time.sleep(1)
 
 
@@ -138,25 +149,29 @@ class WatchedProcess:
 
     def __init__(
         self,
-        command_pattern: Optional[str] = None,
-        command: Optional[str] = None,
-        logger: Optional[logging.Logger] = None,
-        env: Optional[Dict] = None,
-        cwd: Optional[str] = None,
+        command_pattern: str | None = None,
+        command: str | None = None,
+        logger: logging.Logger | None = None,
+        env: dict | None = None,
+        cwd: str | None = None,
         shell: bool = False,
     ):
 
-        self.command_pattern: Optional[str] = command_pattern
-        self.command: Optional[str] = command
-        self.logger: Optional[logging.Logger] = logger
-        self.env: Optional[Dict] = env
-        self.cwd: Optional[str] = cwd
+        self.command_pattern: str | None = command_pattern
+        self.command: str | None = command
+        self.logger: logging.Logger | None = logger
+        self.env: dict | None = env
+        self.cwd: str | None = cwd
         self.shell: bool = shell
         self.process: subprocess.Popen | None = None
         self.logging: bool = False
         self._terminate: bool = False
 
     def start(self):
+        if not self.command:
+            if not self.command_pattern:
+                raise ValueError("WatchedProcess: command or command_pattern must be set")
+            self.command = self.command_pattern
         #
         # First kill previous instances, if existent.
         # We want to log and monitor a newly created process
@@ -207,7 +222,10 @@ class WatchedProcess:
         """
         Reads lines from a stream and logs them
         """
-        if not self.logging or stream == -1:
+        if stream == -1:
+            # This is a special case for subprocess.DEVNULL
+            return
+        if not self.logger:
             return
         for line in iter(stream.read_line, b""):
             self.logger.info(line.decode().strip())
@@ -215,19 +233,21 @@ class WatchedProcess:
 
     def terminate(self):
         self._terminate = True
-        self.process.kill()
+        if self.process is not None:
+            self.process.kill()
 
     def watcher(self):
         while not self._terminate:
-            exit_code = self.process.wait()
+            if self.process is not None:
+                exit_code = self.process.wait()
+                if self.logger:
+                    self.logger.info(f"Process {self.process.pid} exited with {exit_code=}")
             self.logging = False  # stop logging threads
             if self._terminate:
                 return
+
             if self.logger:
-                self.logger.info(
-                    f"Process {self.process.pid} exited with {exit_code=}, "
-                    + f"restarting it with '{self.command=}'"
-                )
+                self.logger.info(f"Starting {self.command} ...")
             self.start()
 
 
@@ -239,10 +259,8 @@ def kill_process_by_name(name):
         if name.lower() in proc.info["name"].lower():
             found = True
             print(f"Killing PID {proc.pid} ({proc.info['name']})")
-            try:
+            with contextlib.suppress(Exception):
                 proc.kill()
-            except:
-                pass
             gone = []
             while proc not in gone:
                 gone, alive = psutil.wait_procs([proc])
