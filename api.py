@@ -97,6 +97,9 @@ class ApiClient:
                 else Const.BASE_SPEC_PATH if domain == ApiDomain.Spec else Const.BASE_CONTROL_PATH
             )
         else:
+            if hostname is None:
+                raise ValueError("if 'ipaddr' is None, 'hostname' must be provided")
+
             if hostname.endswith("-spec"):
                 self.domain = ApiDomain.Spec
                 domain_base = Const.BASE_SPEC_PATH
@@ -127,6 +130,8 @@ class ApiClient:
 
         self.base_url = f"http://{self.ipaddr}:{port}{domain_base}"
         if device:
+            if self.domain is None:
+                raise ValueError("domain cannot be None when device is specified")
             if device in api_devices[self.domain]:
                 self.base_url += f"/{device}"
             else:
@@ -202,8 +207,33 @@ class ApiClient:
         self.errors.append(err)
         # logger.error(err)
 
+    def _handle_canonical_response(self, canonical_response, op):
+        if hasattr(canonical_response, "exception") and canonical_response.exception is not None:
+            e = canonical_response.exception
+            self.append_error(f"{op}: Remote Exception     type: {e.type}")
+            self.append_error(f"{op}: Remote Exception  message: {e.message}")
+            for arg in e.args:
+                self.append_error(f"{op}: Remote Exception      arg: {arg}")
+            if e.traceback:
+                for line in e.traceback.split("\n"):
+                    self.append_error(f"{op}: Remote Exception traceback: {line}")
+                return None
+
+        if hasattr(canonical_response, "errors") and canonical_response.errors is not None:
+            for err in canonical_response.errors:
+                self.append_error(err)
+            return None
+
+        if hasattr(canonical_response, "value") and canonical_response.value is not None:
+            return canonical_response.value
+
+        self.append_error(
+            f"{op}: got a canonical response but fields "
+            + "'exception', 'errors' and 'value' are all None"
+        )
+        return None
+
     def common_get_put(self, response: httpx.Response):
-        line: str
         value = None
         op = function_name()
 
@@ -211,40 +241,11 @@ class ApiClient:
             response.raise_for_status()
             response_dict = response.json()
             self.detected = True
+
             if "api_version" in response_dict and response_dict["api_version"] == "1.0":
                 canonical_response = CanonicalResponse(**response_dict)
-                if (
-                    hasattr(canonical_response, "exception")
-                    and canonical_response.exception is not None
-                ):
-                    e = canonical_response.exception
-                    self.append_error(f"{op}: Remote Exception     type: {e.type}")
-                    self.append_error(f"{op}: Remote Exception  message: {e.message}")
-                    for arg in e.args:
-                        self.append_error(f"{op}: Remote Exception      arg: {arg}")
-                    for line in e.traceback.split("\n"):
-                        self.append_error(f"{op}: Remote Exception traceback: {line}")
-                        return CanonicalResponse(errors=self.errors)
-
-                elif (
-                    hasattr(canonical_response, "errors")
-                    and canonical_response.errors is not None
-                ):
-                    for err in canonical_response.errors:
-                        self.append_error(err)
-                    return CanonicalResponse(errors=self.errors)
-
-                elif (
-                    hasattr(canonical_response, "value")
-                    and canonical_response.value is not None
-                ):
-                    value = canonical_response.value
-
-                else:
-                    self.append_error(
-                        f"{op}: got a canonical response but fields "
-                        + "'exception', 'errors' and 'value' are all None"
-                    )
+                value = self._handle_canonical_response(canonical_response, op)
+                if value is None and self.errors:
                     return CanonicalResponse(errors=self.errors)
             else:
                 value = response_dict
@@ -288,7 +289,11 @@ class SpecApi(ApiClient):
             site = [s for s in Config().sites if s.name == site_name][0]
         else:
             site: Site = Config().local_site
-        port = Config().get_service(service_name="spec")["port"]
+        service = Config().get_service(service_name="spec")
+        if service is None:
+            logger.error("Spec service configuration not found")
+            return
+        port = service["port"]
         super().__init__(hostname=f"{site.project}-{site.name}-spec", port=port)
 
 
@@ -301,7 +306,11 @@ class ControllerApi:
             site = [s for s in Config().sites if s.name == site_name][0]
         else:
             site: Site = Config().local_site
-        port = Config().get_service(service_name="control")["port"]
+        service = Config().get_service(service_name="control")
+        if service is None:
+            logger.error("Control service configuration not found")
+            return
+        port = service["port"]
         try:
             self.client = ApiClient(f"{site.project}-{site.name}-control", port=port)
         except ValueError as e:
@@ -314,7 +323,8 @@ def main():
         response = unit.get("status")
         if response:
             print(f"unit.status(): {response=}")
-    except:
+    except Exception as e:
+        logger.error(f"Error accessing unit API: {e}")
         pass
 
     try:
@@ -322,7 +332,8 @@ def main():
         response = focuser.get("status")
         if response:
             print(f"focuser.status(): {response=}")
-    except:
+    except Exception as e:
+        logger.error(f"Error accessing unit API: {e}")
         pass
 
     try:

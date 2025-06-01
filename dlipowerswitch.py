@@ -107,15 +107,15 @@ class DliPowerSwitch(Component):
                 return {"error": f"{e}"}
         return self.common_get_put(response)
 
-    # def put(self, url: str, data: dict | None = None) -> object:
-    def put(self, url: str, data: str | None = None) -> object:
+    def put(self, url: str, data: str | dict | None = None) -> object:
         url = self.base_url + url
 
         with httpx.Client(trust_env=False, auth=self.auth) as client:
             try:
                 # logger.info(f"PUT {url=}, {data=}")
+                request_data = {"value": data} if isinstance(data, str) else data
                 response = client.put(
-                    url=url, headers=self.headers, data=data, timeout=self.timeout
+                    url=url, headers=self.headers, data=request_data, timeout=self.timeout
                 )
                 self._detected = True
             except httpx.TimeoutException:
@@ -164,7 +164,7 @@ class DliPowerSwitch(Component):
         result = self.get(f"restapi/relay/outlets/{idx}/state/")
         if isinstance(result, dict) and "error" in result:
             return None
-        return result
+        return bool(result) if result is not None else None
 
     def upload_outlet_names(self):
         """
@@ -296,8 +296,9 @@ class PowerSwitchFactory:
         # We have an 'ipaddr'
         if ipaddr not in cls._instances:
             # we don't have an instance for this 'ipaddr', make a new one
+            config_dict = conf if isinstance(conf, dict) else {}
             cls._instances[ipaddr] = DliPowerSwitch(
-                hostname=ps_name, ipaddr=ipaddr, conf=conf
+                hostname=ps_name, ipaddr=ipaddr, conf=config_dict
             )
 
         return cls._instances[ipaddr]
@@ -404,7 +405,7 @@ class SwitchedOutlet:
                     )
 
         self.delay_after_on = (
-            self.power_switch.conf.get("delay_after_on", 0)
+            self.power_switch.conf.get("delay_after_on", 0) if self.power_switch else 0
         )
 
     def __repr__(self):
@@ -419,12 +420,14 @@ class SwitchedOutlet:
     def state(self) -> TriStateBool:
         # self.power_switch.fetch_outlets()
         # return [o.state for o in self.power_switch.outlets if o.label == self.outlet_name][0]
+        if self.power_switch is None:
+            return None
         return self.power_switch.get_outlet_state(self.outlet_name)
 
     def power_on_or_off(self, new_state: bool):
         op = function_name()
 
-        if not self.power_switch.detected:
+        if self.power_switch is None or not self.power_switch.detected:
             logger.error(f"{op}: {self.outlet_name=}: {self.power_switch} not detected")
             return
 
@@ -444,6 +447,8 @@ class SwitchedOutlet:
         self.power_on_or_off(False)
 
     def toggle(self):
+        if self.power_switch is None:
+            return
         self.power_switch.toggle_outlet(self.outlet_name)
 
     def cycle(self):
@@ -455,10 +460,14 @@ class SwitchedOutlet:
             self.power_on()
 
     def is_on(self) -> bool:
+        if self.power_switch is None:
+            return False
         state = self.power_switch.get_outlet_state(self.outlet_name)
         return state is True
 
     def is_off(self) -> bool:
+        if self.power_switch is None:
+            return True
         state = self.power_switch.get_outlet_state(self.outlet_name)
         return state is False
 

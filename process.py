@@ -83,15 +83,10 @@ def ensure_process_is_running(
     -------
 
     """
-    p = find_process(name, pattern)
-    if p is not None:
-        if name:
-            if logger:
-                logger.debug(f"A process with {name=}exists, pid={p.pid}")
-        elif pattern and logger:
-            logger.debug(
-                f"A process with {pattern=} in the commandline exists, pid={p.pid}"
-            )
+    # Check if process already running
+    if p := find_process(name, pattern):
+        if logger:
+            logger.debug(f"Found existing process: {name or pattern} (pid={p.pid})")
         return p
 
     try:
@@ -132,16 +127,10 @@ def ensure_process_is_running(
     except Exception:
         pass
 
-    p = None
-    while not p:
-        p = find_process(name, pattern)
-        if p:
-            return p
+    # Wait for process to appear
+    while not (p := find_process(name, pattern)):
         if logger:
-            if name:
-                logger.info(f"waiting for process with {name=} to run")
-            else:
-                logger.info(f"waiting for process with {pattern=} to run")
+            logger.info(f"Waiting for process to start: {name or pattern}")
         time.sleep(1)
 
 

@@ -3,7 +3,6 @@ import datetime
 import logging
 import socket
 from enum import IntFlag, auto
-from typing import Dict, Optional
 
 import humanfriendly
 from pydantic import BaseModel
@@ -24,7 +23,7 @@ class ActivityNotification(BaseModel):
     activity: int
     activity_verbal: str
     started: bool = False
-    duration: Optional[str] = None
+    duration: str | None = None
 
 
 class Timing:
@@ -49,17 +48,19 @@ class Activities:
     The activity can be started, ended and checked if in-progress
     """
 
-    Idle: IntFlag = 0
+    Idle: IntFlag = IntFlag(0)
 
     def __init__(self):
         self.activities: IntFlag = Activities.Idle
-        self.timings: Dict[IntFlag, Timing] = {}
+        self.timings: dict[IntFlag, Timing] = {}
 
     async def notify_activity(self, data):
-        await ControllerApi("wis").client.put("activity_notification", data=data)
+        client = ControllerApi("wis").client
+        if client:
+            await client.put("activity_notification", data=data)
 
     def start_activity(
-        self, activity: IntFlag, existing_ok: bool = False, label: Optional[str] = None
+        self, activity: IntFlag, existing_ok: bool = False, label: str | None = None
     ):
         """
         Marks the start of an activity.
@@ -87,7 +88,7 @@ class Activities:
         except RuntimeError:
             asyncio.run(self.notify_activity(data))
 
-    def end_activity(self, activity: IntFlag, label: Optional[str] = None):
+    def end_activity(self, activity: IntFlag, label: str | None = None):
         """
         Marks the end of an activity
         :param activity:
@@ -156,7 +157,7 @@ class UnitActivities(IntFlag):
     Correcting = auto()
 
 
-class CameraActivities(IntFlag):
+class ImagerActivities(IntFlag):
     Idle = 0
     CoolingDown = auto()
     WarmingUp = auto()

@@ -4,6 +4,7 @@ from copy import deepcopy
 
 import pymongo
 from cachetools import TTLCache, cached
+from numpy import diff
 from pydantic import BaseModel, ConfigDict, model_validator
 from pymongo.errors import ConnectionFailure, PyMongoError
 
@@ -172,13 +173,17 @@ class Config:
         self._initialized = True
 
     @cached(unit_cache)
-    def get_unit(self, unit_name: str = None) -> dict:
+    def get_unit(self, unit_name: str | None = None) -> dict:
         """
         Gets a unit's configuration.  By default, this is the ['config']['units']['common']
          entry. If a unit-specific entry exists it overrides the 'common' entry.
         """
         coll = self.db["units"]
         common_conf = coll.find_one({"name": "common"})
+        if common_conf is None:
+            logger.error("get_unit: 'common' unit configuration not found")
+            raise ValueError("get_unit: 'common' unit configuration not found")
+
         del common_conf["_id"]
         ret: dict = deepcopy(common_conf)
 
@@ -186,7 +191,12 @@ class Config:
             unit_name = socket.gethostname()
 
         # override with unit-specific config
-        unit_conf: dict = coll.find_one({"name": unit_name})
+        unit_conf = coll.find_one({"name": unit_name if unit_name is not None else socket.gethostname()})
+        if unit_conf is None:
+            logger.warning(
+                f"get_unit: no unit configuration found for {unit_name=}, using 'common' config"
+            )
+            unit_conf = {}
         del unit_conf["_id"]
         if unit_conf:
             deep_dict_update(ret, unit_conf)
@@ -208,18 +218,23 @@ class Config:
 
         return ret
 
-    def set_unit(self, unit_name: str = None, unit_conf: dict = None):
+    def set_unit(self, unit_name: str | None = None, unit_conf: dict | None = None):
         if not unit_name:
             raise Exception("save_unit_config: 'unit_name' cannot be None")
         if not unit_conf:
             raise Exception("save_unit_config: 'unit_conf' cannot be None")
 
         common_conf = self.db["units"].find_one({"name": "common"})
+        if common_conf is None:
+            logger.error("save_unit_config: 'common' unit configuration not found")
+            raise ValueError("save_unit_config: 'common' unit configuration not found")
+
         del common_conf["_id"]
         difference = deep_dict_difference(common_conf, unit_conf)
         saved_power_switch_network = difference["power_switch"]["network"]
         del difference["power_switch"]["network"]
-        del difference["name"]
+        if "name" in difference:
+            del difference["name"]
 
         if not deep_dict_is_empty(difference):
             difference["name"] = unit_name
@@ -269,7 +284,7 @@ class Config:
         }
 
     @cached(service_cache)
-    def get_service(self, service_name: str) -> dict:
+    def get_service(self, service_name: str) -> dict | None:
         try:
             doc = self.db["services"].find_one({"name": service_name})
         except PyMongoError as e:
@@ -278,7 +293,7 @@ class Config:
         return doc
 
     @cached(user_cache)
-    def get_user(self, name: str = None) -> dict:
+    def get_user(self, name: str) -> dict:
         try:
             user = self.db["users"].find_one({"name": name})
             groups: list = user["groups"]
@@ -343,4 +358,4 @@ if __name__ == "__main__":
     # print(json.dumps(Config().get_sites(), indent=2))
     # print(json.dumps(Config().get_users(), indent=2))
 
-    print(json.dumps([s.to_dict() for s in Config().sites]))
+    print(json.dumps([s.model_dump() for s in Config().sites]))

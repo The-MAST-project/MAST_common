@@ -11,8 +11,8 @@ from multiprocessing import shared_memory
 from threading import Lock, Timer
 from typing import NamedTuple
 
-import astropy.units as u
 from astropy.coordinates import Angle
+from astropy.units import deg, hourangle  # type: ignore
 
 from common.filer import Filer
 from common.paths import PathMaker
@@ -107,18 +107,26 @@ def time_stamp():
     return datetime.datetime.now().isoformat()
 
 
-def function_name():
+def function_name() -> str:
     """
     Gets the name of the calling function from the stack
     """
-    return inspect.currentframe().f_back.f_code.co_name
+    current_frame = inspect.currentframe()
+    if current_frame is None or current_frame.f_back is None:
+        return "UnknownFunction"
+
+    return current_frame.f_back.f_code.co_name
 
 
-def caller_name():
+def caller_name() -> str:
     """
     Gets the name of the calling function's caller
     """
-    return inspect.currentframe().f_back.f_back.f_code.co_name
+    current_frame = inspect.currentframe()
+    if current_frame is None or current_frame.f_back is None or current_frame.f_back.f_back is None:
+        return "UnknownCaller"
+
+    return current_frame.f_back.f_back.f_code.co_name
 
 
 def parse_coordinate(coord: float | str):
@@ -132,8 +140,8 @@ class Coord(NamedTuple):
     def __repr__(self):
         return (
             "["
-            + f"{self.ra.to_string(u.hourangle, decimal=True, precision=9)}, "
-            + f"{self.dec.to_string(u.deg, decimal=True, precision=9)}"
+            + f"{self.ra.to_string(unit=hourangle, decimal=True, precision=9)}, "
+            + f"{self.dec.to_string(unit=deg, decimal=True, precision=9)}"
             + "]"
         )
 
@@ -162,13 +170,13 @@ class UnitRoi:
 
         """
         if not binning:
-            binning = ImagerBinning(1, 1)
+            binning = ImagerBinning(x=1, y=1)
 
         return ImagerRoi(
-            (self.x - int(self.width / 2)) * binning.x,
-            (self.y - int(self.height / 2)) * binning.y,
-            self.width * binning.x,
-            self.height * binning.y,
+            x=(self.x - int(self.width / 2)) * binning.x,
+            y=(self.y - int(self.height / 2)) * binning.y,
+            width=self.width * binning.x,
+            height=self.height * binning.y,
         )
 
     @staticmethod
