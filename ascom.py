@@ -74,11 +74,11 @@ def ascom_run(
 
     except pywintypes.com_error as e:
         logger.debug(f"{label}: ASCOM error: cmd='{cmd.removeprefix('o.ascom.')}'")
-        logger.debug(f"{label}:     Message: '{e.excepinfo[2]}'")
-        logger.debug(f"{label}:        Code: 0x{(e.hresult & 0xffffffff):08X}")
+        logger.debug(f"{label}:     Message: '{e.excepinfo[2]}'") # type: ignore
+        logger.debug(f"{label}:        Code: 0x{(e.hresult & 0xffffffff):08X}") # type: ignore
         return CanonicalResponse(errors=[f"{e}"])
 
     except Exception as e:
         message = f"{label}: Exception: cmd='{cmd}', exception='{e}'"
         logger.debug(message)
-        return CanonicalResponse(exception=e)
+        return CanonicalResponse(errors=[message])

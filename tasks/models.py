@@ -17,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, ValidationError, computed_field
 from common.activities import Activities, AssignmentActivities, UnitActivities
 from common.api import ApiDomain, SpecApi, UnitApi
 from common.config import Config
+from common.deep import deep_dict_update
 from common.mast_logging import init_log
 from common.models.assignments import (
     Initiator,
@@ -30,7 +31,7 @@ from common.models.constraints import ConstraintsModel
 from common.models.spectrographs import SpectrographModel
 from common.parsers import parse_units
 from common.spec import DeepspecBands
-from common.utils import OperatingMode, deep_dict_update
+from common.utils import OperatingMode
 
 logger = logging.getLogger("tasks")
 init_log(logger)

@@ -4,7 +4,6 @@ from copy import deepcopy
 
 import pymongo
 from cachetools import TTLCache, cached
-from numpy import diff
 from pydantic import BaseModel, ConfigDict, model_validator
 from pymongo.errors import ConnectionFailure, PyMongoError
 
