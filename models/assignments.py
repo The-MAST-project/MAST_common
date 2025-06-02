@@ -113,7 +113,7 @@ class UnitAssignmentModel(AssignmentModel):
 
     @computed_field
     def autofocus(self) -> bool:
-        return self.task.autofocus
+        return self.task.autofocus if self.task.autofocus else False
 
 
 class DeepSpecAssignment(BaseModel):

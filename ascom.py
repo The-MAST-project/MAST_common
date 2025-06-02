@@ -41,7 +41,7 @@ class AscomDispatcher(ABC):
 
     @property
     @abstractmethod
-    def ascom(self) -> win32com.client.Dispatch:
+    def ascom(self) -> win32com.client.Dispatch: # type: ignore
         pass
 
     def ascom_status(self) -> AscomStatus:
