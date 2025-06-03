@@ -107,15 +107,22 @@ def time_stamp():
     return datetime.datetime.now().isoformat()
 
 
-def function_name() -> str:
-    """
-    Gets the name of the calling function from the stack
-    """
-    current_frame = inspect.currentframe()
-    if current_frame is None or current_frame.f_back is None:
+def function_name():
+    frame = inspect.currentframe()
+    if frame is None or frame.f_back is None or frame.f_back.f_back is None:
         return "UnknownFunction"
+    try:
+        outer_frame = frame.f_back.f_back  # skip current and caller
+        func_name = outer_frame.f_code.co_name
+        self_obj = outer_frame.f_locals.get('self')
+        if self_obj:
+            class_name = self_obj.__class__.__name__
+            return f"{class_name}.{func_name}"
+        else:
+            return func_name
+    finally:
+        del frame  # avoid reference cycles
 
-    return current_frame.f_back.f_code.co_name
 
 
 def caller_name() -> str:

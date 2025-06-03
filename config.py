@@ -229,23 +229,23 @@ class Config:
             raise ValueError("save_unit_config: 'common' unit configuration not found")
 
         del common_conf["_id"]
-        difference = deep_dict_difference(common_conf, unit_conf)
-        saved_power_switch_network = difference["power_switch"]["network"]
-        del difference["power_switch"]["network"]
-        if "name" in difference:
-            del difference["name"]
+        if difference := deep_dict_difference(common_conf, unit_conf):
+            saved_power_switch_network = difference["power_switch"]["network"]
+            del difference["power_switch"]["network"]
+            if "name" in difference:
+                del difference["name"]
 
-        if not deep_dict_is_empty(difference):
-            difference["name"] = unit_name
-            difference["power_switch"]["network"] = saved_power_switch_network
-            try:
-                self.db["units"].update_one(
-                    {"name": unit_name}, {"$set": difference}, upsert=True
-                )
-            except PyMongoError:
-                logger.error(
-                    f"save_unit_config: failed to update unit config for {unit_name=} with {difference=}"
-                )
+            if not deep_dict_is_empty(difference):
+                difference["name"] = unit_name
+                difference["power_switch"]["network"] = saved_power_switch_network
+                try:
+                    self.db["units"].update_one(
+                        {"name": unit_name}, {"$set": difference}, upsert=True
+                    )
+                except PyMongoError:
+                    logger.error(
+                        f"save_unit_config: failed to update unit config for {unit_name=} with {difference=}"
+                    )
 
     @cached(sites_cache)
     def get_sites(self) -> list[Site]:
@@ -295,10 +295,11 @@ class Config:
     def get_user(self, name: str) -> dict:
         try:
             user = self.db["users"].find_one({"name": name})
-            groups: list = user["groups"]
-        except PyMongoError:
-            logger.error(f"failed to get user {name=}")
+        except PyMongoError as ex:
+            logger.error(f"failed to get user {name=}, {ex=}")
             raise
+
+        groups: list = user["groups"] if user else []
         groups.append("everybody")
 
         collection = self.db["groups"]

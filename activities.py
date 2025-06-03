@@ -7,7 +7,6 @@ from enum import IntFlag, auto
 import humanfriendly
 from pydantic import BaseModel
 
-from common.api import ControllerApi
 from common.mast_logging import init_log
 
 logger = logging.Logger("mast." + __name__)
@@ -38,6 +37,9 @@ class Timing:
         self.end_time = datetime.datetime.now()
         self.duration = self.end_time - self.start_time
 
+class Activity(IntFlag):
+    Idle = 0
+
 
 class Activities:
     """
@@ -48,13 +50,15 @@ class Activities:
     The activity can be started, ended and checked if in-progress
     """
 
-    Idle: IntFlag = IntFlag(0)
+    Idle = 0
 
     def __init__(self):
-        self.activities: IntFlag = Activities.Idle
+        self.activities: IntFlag = Activity.Idle
         self.timings: dict[IntFlag, Timing] = {}
 
     async def notify_activity(self, data):
+        from common.api import ControllerApi
+
         client = ControllerApi("wis").client
         if client:
             await client.put("activity_notification", data=data)

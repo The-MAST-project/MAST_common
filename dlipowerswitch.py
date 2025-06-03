@@ -11,9 +11,8 @@ from pydantic import BaseModel
 
 from common.components import Component
 from common.config import Config
+from common.const import Const
 from common.mast_logging import init_log
-from common.networking import WEIZMANN_DOMAIN
-from common.utils import RepeatTimer, canonic_unit_name, function_name
 
 TriStateBool = bool | None
 
@@ -42,7 +41,7 @@ class DliPowerSwitch(Component):
         self.hostname = hostname
         self.ipaddr = ipaddr
         self.conf = conf
-        self.fqdn = self.hostname + "." + WEIZMANN_DOMAIN
+        self.fqdn = self.hostname + "." + Const.WEIZMANN_DOMAIN
         self._detected = False
         self.auth = httpx.DigestAuth("admin", "1234")
         self.headers = {
@@ -61,6 +60,8 @@ class DliPowerSwitch(Component):
         self.lock = Lock()
         self.max_age_seconds = 30  # seconds
         self.outlet_names = list(self.conf["outlets"].values())
+
+        from common.utils import RepeatTimer
 
         self.timer = RepeatTimer(5, function=self.on_timer)
         self.timer.name = "power-switch-timer-thread"
@@ -251,7 +252,11 @@ class PowerSwitchFactory:
 
         Raises: ValueError if the 'ipaddr' cannot be found
         """
+        from common.utils import function_name
+
         op = function_name()
+
+        from common.utils import canonic_unit_name
 
         conf = None
         ps_name = None
@@ -281,7 +286,7 @@ class PowerSwitchFactory:
         except socket.gaierror:
             with contextlib.suppress(socket.gaierror):
                 # try to GAI solve the fully qualified name
-                ipaddr = socket.gethostbyname(ps_name + "." + WEIZMANN_DOMAIN)
+                ipaddr = socket.gethostbyname(ps_name + "." + Const.WEIZMANN_DOMAIN)
 
         if ipaddr is None:
             # We could not GAI resolve the name, maybe it's in the configuration database
@@ -362,6 +367,8 @@ class SwitchedOutlet:
         SwitchedOutlets belong to an OutletDomain and have a canonical name,
           valid within that domain.
         """
+        from common.utils import function_name
+
         op = function_name()
 
         self.power_switch: DliPowerSwitch | None = None
@@ -425,6 +432,8 @@ class SwitchedOutlet:
         return self.power_switch.get_outlet_state(self.outlet_name)
 
     def power_on_or_off(self, new_state: bool):
+        from common.utils import function_name
+
         op = function_name()
 
         if self.power_switch is None or not self.power_switch.detected:
