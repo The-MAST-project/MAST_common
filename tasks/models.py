@@ -8,7 +8,7 @@ import socket
 import time
 from copy import deepcopy
 from pathlib import Path
-from typing import Literal
+from typing import Container, Literal
 
 import tomlkit
 import tomlkit.exceptions
@@ -33,8 +33,10 @@ from common.models.spectrographs import SpectrographModel
 from common.parsers import parse_units
 from common.spec import DeepspecBands
 from common.utils import OperatingMode
-from src import unit
 from src.common.canonical import CanonicalResponse
+from src.common.components import ComponentStatus
+
+GatherResponse = CanonicalResponse | BaseException | None
 
 logger = logging.getLogger("tasks")
 init_log(logger)
@@ -274,6 +276,7 @@ class TaskModel(BaseModel, Activities):
 
         # Ensure required fields exist with valid values
         task_section = toml_doc["task"]
+        assert(isinstance(task_section, Container))
         modified = False
 
         # Generate ULID if needed
@@ -344,21 +347,40 @@ class TaskModel(BaseModel, Activities):
             raise
         return response
 
-    async def fetch_statuses(self, units: list[UnitApi], spec: SpecApi | None = None):
-        tasks = [
-            self.api_coroutine(api=unit, method="GET", sub_url="status")
-            for unit in units
-        ]
+    async def fetch_statuses(self, units: list[UnitApi], spec: SpecApi | None = None) -> \
+        tuple[list[GatherResponse], GatherResponse | None]:
+        """Asynchronously fetch status information from multiple units and optionally a spectrograph.
+
+        This method makes parallel API calls to get the status of all specified units and
+        optionally a spectrograph. It uses asyncio.gather to run all requests concurrently.
+
+        Args:
+            units: List of UnitApi instances representing the telescope units to query
+            spec: Optional SpecApi instance for querying a spectrograph's status
+
+        Returns:
+            If spec is None:
+                list[GatherResponse]: List of status responses from units, in same order as input
+            If spec is provided:
+                tuple[list[GatherResponse], GatherResponse | None]: Tuple containing:
+                    - List of unit status responses
+                    - Spectrograph status response or None if failed
+
+        The GatherResponse type can be either:
+            - CanonicalResponse: Successful API response with status data
+            - BaseException: If the API call failed
+        """
+        tasks = [self.api_coroutine(api=unit_api, method="GET", sub_url="status") for unit_api in units]
+
         if spec:
             tasks.append(self.api_coroutine(api=spec, method="GET", sub_url="status"))
-        status_responses = await asyncio.gather(*tasks, return_exceptions=True)
+        all_status_responses: list[GatherResponse] = await asyncio.gather(*tasks, return_exceptions=True)
 
         if spec:
-            return status_responses[:-1], status_responses[-1]
-        else:
-            return status_responses
+            return all_status_responses[:-1], all_status_responses[-1]
+        return all_status_responses, None
 
-    async def get_spec_status(self) -> dict | None:
+    async def get_spec_status(self) -> ComponentStatus | None:
         canonical_response = await self.spec_api.get(method="status")
         if not canonical_response.succeeded:
             canonical_response.log(_logger=logger, label="spec")
@@ -383,14 +405,17 @@ class TaskModel(BaseModel, Activities):
 
         self.add_event(EventModel(what=reason, details=details))
 
-        current_path = Path(self.model_extra["toml_file"])
-        sub_folder = "failed" if reason in ["failed", "rejected"] else "completed"
-        new_path = current_path.parent.parent / sub_folder / current_path.name
-        os.makedirs(new_path.parent, exist_ok=True)
-        shutil.move(str(current_path), str(new_path))
-        logger.info(
-            f"moved task '{self.task.ulid}' from {str(current_path)} to {str(new_path)}"
-        )
+        if not self.model_extra or "toml_file" not in self.model_extra:
+            logger.error(f"cannot get 'toml_file' from {self.model_extra=}")
+        else:
+            current_path = Path(self.model_extra["toml_file"])
+            sub_folder = "failed" if reason in ["failed", "rejected"] else "completed"
+            new_path = current_path.parent.parent / sub_folder / current_path.name
+            os.makedirs(new_path.parent, exist_ok=True)
+            shutil.move(str(current_path), str(new_path))
+            logger.info(
+                f"moved task '{self.task.ulid}' from {str(current_path)} to {str(new_path)}"
+            )
 
     def add_event(self, event: EventModel):
         """
@@ -398,14 +423,20 @@ class TaskModel(BaseModel, Activities):
         :param event:
         :return:
         """
-        file = self.model_extra["toml_file"]
-        with open(file) as f:
-            toml_doc = tomlkit.load(f)
+        if self.model_extra and "toml_file" in self.model_extra:
+            file = self.model_extra["toml_file"]
 
-        toml_doc["events"].append(event.model_dump())
+            with open(file) as f:
+                toml_doc = tomlkit.load(f)
 
-        with open(file, "w") as f:
-            f.write(tomlkit.dumps(toml_doc))
+            if "events" not in toml_doc:
+                toml_doc["events"] = tomlkit.array()
+            events_array = toml_doc["events"]
+            events_array.append(event.model_dump())
+            toml_doc["events"] = events_array
+
+            with open(file, "w") as f:
+                f.write(tomlkit.dumps(toml_doc))
 
     async def execute(self, controller: "Controller"):
         """
@@ -528,32 +559,45 @@ class TaskModel(BaseModel, Activities):
             + f"(instead of {self.task.quorum}), operating in 'debug' mode"
         )
 
-        if spec_response and spec_response.failed:
-            self.end_activity(AssignmentActivities.Probing)
-            self.end_activity(AssignmentActivities.Executing)
-            self.terminate(
-                reason="rejected",
-                details=[
-                    f"cannot talk to spec '{self.spec_api.hostname}' ({self.spec_api.ipaddr}) "
-                    + f"(errors: {spec_response.errors})"
-                ],
-            )
-            return
-
-        spec_status = spec_response.value
-        if not spec_status["operational"]:
-            if OperatingMode.production:
+        if isinstance(spec_response, CanonicalResponse):
+            if spec_response and spec_response.failed:
                 self.end_activity(AssignmentActivities.Probing)
                 self.end_activity(AssignmentActivities.Executing)
                 self.terminate(
                     reason="rejected",
                     details=[
-                        f"spec is not operational {spec_response['why_not_operational']}"
+                        f"cannot talk to spec '{self.spec_api.hostname}' ({self.spec_api.ipaddr}) "
+                        + f"(errors: {spec_response.errors})"
                     ],
                 )
                 return
+
+            spec_status = spec_response.value
+            if spec_status and not spec_status.operational:
+                if OperatingMode.production:
+                    self.end_activity(AssignmentActivities.Probing)
+                    self.end_activity(AssignmentActivities.Executing)
+                    self.terminate(
+                        reason="rejected",
+                        details=[
+                            f"spec is not operational {spec_status.why_not_operational}"
+                        ],
+                    )
+                    return
+                else:
+                    logger.info("continuing with non-operational spec, operating in 'debug' mode")
+
+        elif isinstance(spec_response, BaseException):
+            if OperatingMode.production:
+                self.end_activity(AssignmentActivities.Probing)
+                self.end_activity(AssignmentActivities.Executing)
+                self.terminate(
+                    reason="failed",
+                    details=[f"exception when getting status from spec {spec_response=}"])
+                return
             else:
                 logger.info("continuing with non-operational spec, operating in 'debug' mode")
+
 
         self.end_activity(AssignmentActivities.Probing)
 
@@ -572,7 +616,7 @@ class TaskModel(BaseModel, Activities):
                         )
                     )
                     break
-        canonical_unit_responses: list[CanonicalResponse | BaseException] = await asyncio.gather(*assignment_tasks, return_exceptions=True)
+        canonical_unit_responses: list[GatherResponse] = await asyncio.gather(*assignment_tasks, return_exceptions=True)
         self.end_activity(AssignmentActivities.Dispatching)
 
         for i, canonical_response in enumerate(canonical_unit_responses):
@@ -643,9 +687,18 @@ class TaskModel(BaseModel, Activities):
 
         while (datetime.datetime.now() - start).seconds < self.task.timeout_to_guiding:
             time.sleep(20)
-            statuses: list[dict] = await self.fetch_statuses(self.commited_unit_apis)
+            responses = await self.fetch_statuses(self.commited_unit_apis)
+
+            canonical_responses: list[CanonicalResponse] = \
+                [response for response in responses if isinstance(response, CanonicalResponse)]
+
+            statuses: list[ComponentStatus] = [
+                response.value for response in canonical_responses
+                if response.value is not None and isinstance(response.value, ComponentStatus)
+            ]
+
             if all(
-                [(status["activities"] & UnitActivities.Guiding) for status in statuses]
+                [(status.activities & UnitActivities.Guiding) for status in statuses]
             ):
                 logger.info(
                     f"all commited units ({[f'{u.hostname} ({u.ipaddr})' for u in self.commited_unit_apis]}) "
@@ -672,15 +725,15 @@ class TaskModel(BaseModel, Activities):
         status = await self.get_spec_status()
         assert(status is not None), "status should not be None"
 
-        if self.task.production and not status["operational"]:
+        if self.task.production and not status.operational:
             logger.error("spectrograph became non-operational, aborting!")
             self.end_activity(AssignmentActivities.Executing)
             await self.abort()
             return
 
-        if status["activities"] != Activities.Idle:
+        if status.activities != Activities.Idle:
             logger.error(
-                f"spectrograph is busy (activities={status['activities']}), aborting!"
+                f"spectrograph is busy (activities={status.activities}), aborting!"
             )
             self.end_activity(AssignmentActivities.Executing)
             await self.abort()
@@ -703,11 +756,11 @@ class TaskModel(BaseModel, Activities):
         self.start_activity(AssignmentActivities.WaitingForSpecDone)
         while True:
             time.sleep(20)
-            spec_status = await self.get_spec_status()
+            spec_status: ComponentStatus | None = await self.get_spec_status()
             assert(spec_status is not None), "spec_status should not be None"
 
-            if not spec_status["operational"]:
-                for err in spec_status["why_not_operational"]:
+            if not spec_status.operational:
+                for err in spec_status.why_not_operational:
                     logger.error(f"spec not operational: {err}")
                 if OperatingMode.production:
                     await self.abort()
@@ -720,15 +773,15 @@ class TaskModel(BaseModel, Activities):
                     )
 
             print(json.dumps(spec_status, indent=2))
-            if spec_status["activities"] == Activities.Idle:
+            if spec_status.activities == Activities.Idle:
                 logger.info("spec is Idle")
                 self.end_activity(AssignmentActivities.WaitingForSpecDone)
                 self.end_activity(AssignmentActivities.Executing)
                 break
             else:
                 logger.info(
-                    f"spec is busy: activities: {spec_status['activities']} "
-                    + f"({spec_status['activities_verbal']})"
+                    f"spec is busy: activities: {spec_status.activities} "
+                    + f"({spec_status.activities_verbal})"
                 )
 
     async def abort(self):
