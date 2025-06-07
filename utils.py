@@ -20,8 +20,6 @@ from imagers import ImagerBinning, ImagerRoi
 
 default_encoding = "utf-8"
 
-PLATE_SOLVING_SHM_NAME = "PlateSolving_Image"
-
 logger = logging.getLogger("mast.unit." + __name__)
 
 
@@ -362,13 +360,11 @@ class OperatingMode:
         return cls._instance
 
     @classmethod
-    @property
-    def production(cls):
-        return not OperatingMode.debug
+    def production_mode(cls):
+        return not OperatingMode.debug_mode
 
     @classmethod
-    @property
-    def debug(cls):
+    def debug_mode(cls):
         return "MAST_DEBUG" in os.environ
 
 

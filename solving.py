@@ -1,5 +1,5 @@
 from enum import IntFlag, auto
-from typing import List, Literal, Optional
+from typing import Literal
 
 from astropy.coordinates import Angle
 
@@ -15,14 +15,14 @@ SolverIdNames = Literal["PlaneWaveCli", "PlaneWaveShm", "AstrometryDotNet"]
 
 
 class SolvingSolution:
-    ra_rads: Optional[float] = None
-    dec_rads: Optional[float] = None
-    ra_hours: Optional[float] = None
-    dec_degs: Optional[float] = None
-    matched_stars: Optional[int] = None
-    catalog_stars: Optional[int] = None
-    rotation_angle_degs: Optional[float] = None
-    pixel_scale: Optional[float] = None
+    ra_rads: float | None = None
+    dec_rads: float | None = None
+    ra_hours: float | None = None
+    dec_degs: float | None = None
+    matched_stars: int | None = None
+    catalog_stars: int | None = None
+    rotation_angle_degs: float | None = None
+    pixel_scale: float | None = None
 
     def to_dict(self):
         return {
@@ -39,16 +39,16 @@ class SolvingSolution:
 
 class SolvingResult:
     succeeded: bool | None = None
-    errors: Optional[List[str]] = None
+    errors: list[str] | None = None
     solution: SolvingSolution | None = None
     solver_result = None
     elapsed_seconds: float | None = None
 
     def __init__(
         self,
-        succeeded: Optional[bool] = None,
-        errors: Optional[List[str]] = None,
-        solution: Optional[SolvingSolution] = None,
+        succeeded: bool | None = None,
+        errors: list[str] | None = None,
+        solution: SolvingSolution | None = None,
         solver_result=None,
     ):
         self.succeeded = succeeded
@@ -60,7 +60,7 @@ class SolvingResult:
         ret = {
             "succeeded": self.succeeded,
             "errors": self.errors,
-            "solution": self.solution.to_dict(),
+            "solution": self.solution.to_dict() if self.solution else None,
             "elapsed_seconds": self.elapsed_seconds,
         }
         if self.solver_result and hasattr(self.solver_result, "to_dict"):

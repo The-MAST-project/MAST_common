@@ -5,3 +5,6 @@ class Const:
     BASE_SPEC_PATH = "/mast/api/v1/spec"
     BASE_UNIT_PATH = "/mast/api/v1/unit"
     BASE_CONTROL_PATH = "/mast/api/v1/control"
+
+
+    PLATE_SOLVING_SHM_NAME = "PlateSolving_Image"

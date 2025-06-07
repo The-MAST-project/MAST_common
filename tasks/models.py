@@ -182,6 +182,7 @@ class TaskModel(BaseModel, Activities):
     task: TaskSettingsModel  # general task stuff (ulid, etc.)
     events: list[EventModel] | None = None  # things that happened to this task
     constraints: ConstraintsModel | None = None
+    commited_unit_apis: list[UnitApi] = []  # the units that committed to this task
 
     @computed_field
     @property
@@ -523,7 +524,7 @@ class TaskModel(BaseModel, Activities):
                         f"unit '{unit_api.hostname}' ({unit_api.ipaddr}), operational"
                     )
                 else:
-                    if OperatingMode.production:
+                    if OperatingMode.production_mode:
                         logger.info(
                             f"unit '{unit_api.hostname}' ({unit_api.ipaddr}), "
                             + f"not operational: {unit_status['why_not_operational']}"
@@ -535,7 +536,7 @@ class TaskModel(BaseModel, Activities):
                         )
 
         if len(operational_unit_apis) == 0:
-            if OperatingMode.production:
+            if OperatingMode.production_mode:
                 self.end_activity(AssignmentActivities.Probing)
                 self.end_activity(AssignmentActivities.Executing)
                 self.terminate(
@@ -543,7 +544,7 @@ class TaskModel(BaseModel, Activities):
                     details=[f"no operational units (quorum: {self.task.quorum})"],
                 )
                 return
-        elif self.task.quorum is not None and len(operational_unit_apis) < self.task.quorum and OperatingMode.production:
+        elif self.task.quorum is not None and len(operational_unit_apis) < self.task.quorum and OperatingMode.production_mode:
             self.end_activity(AssignmentActivities.Probing)
             self.end_activity(AssignmentActivities.Executing)
             self.terminate(
@@ -574,7 +575,7 @@ class TaskModel(BaseModel, Activities):
 
             spec_status = spec_response.value
             if spec_status and not spec_status.operational:
-                if OperatingMode.production:
+                if OperatingMode.production_mode:
                     self.end_activity(AssignmentActivities.Probing)
                     self.end_activity(AssignmentActivities.Executing)
                     self.terminate(
@@ -588,7 +589,7 @@ class TaskModel(BaseModel, Activities):
                     logger.info("continuing with non-operational spec, operating in 'debug' mode")
 
         elif isinstance(spec_response, BaseException):
-            if OperatingMode.production:
+            if OperatingMode.production_mode:
                 self.end_activity(AssignmentActivities.Probing)
                 self.end_activity(AssignmentActivities.Executing)
                 self.terminate(
@@ -652,7 +653,7 @@ class TaskModel(BaseModel, Activities):
             self.end_activity(AssignmentActivities.Executing)
             return
         elif n_committed < self.task.quorum:
-            if OperatingMode.production:
+            if OperatingMode.production_mode:
                 self.terminate(
                     reason="rejected",
                     details=[f"only {n_committed} units (quorum: {self.task.quorum})"],
@@ -762,7 +763,7 @@ class TaskModel(BaseModel, Activities):
             if not spec_status.operational:
                 for err in spec_status.why_not_operational:
                     logger.error(f"spec not operational: {err}")
-                if OperatingMode.production:
+                if OperatingMode.production_mode:
                     await self.abort()
                     self.end_activity(AssignmentActivities.WaitingForSpecDone)
                     self.end_activity(AssignmentActivities.Executing)
