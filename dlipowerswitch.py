@@ -7,10 +7,11 @@ from json import JSONDecodeError
 from threading import Lock
 
 import httpx
+from numpy import power
 from pydantic import BaseModel
 
 from common.components import Component
-from common.config import Config
+from common.config import Config, PowerSwitchConfig
 from common.const import Const
 from common.mast_logging import init_log
 
@@ -36,7 +37,7 @@ class DliPowerSwitch(Component):
 
     NUM_OUTLETS: int = 8
 
-    def __init__(self, hostname: str, ipaddr: str | None, conf: dict):
+    def __init__(self, hostname: str, ipaddr: str | None, conf: PowerSwitchConfig):
         Component.__init__(self)
         self.hostname = hostname
         self.ipaddr = ipaddr
@@ -59,7 +60,7 @@ class DliPowerSwitch(Component):
 
         self.lock = Lock()
         self.max_age_seconds = 30  # seconds
-        self.outlet_names = list(self.conf["outlets"].values())
+        self.outlet_names = list(self.conf.outlets.values())
 
         from common.utils import RepeatTimer
 
@@ -258,53 +259,41 @@ class PowerSwitchFactory:
 
         from common.utils import canonic_unit_name
 
-        conf = None
-        ps_name = None
+        power_switch_config: PowerSwitchConfig | None = None
+        power_switch_name = None
         if name is None:
             unit_name = socket.gethostname()
-            ps_name = unit_name.replace("mast", "mastps")
-            conf = Config().get_unit(unit_name)["power_switch"]
+            power_switch_name = unit_name.replace("mast", "mastps")
+            power_switch_config = Config().get_unit(unit_name).power_switch
         else:
             unit_name = canonic_unit_name(name)
             if unit_name is not None:
-                ps_name = unit_name.replace("mast", "mastps")
-                conf = Config().get_unit(unit_name)["power_switch"]
-            elif (
-                name.startswith("mast-spec-ps")
-                and name[len("mast-spec-ps") :].isdigit()
-            ):
-                ps_name = name
-                conf = Config().get_specs()["power_switch"][name]
+                power_switch_name = unit_name.replace("mast", "mastps")
+                power_switch_config = Config().get_unit(unit_name).power_switch
+            elif (name.startswith("mast-spec-ps") and name[len("mast-spec-ps") :].isdigit()):
+                power_switch_name = name
+                power_switch_config = Config().get_specs().power_switch[power_switch_name]
 
-        if not ps_name:
-            raise ValueError(f"{op}: Bad name '{name}'")
+        if not power_switch_name or not power_switch_config:
+            raise ValueError(f"{op}: Could not determine the power switch name and configuration for '{name=}'")
 
-        ipaddr = None
-        try:
-            # try to GAI solve the name
-            ipaddr = socket.gethostbyname(ps_name)
-        except socket.gaierror:
-            with contextlib.suppress(socket.gaierror):
-                # try to GAI solve the fully qualified name
-                ipaddr = socket.gethostbyname(ps_name + "." + Const.WEIZMANN_DOMAIN)
+        ipaddr = power_switch_config.network.ipaddr
+        if not ipaddr:
+            try:
+                # try to GAI solve the name
+                ipaddr = socket.gethostbyname(power_switch_name)
+            except socket.gaierror:
+                with contextlib.suppress(socket.gaierror):
+                    # try to GAI solve the fully qualified name
+                    ipaddr = socket.gethostbyname(power_switch_name + "." + Const.WEIZMANN_DOMAIN)
 
         if ipaddr is None:
-            # We could not GAI resolve the name, maybe it's in the configuration database
-            conf = Config().get_specs()["power_switch"]
-            if ps_name in conf and "ipaddr" in conf[ps_name]["network"]:
-                ipaddr = conf[ps_name]["network"]["ipaddr"]
-                conf = conf[ps_name]
-
-        if ipaddr is None:
-            raise ValueError(f"cannot get 'ipaddr' for '{ps_name}")
+            raise ValueError(f"cannot get 'ipaddr' for '{power_switch_name}")
 
         # We have an 'ipaddr'
         if ipaddr not in cls._instances:
             # we don't have an instance for this 'ipaddr', make a new one
-            config_dict = conf if isinstance(conf, dict) else {}
-            cls._instances[ipaddr] = DliPowerSwitch(
-                hostname=ps_name, ipaddr=ipaddr, conf=config_dict
-            )
+            cls._instances[ipaddr] = DliPowerSwitch(hostname=power_switch_name, ipaddr=ipaddr, conf=power_switch_config)
 
         return cls._instances[ipaddr]
 
@@ -393,27 +382,25 @@ class SwitchedOutlet:
             except ValueError:
                 raise
             try:
-                conf = Config().get_unit(unit_name=unit_name)["power_switch"]
-                if self.outlet_name not in conf["outlets"].values():
+                conf = Config().get_unit(unit_name=unit_name).power_switch
+                if self.outlet_name not in conf.outlets.values():
                     raise ValueError(
-                        f"outlet name '{self.outlet_name}' not in {list(conf['outlets'].values())}"
+                        f"outlet name '{self.outlet_name}' not in {list(conf.outlets.values())}"
                     )
             except:
                 raise
 
         elif domain == OutletDomain.Spec:
             # Spec outlets have pre-defined names but may belong to any one of the spec power switches
-            conf = Config().get_specs()["power_switch"]
+            conf = Config().get_specs().power_switch
             for switch_name in conf:
-                if self.outlet_name in conf[switch_name]["outlets"].values():
+                if self.outlet_name in conf[switch_name].outlets.values():
                     # we located the switch
                     self.power_switch = PowerSwitchFactory.get_instance(
                         name=switch_name
                     )
 
-        self.delay_after_on = (
-            self.power_switch.conf.get("delay_after_on", 0) if self.power_switch else 0
-        )
+        self.delay_after_on = (self.power_switch.conf.delay_after_on if self.power_switch else 0)
 
     def __repr__(self):
         # logger.info(f"__repr__: {self.outlet_name=}")

@@ -16,7 +16,6 @@ from astropy.units import deg, hourangle  # type: ignore
 
 from common.filer import Filer
 from common.paths import PathMaker
-from imagers import ImagerBinning, ImagerRoi
 
 default_encoding = "utf-8"
 
@@ -151,45 +150,45 @@ class Coord(NamedTuple):
         )
 
 
-class UnitRoi:
-    """
-    In unit terms a region-of-interest is centered on a pixel and has width and height
-    """
+# class UnitRoi:
+#     """
+#     In unit terms a region-of-interest is centered on a pixel and has width and height
+#     """
 
-    x: int
-    y: int
-    width: int
-    height: int
+#     x: int
+#     y: int
+#     width: int
+#     height: int
 
-    def __init__(self, _x: int, _y: int, width: int, height: int):
-        self.x = _x
-        self.y = _y
-        self.width = width
-        self.height = height
+#     def __init__(self, _x: int, _y: int, width: int, height: int):
+#         self.x = _x
+#         self.y = _y
+#         self.width = width
+#         self.height = height
 
-    def to_imager_roi(self, binning: ImagerBinning | None = None) -> ImagerRoi:
-        """
-        An ASCOM camera ROI has a starting pixel (x, y) at lower left corner, width and height
-        Returns The corresponding camera region-of-interest
-        -------
+#     def to_imager_roi(self, binning: ImagerBinning | None = None) -> ImagerRoi:
+#         """
+#         An ASCOM camera ROI has a starting pixel (x, y) at lower left corner, width and height
+#         Returns The corresponding camera region-of-interest
+#         -------
 
-        """
-        if not binning:
-            binning = ImagerBinning(x=1, y=1)
+#         """
+#         if not binning:
+#             binning = ImagerBinning(x=1, y=1)
 
-        return ImagerRoi(
-            x=(self.x - int(self.width / 2)) * binning.x,
-            y=(self.y - int(self.height / 2)) * binning.y,
-            width=self.width * binning.x,
-            height=self.height * binning.y,
-        )
+#         return ImagerRoi(
+#             x=(self.x - int(self.width / 2)) * binning.x,
+#             y=(self.y - int(self.height / 2)) * binning.y,
+#             width=self.width * binning.x,
+#             height=self.height * binning.y,
+#         )
 
-    @staticmethod
-    def from_dict(d):
-        return UnitRoi(d["sky_x"], d["sky_y"], d["width"], d["height"])
+#     @staticmethod
+#     def from_dict(d):
+#         return UnitRoi(d["sky_x"], d["sky_y"], d["width"], d["height"])
 
-    def __repr__(self) -> str:
-        return f"x={self.x},y={self.y},w={self.width},h={self.height}"
+#     def __repr__(self) -> str:
+#         return f"x={self.x},y={self.y},w={self.width},h={self.height}"
 
 
 def cached(timeout_seconds):

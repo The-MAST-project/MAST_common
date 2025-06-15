@@ -289,11 +289,11 @@ class SpecApi(ApiClient):
             site = [s for s in Config().sites if s.name == site_name][0]
         else:
             site: Site = Config().local_site
-        service = Config().get_service(service_name="spec")
-        if service is None:
+        service_conf = Config().get_service(service_name="spec")
+        if service_conf is None:
             logger.error("Spec service configuration not found")
             return
-        port = service["port"]
+        port = service_conf.port
         super().__init__(hostname=f"{site.project}-{site.name}-spec", port=port)
 
 
@@ -306,11 +306,11 @@ class ControllerApi:
             site = [s for s in Config().sites if s.name == site_name][0]
         else:
             site: Site = Config().local_site
-        service = Config().get_service(service_name="control")
-        if service is None:
+        service_conf = Config().get_service(service_name="control")
+        if service_conf is None:
             logger.error("Control service configuration not found")
             return
-        port = service["port"]
+        port = service_conf.port
         try:
             self.client = ApiClient(f"{site.project}-{site.name}-control", port=port)
         except ValueError as e:

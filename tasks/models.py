@@ -6,9 +6,10 @@ import os.path
 import shutil
 import socket
 import time
+from collections.abc import Container
 from copy import deepcopy
 from pathlib import Path
-from typing import Container, Literal
+from typing import Literal
 
 import tomlkit
 import tomlkit.exceptions
@@ -17,6 +18,8 @@ from pydantic import BaseModel, ConfigDict, ValidationError, computed_field
 
 from common.activities import Activities, AssignmentActivities, UnitActivities
 from common.api import ApiDomain, SpecApi, UnitApi
+from common.canonical import CanonicalResponse
+from common.components import ComponentStatus
 from common.config import Config
 from common.deep import deep_dict_update
 from common.mast_logging import init_log
@@ -33,8 +36,6 @@ from common.models.spectrographs import SpectrographModel
 from common.parsers import parse_units
 from common.spec import DeepspecBands
 from common.utils import OperatingMode
-from src.common.canonical import CanonicalResponse
-from src.common.components import ComponentStatus
 
 GatherResponse = CanonicalResponse | BaseException | None
 
@@ -70,19 +71,11 @@ def make_spec_model(spec_doc) -> SpectrographModel | None:
 
     if instrument == "highspec":
 
-        camera_settings: dict = deepcopy(defaults["highspec"]["settings"])
+        camera_settings: dict = deepcopy(defaults.highspec.settings)
         if "camera" in spec_doc:
             deep_dict_update(camera_settings, spec_doc["camera"])
-        exposure_duration = (
-            spec_doc["exposure_duration"]
-            if "exposure_duration" in spec_doc
-            else defaults["highspec"]["settings"]["exposure_duration"]
-        )
-        number_of_exposures = (
-            spec_doc["number_of_exposures"]
-            if "number_of_exposures" in spec_doc
-            else defaults["highspec"]["settings"]["number_of_exposures"]
-        )
+        exposure_duration = defaults.highspec.settings.exposure_duration
+        number_of_exposures = defaults.highspec.settings.number_of_exposures
 
         # propagate 'exposure_duration' and 'number_of_exposures' to the camera settings
         camera_settings["exposure_duration"] = exposure_duration
@@ -176,7 +169,10 @@ class TaskModel(BaseModel, Activities):
     A task ready for execution (already planned and scheduled)
     """
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(
+        extra="allow",
+        arbitrary_types_allowed=True  # Allow non-Pydantic types like UnitApi
+    )
 
     unit: dict[str, TargetModel]  # indexed by unit name, per-unit target assignment(s)
     task: TaskSettingsModel  # general task stuff (ulid, etc.)
@@ -432,9 +428,7 @@ class TaskModel(BaseModel, Activities):
 
             if "events" not in toml_doc:
                 toml_doc["events"] = tomlkit.array()
-            events_array = toml_doc["events"]
-            events_array.append(event.model_dump())
-            toml_doc["events"] = events_array
+            toml_doc["events"].append(event.model_dump())
 
             with open(file, "w") as f:
                 f.write(tomlkit.dumps(toml_doc))
@@ -544,7 +538,9 @@ class TaskModel(BaseModel, Activities):
                     details=[f"no operational units (quorum: {self.task.quorum})"],
                 )
                 return
-        elif self.task.quorum is not None and len(operational_unit_apis) < self.task.quorum and OperatingMode.production_mode:
+        elif self.task.quorum is not None \
+                and len(operational_unit_apis) < self.task.quorum \
+                and OperatingMode.production_mode:
             self.end_activity(AssignmentActivities.Probing)
             self.end_activity(AssignmentActivities.Executing)
             self.terminate(
