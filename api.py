@@ -68,7 +68,7 @@ class ApiClient:
 
     TIMEOUT: float = 20
 
-    def __init__(
+    def __init__(  # noqa: C901
         self,
         hostname: str | None = None,
         ipaddr: str | None = None,
