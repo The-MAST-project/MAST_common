@@ -8,7 +8,8 @@ import matplotlib.pyplot as plt
 import pymongo
 from cachetools import TTLCache, cached
 from PIL import Image
-from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
+from pydantic import (BaseModel, ConfigDict, Field, ValidationError,
+                      model_validator)
 from pymongo.errors import ConnectionFailure, PyMongoError
 
 from common.const import Const
@@ -35,7 +36,7 @@ class UserConfig(BaseModel):
     full_name: str | None = None
     groups: list[str]
     capabilities: list[str]
-    picture: bytes | None = None
+    picture: bytes | None = Field(default=None, exclude=True)
     email: str | None = None
     password: str| None = None
     model_config={"arbitrary_types_allowed": True}
@@ -659,7 +660,8 @@ class Config:
             raise
 
         groups: list = user["groups"] if user else []
-        groups.append("everybody")
+        if "everybody" not in groups:
+            groups.append("everybody")
 
         collection = self.db["groups"]
         # Define the aggregation pipeline
@@ -732,6 +734,7 @@ if __name__ == "__main__":
             plt.show()
         else:
             print(f"no picture for user '{conf.name}'")
+        print(json.dumps(conf.model_dump(), indent=2))
     # print(json.dumps(Config().get_user("arie"), indent=2))
     # print(json.dumps([s.model_dump() for s in Config().sites]))
     # print(json.dumps(Config().get_unit("mast00").model_dump(), indent=1))
