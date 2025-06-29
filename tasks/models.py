@@ -13,8 +13,9 @@ from typing import Literal
 
 import tomlkit
 import tomlkit.exceptions
+import tomlkit.items
 import ulid
-from pydantic import BaseModel, ConfigDict, ValidationError, computed_field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, computed_field
 
 from common.activities import Activities, AssignmentActivities, UnitActivities
 from common.api import ApiDomain, SpecApi, UnitApi
@@ -35,7 +36,7 @@ from common.models.constraints import ConstraintsModel
 from common.models.spectrographs import SpectrographModel
 from common.parsers import parse_units
 from common.spec import DeepspecBands
-from common.utils import OperatingMode
+from common.utils import OperatingMode, function_name
 
 GatherResponse = CanonicalResponse | BaseException | None
 
@@ -43,7 +44,7 @@ logger = logging.getLogger("tasks")
 init_log(logger)
 
 
-def make_spec_model(spec_doc) -> SpectrographModel | None:
+def make_spec_model(spec_doc: dict) -> SpectrographModel | None:
     """
     Accumulates a dictionary by combining:
     - a TOML-derived dictionary (parameter) which contains the user's task description
@@ -66,20 +67,21 @@ def make_spec_model(spec_doc) -> SpectrographModel | None:
     defaults = Config().get_specs()
     calibration_settings = {
         "lamp_on": spec_doc.get("lamp_on", False),
-        "filter": spec_doc.get("filter", None),
+        "filter": spec_doc.get("filter"),
     }
 
     if instrument == "highspec":
 
-        camera_settings: dict = deepcopy(defaults.highspec.settings)
+        camera_settings = deepcopy(defaults.highspec.settings)
         if "camera" in spec_doc:
-            deep_dict_update(camera_settings, spec_doc["camera"])
+            # deep_dict_update(camera_settings, spec_doc["camera"])
+            deepcopy(camera_settings, spec_doc["camera"])
         exposure_duration = defaults.highspec.settings.exposure_duration
         number_of_exposures = defaults.highspec.settings.number_of_exposures
 
         # propagate 'exposure_duration' and 'number_of_exposures' to the camera settings
-        camera_settings["exposure_duration"] = exposure_duration
-        camera_settings["number_of_exposures"] = number_of_exposures
+        camera_settings.exposure_duration = exposure_duration
+        camera_settings.number_of_exposures = number_of_exposures
 
         new_spec_dict = {
             "instrument": instrument,
@@ -94,52 +96,45 @@ def make_spec_model(spec_doc) -> SpectrographModel | None:
         }
 
     else:
-        default_common_settings = defaults["deepspec"]["common"]["settings"]
+        default_common_settings = defaults.deepspec["common"].settings
+        assert(default_common_settings is not None), "empty default_camera_settings for Deepspec"
+
         new_spec_dict = {
             "instrument": instrument,
             "calibration": calibration_settings,
             "exposure_duration": (
-                spec_doc["exposure_duration"]
-                if "exposure_duration" in spec_doc
-                else default_common_settings["exposure_duration"]
+                spec_doc.get("exposure_duration", default_common_settings.exposure_duration)
             ),
             "number_of_exposures": (
-                spec_doc["number_of_exposures"]
-                if "number_of_exposures" in spec_doc
-                else default_common_settings["number_of_exposures"]
+                spec_doc.get("number_of_exposures", default_common_settings.number_of_exposures)
             ),
             "spec": {
                 "instrument": instrument,
                 "exposure_duration": (
-                    spec_doc["exposure_duration"]
-                    if "exposure_duration" in spec_doc
-                    else default_common_settings["exposure_duration"]
+                    spec_doc.get("exposure_duration", default_common_settings.exposure_duration)
                 ),
                 "number_of_exposures": (
-                    spec_doc["number_of_exposures"]
-                    if "number_of_exposures" in spec_doc
-                    else default_common_settings["number_of_exposures"]
+                    spec_doc.get("number_of_exposures", default_common_settings.number_of_exposures)
                 ),
                 "camera": {},
             },
         }
         common_camera_settings = deepcopy(default_common_settings)
-
         # propagate 'exposure_duration' and 'number_of_exposures' to the camera settings
-        common_camera_settings["exposure_duration"] = new_spec_dict["spec"][
+        common_camera_settings.exposure_duration = new_spec_dict["spec"][
             "exposure_duration"
         ]
-        common_camera_settings["number_of_exposures"] = new_spec_dict["spec"][
+        common_camera_settings.number_of_exposures = new_spec_dict["spec"][
             "number_of_exposures"
         ]
 
         # get band-specific camera settings
         for band in DeepspecBands.__args__:
-            band_dict: dict = deepcopy(common_camera_settings)
+            band_conf = deepcopy(common_camera_settings)
             if "camera" in spec_doc and band in spec_doc["camera"]:
-                deep_dict_update(band_dict, spec_doc["camera"][band])
+                deep_dict_update(band_conf, spec_doc["camera"][band])
 
-            new_spec_dict["spec"]["camera"][band] = band_dict
+            new_spec_dict["spec"]["camera"][band] = band_conf
 
     new_spec_dict["instrument"] = instrument
 
@@ -174,15 +169,35 @@ class TaskModel(BaseModel, Activities):
         arbitrary_types_allowed=True  # Allow non-Pydantic types like UnitApi
     )
 
+    # Core fields
     unit: dict[str, TargetModel]  # indexed by unit name, per-unit target assignment(s)
     task: TaskSettingsModel  # general task stuff (ulid, etc.)
     events: list[EventModel] | None = None  # things that happened to this task
     constraints: ConstraintsModel | None = None
     commited_unit_apis: list[UnitApi] = []  # the units that committed to this task
 
+    # File and runtime fields
+    toml_file: str | None = Field(default=None, description="Path to the TOML file containing the task definition")
+    activities: int = Field(default=0, description="Current activities bitmask")
+    timings: dict = Field(default_factory=dict, description="Timing information for task execution")
+    unit_assignments: list[RemoteAssignment] = Field(
+        default_factory=list,
+        description="List of unit assignments",
+        alias="unit_assignments"
+    )
+    spec_assignment: RemoteAssignment | None = Field(
+        default=None,
+        description="Spectrograph assignment if any",
+        alias="spec_assignment"
+    )
+    spec_api: SpecApi | None = Field(
+        default=None,
+        description="API client for spectrograph communication"
+    )
+
     @computed_field
     @property
-    def unit_assignments(self) -> list[RemoteAssignment]:
+    def remote_unit_assignments(self) -> list[RemoteAssignment]:
         ret: list[RemoteAssignment] = []
         initiator = Initiator.local_machine()
         for key in list(self.unit.keys()):
@@ -203,7 +218,7 @@ class TaskModel(BaseModel, Activities):
 
     @computed_field
     @property
-    def spec_assignment(self) -> RemoteAssignment | None:
+    def remote_spec_assignment(self) -> RemoteAssignment | None:
         local_site = Config().local_site
         hostname = local_site.spec_host
         if hostname is None:
@@ -301,14 +316,14 @@ class TaskModel(BaseModel, Activities):
 
         # Create the task model with all required fields
         new_task = TaskModel(
-            **toml_doc,
-            toml_file=toml_file,
-            activities=0,
-            timings={},
-            commited_unit_apis=[],
-            unit_assignments=[],
-            spec_assignment=None,
-            spec_api=None,
+            **toml_doc
+            # toml_file=toml_file,
+            # activities=0,
+            # timings={},
+            # commited_unit_apis=[],
+            # unit_assignments=[],
+            # spec_assignment=None,
+            # spec_api=None,
         )
         if "events" not in toml_doc:
             new_task.add_event(EventModel(what="created"))
@@ -378,6 +393,9 @@ class TaskModel(BaseModel, Activities):
         return all_status_responses, None
 
     async def get_spec_status(self) -> ComponentStatus | None:
+        if not self.spec_api:
+            raise Exception(f"{function_name()}: spec_api is None")
+
         canonical_response = await self.spec_api.get(method="status")
         if not canonical_response.succeeded:
             canonical_response.log(_logger=logger, label="spec")
@@ -426,9 +444,10 @@ class TaskModel(BaseModel, Activities):
             with open(file) as f:
                 toml_doc = tomlkit.load(f)
 
-            if "events" not in toml_doc:
+            if "events" not in toml_doc or not isinstance(toml_doc["events"], tomlkit.items.Array):
                 toml_doc["events"] = tomlkit.array()
-            toml_doc["events"].append(event.model_dump())
+            assert(isinstance(toml_doc["events"], tomlkit.items.Array))
+            toml_doc["events"].append(event)
 
             with open(file, "w") as f:
                 f.write(tomlkit.dumps(toml_doc))
@@ -446,7 +465,7 @@ class TaskModel(BaseModel, Activities):
         self.controller = controller
         unit_apis: list[UnitApi] = []
 
-        for assignment in self.unit_assignments:
+        for assignment in self.remote_unit_assignments:
             unit_apis.append(UnitApi(ipaddr=assignment.ipaddr, domain=ApiDomain.Unit))
 
         self.start_activity(AssignmentActivities.Executing)
@@ -602,7 +621,7 @@ class TaskModel(BaseModel, Activities):
         self.start_activity(AssignmentActivities.Dispatching)
         assignment_tasks = []
         for operational_unit_api in operational_unit_apis:
-            for unit_assignment in self.unit_assignments:
+            for unit_assignment in self.remote_unit_assignments:
                 if operational_unit_api.ipaddr == unit_assignment.ipaddr:
                     assignment_tasks.append(
                         self.api_coroutine(
@@ -736,12 +755,12 @@ class TaskModel(BaseModel, Activities):
             await self.abort()
             return
 
-        assert(self.spec_assignment is not None), "spec_assignment should not be None"
+        assert(self.remote_spec_assignment is not None), "spec_assignment should not be None"
         # send the assignment to the spec
 
         # print(f"spec_assignment ({type(self.spec_assignment)}):\n" + self.spec_assignment.model_dump_json(indent=2))
         canonical_response = await self.spec_api.put(
-            method="execute_assignment", json=self.spec_assignment.model_dump()
+            method="execute_assignment", json=self.remote_spec_assignment.model_dump()
         )
 
         if not canonical_response.succeeded:
@@ -819,7 +838,7 @@ async def main():
         #     print('ERR: ' + err)
         raise
 
-    remote_assignment = assigned_task.spec_assignment
+    remote_assignment = assigned_task.remote_spec_assignment
     if not remote_assignment:
         raise Exception(
             f"task '{assigned_task.task.ulid}' has no spec assignment, cannot continue"
@@ -848,6 +867,10 @@ async def main():
         if canonical_response.errors:
             for err in canonical_response.errors:
                 logger.error(f"[{spec_api.ipaddr}] {err}")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
 
 
 if __name__ == "__main__":
