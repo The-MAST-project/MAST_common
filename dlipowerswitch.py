@@ -7,7 +7,6 @@ from json import JSONDecodeError
 from threading import Lock
 
 import httpx
-from numpy import power
 from pydantic import BaseModel
 
 from common.components import Component
