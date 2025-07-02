@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 
-from imagers import ImagerBinning, ImagerRoi
+from common.interfaces.imager import ImagerBinning, ImagerRoi
 
 
 class UnitRoi:

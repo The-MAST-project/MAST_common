@@ -20,9 +20,9 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, computed_fie
 from common.activities import Activities, AssignmentActivities, UnitActivities
 from common.api import ApiDomain, SpecApi, UnitApi
 from common.canonical import CanonicalResponse
-from common.components import ComponentStatus
 from common.config import Config
 from common.deep import deep_dict_update
+from common.interfaces.components import ComponentStatus
 from common.mast_logging import init_log
 from common.models.assignments import (
     Initiator,
