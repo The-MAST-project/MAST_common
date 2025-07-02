@@ -147,7 +147,7 @@ class RoiConfig(BaseModel):
 class ImagerConfig(BaseModel):
     """Configuration for the imager."""
     imager_type: str
-    allowed_imager_types: list[str]
+    valid_imager_types: list[str]
     # power: PowerSwitchConfig | None = None
     offset: OffsetConfig | None = None
     roi: RoiConfig | None = None
@@ -200,11 +200,11 @@ class GuidingConfig(BaseModel):
 
 class GuiderConfig(BaseModel):
     method: str
-    allowed_methods: list[str]
+    valid_methods: list[str]
 
 class SolvingConfig(BaseModel):
     method: str
-    allowed_methods: list[str]
+    valid_methods: list[str]
 
 class AutofocusConfig(BaseModel):
     """Configuration for autofocus settings."""
