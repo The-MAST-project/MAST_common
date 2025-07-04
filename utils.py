@@ -7,26 +7,17 @@ import re
 import string
 import subprocess
 import time
-import traceback
 from multiprocessing import shared_memory
 from threading import Lock, Timer
-from typing import Any, List, NamedTuple, Optional
+from typing import NamedTuple
 
-import astropy.units as u
 from astropy.coordinates import Angle
-from pydantic import BaseModel
+from astropy.units import deg, hourangle  # type: ignore
 
-from common.camera import CameraBinning, CameraRoi
 from common.filer import Filer
 from common.paths import PathMaker
 
 default_encoding = "utf-8"
-
-BASE_SPEC_PATH = "/mast/api/v1/spec"
-BASE_UNIT_PATH = "/mast/api/v1/unit"
-BASE_CONTROL_PATH = "/mast/api/v1/control"
-
-PLATE_SOLVING_SHM_NAME = "PlateSolving_Image"
 
 logger = logging.getLogger("mast.unit." + __name__)
 
@@ -52,69 +43,6 @@ class SingletonFactory:
 
 filer = Filer(logger)
 path_maker = SingletonFactory.get_instance(PathMaker)
-
-
-def deep_dict_update(original: dict, update: dict):
-    """
-    Recursively update a dictionary with nested dictionaries.
-    :param original: The original dictionary to be updated, in place.
-    :param update: The dictionary with updates.
-    """
-    for key, value in update.items():
-        if isinstance(value, dict) and key in original:
-            # If the value is a dict and the key exists in the original dict,
-            # perform a deep update
-            deep_dict_update(original[key], value)
-        else:
-            # Otherwise, update or add the key-value pair to the original dict
-            original[key] = value
-
-
-def deep_dict_difference(old: dict, new: dict):
-    if isinstance(old, dict) and isinstance(new, dict):
-        difference = {}
-        all_keys = set(old.keys()).union(new.keys())
-        for key in all_keys:
-            if key in old and key in new:
-                diff = deep_dict_difference(old[key], new[key])
-                if diff is not None:
-                    difference[key] = diff
-            elif key in new:
-                difference[key] = new[key]
-            elif key in old:
-                difference[key] = old[key]
-        return difference if difference else None
-    elif isinstance(old, list) and isinstance(new, list):
-        length = max(len(old), len(new))
-        difference = []
-        for i in range(length):
-            old_val = old[i] if i < len(old) else None
-            new_val = new[i] if i < len(new) else old_val
-            diff = deep_dict_difference(old_val, new_val)
-            difference.append(diff)
-        return difference if any(item is not None for item in difference) else None
-    else:
-        return new if old != new else None
-
-
-def deep_dict_is_empty(d):
-    if not isinstance(d, (dict, list)):
-        return False  # Not a dictionary or list
-
-    if not d:
-        return True  # Dictionary or list is empty
-
-    if isinstance(d, list):
-        return all(deep_dict_is_empty(item) for item in d)
-
-    for value in d.values():
-        if isinstance(value, (dict, list)):
-            if not deep_dict_is_empty(value):
-                return False  # Nested dictionary or list is not empty
-        elif value:
-            return False  # Non-empty value found
-
-    return True  # All nested dictionaries and lists are empty
 
 
 def quote(s: str):
@@ -177,103 +105,36 @@ def time_stamp():
 
 
 def function_name():
-    """
-    Gets the name of the calling function from the stack
-    """
-    return inspect.currentframe().f_back.f_code.co_name
+    frame = inspect.currentframe()
+    if frame is None or frame.f_back is None or frame.f_back.f_back is None:
+        return "UnknownFunction"
+    try:
+        outer_frame = frame.f_back.f_back  # skip current and caller
+        func_name = outer_frame.f_code.co_name
+        self_obj = outer_frame.f_locals.get('self')
+        if self_obj:
+            class_name = self_obj.__class__.__name__
+            return f"{class_name}.{func_name}"
+        else:
+            return func_name
+    finally:
+        del frame  # avoid reference cycles
 
 
-def caller_name():
+
+def caller_name() -> str:
     """
     Gets the name of the calling function's caller
     """
-    return inspect.currentframe().f_back.f_back.f_code.co_name
+    current_frame = inspect.currentframe()
+    if current_frame is None or current_frame.f_back is None or current_frame.f_back.f_back is None:
+        return "UnknownCaller"
+
+    return current_frame.f_back.f_back.f_code.co_name
 
 
 def parse_coordinate(coord: float | str):
     return Angle(coord) if isinstance(coord, str) else coord
-
-
-class ExceptionModel(BaseModel):
-    type: str
-    message: str
-    args: list
-    traceback: Optional[str]
-
-    @classmethod
-    def from_exception(cls, exception: Exception):
-        return cls(
-            type=type(exception).__name__,
-            message=str(exception),
-            args=list(exception.args),
-            traceback="".join(
-                traceback.format_exception(
-                    type(exception), exception, exception.__traceback__
-                )
-            ),
-        )
-
-
-class CanonicalResponse(BaseModel):
-    """
-    Formalizes API responses.  An API method will return a CanonicalResponse, so that the
-     API caller may safely parse it.
-
-    An API method may ONLY return one of the following keys (in decreasing severity): 'errors' or 'value'
-
-    - 'errors' - the method detected one or more errors (no 'value')
-    - 'value' - all went well, this is the return value (may be 'None')
-    """
-
-    api_version: str = "1.0"  # denotes this as a canonical response
-    value: Optional[Any] = None
-    errors: Optional[List[str]] = None
-    exception: Optional[ExceptionModel] = None
-
-    @classmethod
-    def from_exception(cls, exception: Exception):
-        """
-        Create a CanonicalResponse with an exception serialized into ExceptionModel.
-        """
-        return cls(
-            exception=ExceptionModel.from_exception(exception),
-            errors=None,
-            value=None,
-        )
-
-    @property
-    def is_error(self):
-        return self.exception is not None or self.errors is not None
-
-    @property
-    def is_exception(self):
-        return self.exception is not None
-
-    @property
-    def succeeded(self):
-        return self.value is not None
-
-    @property
-    def failed(self):
-        return self.exception is not None or self.errors is not None
-
-    @property
-    def failure(self) -> List[str] | str | None:
-        if self.exception is not None:
-            return str(self.exception)
-        elif self.errors:
-            return self.errors
-
-    def log(self, _logger: logging.Logger, label: Optional[str] = None):
-        if not label:
-            label = "CanonicalResponse"
-        if self.is_exception:
-            _logger.error(f"{label} => exception: {self.exception}")
-        elif self.is_error:
-            _logger.error(f"{label} => error(s): {self.errors}")
-
-
-CanonicalResponse_Ok: CanonicalResponse = CanonicalResponse(value="ok")
 
 
 class Coord(NamedTuple):
@@ -283,48 +144,51 @@ class Coord(NamedTuple):
     def __repr__(self):
         return (
             "["
-            + f"{self.ra.to_string(u.hourangle, decimal=True, precision=9)}, "
-            + f"{self.dec.to_string(u.deg, decimal=True, precision=9)}"
+            + f"{self.ra.to_string(unit=hourangle, decimal=True, precision=9)}, "
+            + f"{self.dec.to_string(unit=deg, decimal=True, precision=9)}"
             + "]"
         )
 
 
-class UnitRoi:
-    """
-    In unit terms a region-of-interest is centered on a pixel and has width and height
-    """
+# class UnitRoi:
+#     """
+#     In unit terms a region-of-interest is centered on a pixel and has width and height
+#     """
 
-    x: int
-    y: int
-    width: int
-    height: int
+#     x: int
+#     y: int
+#     width: int
+#     height: int
 
-    def __init__(self, _x: int, _y: int, width: int, height: int):
-        self.x = _x
-        self.y = _y
-        self.width = width
-        self.height = height
+#     def __init__(self, _x: int, _y: int, width: int, height: int):
+#         self.x = _x
+#         self.y = _y
+#         self.width = width
+#         self.height = height
 
-    def to_camera_roi(self, binning: CameraBinning = CameraBinning(1, 1)) -> CameraRoi:
-        """
-        An ASCOM camera ROI has a starting pixel (x, y) at lower left corner, width and height
-        Returns The corresponding camera region-of-interest
-        -------
+#     def to_imager_roi(self, binning: ImagerBinning | None = None) -> ImagerRoi:
+#         """
+#         An ASCOM camera ROI has a starting pixel (x, y) at lower left corner, width and height
+#         Returns The corresponding camera region-of-interest
+#         -------
 
-        """
-        return CameraRoi(
-            (self.x - int(self.width / 2)) * binning.x,
-            (self.y - int(self.height / 2)) * binning.y,
-            self.width * binning.x,
-            self.height * binning.y,
-        )
+#         """
+#         if not binning:
+#             binning = ImagerBinning(x=1, y=1)
 
-    @staticmethod
-    def from_dict(d):
-        return UnitRoi(d["sky_x"], d["sky_y"], d["width"], d["height"])
+#         return ImagerRoi(
+#             x=(self.x - int(self.width / 2)) * binning.x,
+#             y=(self.y - int(self.height / 2)) * binning.y,
+#             width=self.width * binning.x,
+#             height=self.height * binning.y,
+#         )
 
-    def __repr__(self) -> str:
-        return f"x={self.x},y={self.y},w={self.width},h={self.height}"
+#     @staticmethod
+#     def from_dict(d):
+#         return UnitRoi(d["sky_x"], d["sky_y"], d["width"], d["height"])
+
+#     def __repr__(self) -> str:
+#         return f"x={self.x},y={self.y},w={self.width},h={self.height}"
 
 
 def cached(timeout_seconds):
@@ -362,8 +226,8 @@ def cached(timeout_seconds):
     return decorator
 
 
-def boxed_lines(lines: str | List[str], center: bool = False) -> List[str]:
-    ret: List[str] = []
+def boxed_lines(lines: str | list[str], center: bool = False) -> list[str]:
+    ret: list[str] = []
     max_len = 0
 
     if isinstance(lines, str):
@@ -447,7 +311,7 @@ def wslpath(path: str, to_windows: bool = False) -> str | None:
         return None
 
 
-def boxed_info(info_logger, ll: str | List[str], center: bool = False):
+def boxed_info(info_logger, ll: str | list[str], center: bool = False):
     if isinstance(ll, str):
         ll = [ll]
     for line in boxed_lines(ll, center):
@@ -491,21 +355,21 @@ class OperatingMode:
 
     def __new__(cls, *args, **kwargs):
         if cls._instance is None:
-            cls._instance = super(OperatingMode, cls).__new__(cls)
+            cls._instance = super().__new__(cls)
         return cls._instance
 
     @classmethod
-    @property
-    def production(cls):
-        return not OperatingMode.debug
+    def production_mode(cls):
+        return not OperatingMode.debug_mode
 
     @classmethod
-    @property
-    def debug(cls):
+    def debug_mode(cls):
         return "MAST_DEBUG" in os.environ
 
 
 if __name__ == "__main__":
+    from common.canonical import CanonicalResponse, CanonicalResponse_Ok
+
     try:
         x = 1 / 0
     except Exception as e:

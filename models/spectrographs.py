@@ -1,14 +1,15 @@
-from pydantic import BaseModel, Field
-from typing import Optional, Union, Literal
+from typing import Literal
 
+from pydantic import BaseModel, Field
+
+from common.models.calibration import CalibrationModel
 from common.models.deepspec import DeepspecModel
 from common.models.highspec import HighspecModel
-from common.models.calibration import CalibrationModel
 
 
 class SpectrographModel(BaseModel):
     instrument: Literal["highspec", "deepspec"]
     exposure_duration: float
-    number_of_exposures: Optional[int] = 1
-    calibration: Optional[CalibrationModel]
-    spec: Union[HighspecModel, DeepspecModel] = Field(discriminator="instrument")
+    number_of_exposures: int | None = 1
+    calibration: CalibrationModel | None
+    spec: HighspecModel | DeepspecModel = Field(discriminator="instrument")

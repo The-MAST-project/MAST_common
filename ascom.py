@@ -6,8 +6,8 @@ import pywintypes
 import win32com.client
 from pydantic import BaseModel
 
+from common.canonical import CanonicalResponse, CanonicalResponse_Ok
 from common.mast_logging import init_log
-from common.utils import CanonicalResponse, CanonicalResponse_Ok
 
 logger = logging.getLogger("mast.unit." + __name__)
 init_log(logger)
@@ -41,7 +41,7 @@ class AscomDispatcher(ABC):
 
     @property
     @abstractmethod
-    def ascom(self) -> win32com.client.Dispatch:
+    def ascom(self) -> win32com.client.Dispatch: # type: ignore
         pass
 
     def ascom_status(self) -> AscomStatus:
@@ -74,11 +74,11 @@ def ascom_run(
 
     except pywintypes.com_error as e:
         logger.debug(f"{label}: ASCOM error: cmd='{cmd.removeprefix('o.ascom.')}'")
-        logger.debug(f"{label}:     Message: '{e.excepinfo[2]}'")
-        logger.debug(f"{label}:        Code: 0x{(e.hresult & 0xffffffff):08X}")
+        logger.debug(f"{label}:     Message: '{e.excepinfo[2]}'") # type: ignore
+        logger.debug(f"{label}:        Code: 0x{(e.hresult & 0xffffffff):08X}") # type: ignore
         return CanonicalResponse(errors=[f"{e}"])
 
     except Exception as e:
         message = f"{label}: Exception: cmd='{cmd}', exception='{e}'"
         logger.debug(message)
-        return CanonicalResponse(exception=e)
+        return CanonicalResponse(errors=[message])

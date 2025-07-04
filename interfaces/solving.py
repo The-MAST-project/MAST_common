@@ -1,26 +1,15 @@
-from enum import IntFlag, auto
-from typing import Literal
+from abc import ABC, abstractmethod
 
 from astropy.coordinates import Angle
-
-
-class SolverId(IntFlag):
-    PlaneWaveCli = auto()
-    PlaneWaveShm = auto()
-    AstrometryDotNet = auto()
-    # Astap = auto()
-
-
-SolverIdNames = Literal["PlaneWaveCli", "PlaneWaveShm", "AstrometryDotNet"]
 
 
 class SolvingSolution:
     ra_rads: float | None = None
     dec_rads: float | None = None
-    ra_hours: float | None = None
-    dec_degs: float | None = None
-    matched_stars: int | None = None
-    catalog_stars: int | None = None
+    ra_hours: float = 0.0
+    dec_degs: float = 0.0
+    matched_stars: int = 0
+    catalog_stars: int = 0
     rotation_angle_degs: float | None = None
     pixel_scale: float | None = None
 
@@ -38,35 +27,33 @@ class SolvingSolution:
 
 
 class SolvingResult:
-    succeeded: bool | None = None
+
+    succeeded: bool
     errors: list[str] | None = None
-    solution: SolvingSolution | None = None
-    solver_result = None
-    elapsed_seconds: float | None = None
+    solution: SolvingSolution | None
+    native_result = None
 
     def __init__(
         self,
-        succeeded: bool | None = None,
+        succeeded: bool,
         errors: list[str] | None = None,
         solution: SolvingSolution | None = None,
-        solver_result=None,
+        native_result=None,
     ):
-        self.succeeded = succeeded
+        self.succeeded: bool = succeeded
         self.errors = errors
-        self.solution = solution
-        self.solver_result = solver_result
+        self.solution: SolvingSolution | None = solution
+        self.native_result = native_result
 
     def to_dict(self):
-        ret = {
+        return {
             "succeeded": self.succeeded,
             "errors": self.errors,
             "solution": self.solution.to_dict() if self.solution else None,
-            "elapsed_seconds": self.elapsed_seconds,
+            "native_result": (
+                self.native_result.to_dict() if self.native_result else None
+            ),
         }
-        if self.solver_result and hasattr(self.solver_result, "to_dict"):
-            ret["solving_result"] = self.solver_result.to_dict()
-
-        return ret
 
 
 class SolvingTolerance:
@@ -76,3 +63,14 @@ class SolvingTolerance:
     def __init__(self, ra: Angle, dec: Angle):
         self.ra = ra
         self.dec = dec
+
+
+class SolverInterface(ABC):
+
+    @abstractmethod
+    def solve(self, unit, settings, target) -> SolvingResult:
+        pass
+
+    @abstractmethod
+    def solve_and_correct(self):
+        pass
