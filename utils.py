@@ -469,7 +469,7 @@ def canonic_unit_name(name: str) -> str | None:
         raise ValueError(f"{op}: Empty name")
     if name.startswith("mast"):
         suffix = name[4:]
-        if suffix == "w":
+        if suffix == "w" or suffix == "00":
             return name
         elif name.isdigit():
             unit_number = int(name[4:])
