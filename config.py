@@ -644,7 +644,7 @@ class Config:
                     and 1 <= int(hostname[4:]) <= Config.NUMBER_OF_UNITS
                 ):
                     # site = "ns"
-                    site = "wis"
+                    site = "wis"  # until we have a mast-ns-control machine
             if site == "unknown":
                 raise ValueError(
                     "Config: cannot deduce site from {hostname=}, please provide site explicitly"
