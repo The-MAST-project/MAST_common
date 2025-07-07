@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from enum import Enum
 
 from common.activities import Activities
 
@@ -25,3 +26,8 @@ class GuiderInterface(ABC, Activities):
     @abstractmethod
     def is_guiding(self) -> bool:
         pass
+
+
+class GuiderTypes(Enum):
+    Phd2 = "phd2"
+    Solving = "solving"

@@ -1,5 +1,6 @@
 import datetime
 from abc import ABC, abstractmethod
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,12 @@ from common.interfaces.components import Component, ComponentStatus
 from common.paths import PathMaker
 
 
+class ImagerTypes(str, Enum):
+    Ascom = "ascom"
+    Phd2 = "phd2"
+    Zwo = "zwo"
+
+
 class ImagerBinning(BaseModel):
     x: int = 1
     y: int = 1
@@ -18,10 +25,12 @@ class ImagerBinning(BaseModel):
     def __str__(self):
         return f"{self.x}x{self.y}"
 
+
 class ImagerRoi(BaseModel):
     """
     Lower left corner of the ROI, and its width and height.
     """
+
     x: int = 0
     y: int = 0
     width: int = 1000
@@ -39,7 +48,9 @@ class ImagerRoi(BaseModel):
             binning = ImagerBinning(x=1, y=1)
 
         if other.width is None or other.height is None:
-            raise ValueError(f"ImagerRoi.from_other(): width or height is None in {other}")
+            raise ValueError(
+                f"ImagerRoi.from_other(): width or height is None in {other}"
+            )
 
         if hasattr(other, "sky_x") and hasattr(other, "sky_y"):
             center_x = other.sky_x
@@ -60,6 +71,7 @@ class ImagerRoi(BaseModel):
             height=other.height * binning.y,
         )
 
+
 class ImagerSettings(BaseModel):
     """
     Multipurpose exposure context
@@ -75,6 +87,7 @@ class ImagerSettings(BaseModel):
     - save - whether to save to file or just keep in memory
     - fits_cards - to be added to the default ones
     """
+
     seconds: float
     base_folder: str | None = None
     image_path: str | None = None
@@ -88,7 +101,7 @@ class ImagerSettings(BaseModel):
     file_name_parts: list[str] = Field(default=[], exclude=True)
     folder: str | None = Field(default=None, exclude=True)
 
-    def model_post_init(self, context: dict[str, Any] | None ):  # noqa: C901
+    def model_post_init(self, context: dict[str, Any] | None):  # noqa: C901
         defaults: ImagerSettings | None = None
         if context and (imager := context.get("imager")):
             defaults = imager.default_settings
@@ -107,7 +120,9 @@ class ImagerSettings(BaseModel):
 
         if self.save:
             if self.image_path is None and self.base_folder is None:
-                raise ValueError("ImagerSettings: either 'image_path' or 'base_folder' MUST be supplied when save=True")
+                raise ValueError(
+                    "ImagerSettings: either 'image_path' or 'base_folder' MUST be supplied when save=True"
+                )
 
             if self.image_path is not None:
                 folder = Path(self.image_path).parent
@@ -129,7 +144,9 @@ class ImagerSettings(BaseModel):
         :return:
         """
         if not self.folder:
-            raise ValueError("ImagerSettings: 'folder' must be set before making file name")
+            raise ValueError(
+                "ImagerSettings: 'folder' must be set before making file name"
+            )
 
         self.file_name_parts = []
         self.file_name_parts.append(
@@ -150,23 +167,32 @@ class ImagerSettings(BaseModel):
         self.file_name_parts.append(f"gain={self.gain}")
         self.file_name_parts.append(f"roi={self.roi}")
 
-        self.image_path = str(Path(self.folder, ",".join(self.file_name_parts) + ".fits"))
+        self.image_path = str(
+            Path(self.folder, ",".join(self.file_name_parts) + ".fits")
+        )
         pass
+
 
 class ImagerExposure(BaseModel):
     file: str | None = None
     seconds: float | None = None
     date: str | None = None
-    start: datetime.datetime = Field(default_factory=datetime.datetime.now, exclude=True)
+    start: datetime.datetime = Field(
+        default_factory=datetime.datetime.now, exclude=True
+    )
 
 
 class ImagerStatus(PowerStatus, ComponentStatus):
+    type: ImagerTypes | None = None
+    camera_x_size: int | None = None
+    camera_y_size: int | None = None
     errors: list[str] | None = None
     set_point: float | None = None
     temperature: float | None = None
     cooler: bool = False
     cooler_power: float | None = None
     latest_exposure: ImagerExposure | None = None
+    latest_settings: ImagerSettings | None = None
     date: str | None = None
 
 
@@ -283,6 +309,8 @@ class ImagerInterface(Component, ABC):
         Get the full frame ROI of the imager.
         """
         if self.camera_x_size is None or self.camera_y_size is None:
-            raise ValueError("Camera X and Y sizes must be set before getting full frame ROI")
+            raise ValueError(
+                "Camera X and Y sizes must be set before getting full frame ROI"
+            )
 
         return ImagerRoi(x=0, y=0, width=self.camera_x_size, height=self.camera_y_size)

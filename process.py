@@ -1,4 +1,6 @@
 import contextlib
+
+# from venv import logger
 import logging
 import re
 import shlex
@@ -9,6 +11,12 @@ from pathlib import Path
 from threading import Thread
 
 import psutil
+
+from common.mast_logging import init_log
+from common.utils import function_name
+
+logger = logging.Logger("mast.unit." + __name__)
+init_log(logger)
 
 
 def find_process(
@@ -33,7 +41,7 @@ def find_process(
             ret = proc
             break
         elif patt:
-            _patt: re.Pattern = re.compile(patt, re.IGNORECASE) # type: ignore
+            _patt: re.Pattern = re.compile(patt, re.IGNORECASE)  # type: ignore
             for arg in proc.info["cmdline"]:
                 if _patt.search(arg):
                     ret = proc
@@ -96,14 +104,13 @@ def ensure_process_is_running(
         cmd = Path(cmd).as_posix() if cmd else None
         if not cmd:
             raise ValueError("ensure_process_is_running: cmd must be set")
-        executable = cmd.split("/")[-1].replace('"', "") if "/" in cmd else cmd.split(" ")[0]
+        executable = (
+            cmd.split("/")[-1].replace('"', "") if "/" in cmd else cmd.split(" ")[0]
+        )
 
         if shell:
             process = subprocess.Popen(
-                args=cmd,
-                env=env,
-                shell=True,
-                cwd=cwd, stderr=stderr, stdout=stdout
+                args=cmd, env=env, shell=True, cwd=cwd, stderr=stderr, stdout=stdout
             )
         else:
             args = cmd.split()
@@ -123,7 +130,9 @@ def ensure_process_is_running(
             ).start()
 
         if logger:
-            logger.info(f"started process (pid={process.pid}) with cmd: '{cmd}' in {cwd=}")
+            logger.info(
+                f"started process (pid={process.pid}) with cmd: '{cmd}' in {cwd=}"
+            )
     except Exception:
         pass
 
@@ -153,13 +162,14 @@ class WatchedProcess:
         self.cwd: str | None = cwd
         self.shell: bool = shell
         self.process: subprocess.Popen | None = None
-        self.logging: bool = False
         self._terminate: bool = False
 
     def start(self):
         if not self.command:
             if not self.command_pattern:
-                raise ValueError("WatchedProcess: command or command_pattern must be set")
+                raise ValueError(
+                    "WatchedProcess: command or command_pattern must be set"
+                )
             self.command = self.command_pattern
         #
         # First kill previous instances, if existent.
@@ -188,6 +198,7 @@ class WatchedProcess:
                     stderr=stderr,
                     stdout=stdout,
                 )
+                logger.info(f"{function_name()}: started '{self.command}'")
             else:
                 self.process = subprocess.Popen(
                     args=args,
@@ -197,13 +208,13 @@ class WatchedProcess:
                     stderr=stderr,
                     stdout=stdout,
                 )
+                logger.info(f"{function_name()}: started '{" ".join(args)}'")
         except FileNotFoundError as ex:
             print(f"WatchedProcess.start: exception: {ex}")
             return
 
         Thread(target=self.watcher).start()
         if self.logger:
-            self.logging = True
             Thread(target=self.log_stream, args=[stdout]).start()
             Thread(target=self.log_stream, args=[stderr]).start()
 
@@ -223,6 +234,10 @@ class WatchedProcess:
     def terminate(self):
         self._terminate = True
         if self.process is not None:
+            if self.logger:
+                self.logger.info(
+                    f"{function_name()}: terminating process {self.process.pid}"
+                )
             self.process.kill()
 
     def watcher(self):
@@ -230,8 +245,11 @@ class WatchedProcess:
             if self.process is not None:
                 exit_code = self.process.wait()
                 if self.logger:
-                    self.logger.info(f"Process {self.process.pid} exited with {exit_code=}")
-            self.logging = False  # stop logging threads
+                    self.logger.info(
+                        f"Process {self.process.pid} exited with {exit_code=}"
+                    )
+                self.process = None
+
             if self._terminate:
                 return
 

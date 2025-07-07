@@ -29,6 +29,7 @@ service_cache = TTLCache(maxsize=100, ttl=30)
 # Enable warning logging for PyMongo
 logging.getLogger("pymongo").setLevel(logging.WARNING)
 
+
 class UserConfig(BaseModel):
     name: str
     full_name: str | None = None
@@ -36,16 +37,19 @@ class UserConfig(BaseModel):
     capabilities: list[str]
     picture: bytes | None = Field(default=None, exclude=True)
     email: str | None = None
-    password: str| None = None
-    model_config={"arbitrary_types_allowed": True}
+    password: str | None = None
+    model_config = {"arbitrary_types_allowed": True}
+
 
 class ServiceConfig(BaseModel):
     name: str
     listen_on: str = "0.0.0.0"
     port: int = 8000
 
+
 class ImagerBinningConfig(BaseModel):
     """Configuration for the imager binning."""
+
     x: int
     y: int
 
@@ -55,22 +59,28 @@ class ImagerBinningConfig(BaseModel):
             raise ValueError("Binning values must be positive integers.")
         return self
 
+
 class SkyRoiConfig(BaseModel):
     """Configuration for the region of interest (ROI) in the sky image."""
+
     sky_x: int
     sky_y: int
     width: int
     height: int
 
+
 class SpecRoiConfig(BaseModel):
     """Configuration for the region of interest (ROI) in the spectrograph."""
+
     width: int
     height: int
     fiber_x: int
     fiber_y: int
 
+
 class NetworkConfig(BaseModel):
     """Network configuration for components that need network connectivity."""
+
     host: str | None = None
     port: int = 80
     ipaddr: str | None = None
@@ -82,49 +92,65 @@ class NetworkConfig(BaseModel):
         if self.port <= 0 or self.port > 65535:
             raise ValueError("Port must be a valid TCP port number (1-65535).")
 
-        if self.host is None and self.ipaddr is not None: # if only ipaddr is provided
+        if self.host is None and self.ipaddr is not None:  # if only ipaddr is provided
             try:
                 self.host, _, _ = socket.gethostbyaddr(self.ipaddr)
             except socket.herror:
-                logger.warning(f"Could not resolve IP address {self.ipaddr}, host will be None")
+                logger.warning(
+                    f"Could not resolve IP address {self.ipaddr}, host will be None"
+                )
                 self.host = None
         elif self.ipaddr is None and self.host is not None:  # if only host is provided
             try:
                 self.ipaddr = socket.gethostbyname(self.host)
             except socket.gaierror:
-                logger.warning(f"Could not resolve host {self.host}, ipaddr will be None")
+                logger.warning(
+                    f"Could not resolve host {self.host}, ipaddr will be None"
+                )
                 self.ipaddr = None
         return self
 
+
 class StagePresets(BaseModel):
     """Configuration for stage preset positions."""
+
     sky: int
     spec: int
 
+
 class StageConfig(BaseModel):
     """Configuration for the telescope stage."""
+
     presets: StagePresets
+
 
 class FocuserConfig(BaseModel):
     """Configuration for the telescope focuser."""
+
     ascom_driver: str
     known_as_good_position: int
 
+
 class PowerSwitchOutlet(BaseModel):
     """Configuration for a single power switch outlet."""
+
     name: str
     number: int
 
+
 class OutletConfig(BaseModel):
-    outlet: int # the outlet number
-    switch: str # name of the power-switch
+    outlet: int  # the outlet number
+    switch: str  # name of the power-switch
     delay_after_on: int = 0  # delay in seconds after switching on the outlet
+
 
 class PowerConfig(BaseModel):
     power: OutletConfig
 
+
 class PowerSwitchConfig(BaseModel):
     """Configuration for the power switch that controls unit components."""
+
     network: NetworkConfig
     userid: str
     password: str
@@ -133,19 +159,24 @@ class PowerSwitchConfig(BaseModel):
     delay_after_on: int = 0
     outlets: dict[Literal["1", "2", "3", "4", "5", "6", "7", "8"], str]
 
+
 class OffsetConfig(BaseModel):
     x: int
     y: int
 
+
 class RoiConfig(BaseModel):
     """Configuration for the region of interest (ROI) in the camera."""
+
     x: int
     y: int
     width: int
     height: int
 
+
 class ImagerConfig(BaseModel):
     """Configuration for the imager."""
+
     imager_type: str
     valid_imager_types: list[str]
     # power: PowerSwitchConfig | None = None
@@ -154,31 +185,42 @@ class ImagerConfig(BaseModel):
     temp_check_interval: int = 60
     pixel_scale_at_bin1: float
 
+
 class CoversConfig(BaseModel):
     """Configuration for the telescope covers."""
+
     ascom_driver: str
+
 
 class MountConfig(BaseModel):
     """Configuration for the telescope mount."""
+
     ascom_driver: str
+
 
 class PHD2SettleConfig(BaseModel):
     """Configuration for PHD2 settle settings."""
+
     pixels: int
     time: int
     timeout: int
+
 
 class PHD2Config(BaseModel):
     profile: str
     settle: PHD2SettleConfig
 
+
 class ToleranceConfig(BaseModel):
     """Configuration for the acquisition tolerances."""
+
     ra_arcsec: float
     dec_arcsec: float
 
+
 class AcquisitionConfig(BaseModel):
     """Configuration for the acquisition settings."""
+
     exposure: float
     binning: ImagerBinningConfig
     tolerance: ToleranceConfig
@@ -189,6 +231,7 @@ class AcquisitionConfig(BaseModel):
 
 class GuidingConfig(BaseModel):
     """Configuration for guiding settings."""
+
     exposure: float
     binning: ImagerBinningConfig
     tolerance: ToleranceConfig
@@ -198,16 +241,20 @@ class GuidingConfig(BaseModel):
     cadence_seconds: int
     roi: SpecRoiConfig
 
+
 class GuiderConfig(BaseModel):
     method: str
     valid_methods: list[str]
+
 
 class SolvingConfig(BaseModel):
     method: str
     valid_methods: list[str]
 
+
 class AutofocusConfig(BaseModel):
     """Configuration for autofocus settings."""
+
     exposure: float
     binning: ImagerBinningConfig
     roi: RoiConfig | None = None
@@ -216,12 +263,14 @@ class AutofocusConfig(BaseModel):
     max_tolerance: int
     max_tries: int
 
+
 class UnitConfig(BaseModel):
-    """Complete configuration for a MAST telescope unit.
+    """Complete configuration for a MAST unit.
 
     This is the top-level configuration class that contains all settings
-    needed to configure and operate a telescope unit.
+    needed to configure and operate a MAST unit.
     """
+
     name: str
     power_switch: PowerSwitchConfig
     imager: ImagerConfig
@@ -316,16 +365,18 @@ class Site(BaseModel):
             building.units = self.normalize_unit_specifier(building.unit_ids)
         return self
 
-            # "wheels": doc["wheels"],
-            # "gratings": doc["gratings"],
-            # "power_switch": doc["power_switch"],
-            # "stage": doc["stage"],
-            # "chiller": doc["chiller"],
-            # "deepspec": doc["deepspec"],
-            # "highspec": doc["highspec"],
-            # "lamps": doc["lamps"],
+        # "wheels": doc["wheels"],
+        # "gratings": doc["gratings"],
+        # "power_switch": doc["power_switch"],
+        # "stage": doc["stage"],
+        # "chiller": doc["chiller"],
+        # "deepspec": doc["deepspec"],
+        # "highspec": doc["highspec"],
+        # "lamps": doc["lamps"],
+
 
 # Filter wheels
+
 
 # Configuration for a single wheel
 class WheelConfig(BaseModel):
@@ -354,60 +405,78 @@ class WheelConfig(BaseModel):
             )
         return self
 
+
 class GratingConfig(BaseModel):
-    position: int # for focusing the HighSpec camera
+    position: int  # for focusing the HighSpec camera
+
 
 class SpecStageConfig(BaseModel):
     """Configuration for the spectrograph stages"""
+
     peripheral: str
     presets: dict[Literal["Ca", "Halpha", "Mg", "Future"], int]
 
+
 class SpecStageControllerConfig(BaseModel):
     """Configuration for the spectrograph stages controller."""
+
     network: NetworkConfig
     power: OutletConfig
+
 
 class FiberStageConfig(BaseModel):
     peripheral: str
     presets: dict[Literal["deepspec", "highspec"], int]
 
+
 class SpecStagesConfig(BaseModel):
     """Configuration for the spectrograph stages controller."""
+
     controller: SpecStageControllerConfig
     fiber: FiberStageConfig
     disperser: SpecStageConfig
     focusing: SpecStageConfig
 
+
 class ChillerConfig(BaseModel):
     power: OutletConfig
 
+
 class GreateyesTemperatureConfig(BaseModel):
     """Configuration for Greateyes temperature settings."""
+
     target_cool: float = -5.0  # Default target temperature in Celsius
     target_warm: float = 0.0  # Temperature hysteresis in Celsius
     check_interval: int = 30  # Interval to check temperature in seconds
+
 
 class GreateyesCropConfig(BaseModel):
     col: int = 1056
     line: int = 1027
     enabled: bool = False
 
+
 class ShutterConfig(BaseModel):
     """Configuration for Greateyes shutter settings."""
-    open_time: int # time it takes to open (ms)
-    close_time: int # time it takes to close (ms)
+
+    open_time: int  # time it takes to open (ms)
+    close_time: int  # time it takes to close (ms)
     automatic: bool = True  # Whether the shutter operates automatically
+
 
 class GreateyesReadoutConfig(BaseModel):
     speed: int
     mode: int = 2
 
+
 class GreateyesProbingConfig(BaseModel):
-    boot_delay: int = 25 # seconds to wait after booting the camera
-    interval: int = 60 # seconds to check the camera status
+    boot_delay: int = 25  # seconds to wait after booting the camera
+    interval: int = 60  # seconds to check the camera status
+
 
 class GreateyesSettingConfig(BaseModel):
     """Configuration for Greateyes settings."""
+
     binning: ImagerBinningConfig | None = None  # Binning configuration for the camera
     bytes_per_pixel: int = 4  # Default bytes per pixel for Greateyes camera
     number_of_exposures: int = 1
@@ -432,11 +501,14 @@ class GreateyesConfig(BaseModel):
     device: int | None = None  # Device number
     settings: GreateyesSettingConfig | None = None  # Camera settings
 
+
 class DeepspecConfig(BaseModel):
     dict[Literal["G", "I", "U", "R", "common"], GreateyesConfig]
 
+
 class ServerConfig(BaseModel):
     """Configuration for the server."""
+
     host: str | None = None  # IP address on which the server will listen
     port: int = 8002
 
@@ -446,13 +518,17 @@ class ServerConfig(BaseModel):
             self.host = "0.0.0.0"  # Default to all interfaces
         return self
 
+
 class NewtonTemperatureConfig(BaseModel):
     """Configuration for the Newton camera temperature settings."""
+
     set_point: float = -10.0  # Default target temperature in Celsius
     cooler_mode: int = 0
 
+
 class NewtonSettingsConfig(BaseModel):
     """Configuration for the Newton camera settings."""
+
     binning: ImagerBinningConfig | None = None  # Binning configuration for the camera
     shutter: ShutterConfig
     acquisition_mode: int = 1  # Default acquisition mode
@@ -468,13 +544,17 @@ class NewtonSettingsConfig(BaseModel):
             self.binning = ImagerBinningConfig(x=1, y=1)
         return self
 
+
 class HighspecConfig(BaseModel):
     """Configuration for the Newton camera."""
+
     power: OutletConfig
     settings: NewtonSettingsConfig
 
+
 class SpecsConfig(BaseModel):
     """Configuration for the spectrograph."""
+
     wheels: dict[Literal["ThAr", "qTh"], WheelConfig]
     gratings: dict[Literal["Halpha", "Mg", "Ca HK", "Future"], GratingConfig]
     power_switch: dict[str, PowerSwitchConfig]
@@ -489,18 +569,24 @@ class SpecsConfig(BaseModel):
     def validate_specs_config(self):
 
         if "common" not in self.deepspec:
-            raise ValidationError("SpecsConfig: 'common' deepspec configuration not found")
+            raise ValidationError(
+                "SpecsConfig: 'common' deepspec configuration not found"
+            )
 
         common_cfg = self.deepspec.get("common")
         if not common_cfg:
-            raise ValidationError("SpecsConfig: 'common' deepspec configuration is None")
+            raise ValidationError(
+                "SpecsConfig: 'common' deepspec configuration is None"
+            )
 
         if any([common_cfg.network, common_cfg.power, common_cfg.device]):
             raise ValidationError(
                 "SpecsConfig: 'common' deepspec configuration should not have network, power or device set"
             )
         if not common_cfg.settings:
-            raise ValidationError("SpecsConfig: 'common' deepspec configuration must have settings set")
+            raise ValidationError(
+                "SpecsConfig: 'common' deepspec configuration must have settings set"
+            )
 
         for band in self.deepspec:
             if band == "common":
@@ -508,7 +594,9 @@ class SpecsConfig(BaseModel):
 
             band_cfg = self.deepspec[band]
             if not band_cfg:
-                raise ValidationError(f"SpecsConfig: '{band}' deepspec configuration not found")
+                raise ValidationError(
+                    f"SpecsConfig: '{band}' deepspec configuration not found"
+                )
 
             if not band_cfg.network or not band_cfg.power or band_cfg.device is None:
                 raise ValidationError(
@@ -519,7 +607,9 @@ class SpecsConfig(BaseModel):
             if not band_cfg.settings:
                 band_cfg.settings = deepcopy(common_cfg.settings)
             else:
-                deep_dict_update(band_cfg.settings.model_dump(), common_cfg.settings.model_dump())
+                deep_dict_update(
+                    band_cfg.settings.model_dump(), common_cfg.settings.model_dump()
+                )
             pass
         return self
 
@@ -731,7 +821,7 @@ class Config:
             picture=user["picture"] if user and "picture" in user else None,
             groups=groups,
             capabilities=capabilities,
-            )
+        )
 
     @cached(users_cache)
     def get_users(self) -> list[UserConfig]:
@@ -759,7 +849,7 @@ if __name__ == "__main__":
         if conf.picture:
             img = Image.open(io.BytesIO(conf.picture))
             plt.imshow(img)
-            plt.axis('off')  # Hide axes
+            plt.axis("off")  # Hide axes
             plt.show()
         else:
             print(f"no picture for user '{conf.name}'")

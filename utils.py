@@ -7,9 +7,12 @@ import re
 import string
 import subprocess
 import time
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeout
+from contextlib import AbstractContextManager
 from multiprocessing import shared_memory
 from threading import Lock, Timer
-from typing import NamedTuple
+from typing import Any, Callable, NamedTuple
 
 from astropy.coordinates import Angle
 from astropy.units import deg, hourangle  # type: ignore
@@ -111,7 +114,7 @@ def function_name():
     try:
         outer_frame = frame.f_back.f_back  # skip current and caller
         func_name = outer_frame.f_code.co_name
-        self_obj = outer_frame.f_locals.get('self')
+        self_obj = outer_frame.f_locals.get("self")
         if self_obj:
             class_name = self_obj.__class__.__name__
             return f"{class_name}.{func_name}"
@@ -121,13 +124,16 @@ def function_name():
         del frame  # avoid reference cycles
 
 
-
 def caller_name() -> str:
     """
     Gets the name of the calling function's caller
     """
     current_frame = inspect.currentframe()
-    if current_frame is None or current_frame.f_back is None or current_frame.f_back.f_back is None:
+    if (
+        current_frame is None
+        or current_frame.f_back is None
+        or current_frame.f_back.f_back is None
+    ):
         return "UnknownCaller"
 
     return current_frame.f_back.f_back.f_code.co_name
@@ -321,11 +327,11 @@ def boxed_info(info_logger, ll: str | list[str], center: bool = False):
 def canonic_unit_name(name: str) -> str | None:
     """
     Tries to make a canonic MAST unit name, accepting
-    - mastw
+    - mastw, mast00
     - mast1 to mast20 (with or w/out leading zero)
 
     :param name: The input name
-    :return: canonic name ('mastw', 'mast01'..'mast20') or None
+    :return: canonic name ('mastw', 'mast00', 'mast01'..'mast20') or None
     """
     op = function_name()
 
@@ -365,6 +371,25 @@ class OperatingMode:
     @classmethod
     def debug_mode(cls):
         return "MAST_DEBUG" in os.environ
+
+
+class Timeout(AbstractContextManager):
+    def __init__(self, sec: float):
+        self.timeout = sec
+        self.executor = ThreadPoolExecutor(max_workers=1)
+
+    def run(self, func: Callable[..., Any], *args, **kwargs) -> Any:
+        future = self.executor.submit(func, *args, **kwargs)
+        try:
+            return future.result(timeout=self.timeout)
+        except FuturesTimeout:
+            future.cancel()
+            raise TimeoutError(
+                f"Function call exceeded timeout of {self.timeout:.2f} seconds"
+            )
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.executor.shutdown(wait=False)
 
 
 if __name__ == "__main__":
