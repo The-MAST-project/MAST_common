@@ -236,6 +236,17 @@ class UnitConfig(BaseModel):
     autofocus: AutofocusConfig
     guider: GuiderConfig
 
+    @model_validator(mode="after")
+    def validate_unit_config(self):
+        conditions = [self.guider.method == "phd2", self.imager.imager_type == "phd2"]
+
+        if any(conditions) and not all(conditions):
+            raise ValidationError(
+                f"if any of {self.imager.imager_type=} or {self.guider.method=} is 'phd2', then BOTH must be 'phd2'"
+            )
+
+        return self
+
 
 class Building(BaseModel):
     names: list[str]
