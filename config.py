@@ -539,6 +539,26 @@ class Config:
         if self._initialized:
             return
 
+        if not site:
+            """
+            This is a bootstrap issue: We need to determine the site based on the hostname before we can send
+             database queries to a MAST-{site}-control machine.
+            """
+            hostname = socket.gethostname()
+            site = "unknown"
+            if hostname.startswith("mast"):
+                if hostname[4:] == "w":
+                    site = "wis"
+                elif hostname[4:] == "00" or (
+                    hostname[4:].isdigit()
+                    and 1 <= int(hostname[4:]) <= Config.NUMBER_OF_UNITS
+                ):
+                    # site = "ns"
+                    site = "wis"
+            if site == "unknown":
+                raise ValueError(
+                    "Config: cannot deduce site from {hostname=}, please provide site explicitly"
+                )
         try:
             client = pymongo.MongoClient(
                 f"mongodb://mast-{site}-control.weizmann.ac.il:27017/"
