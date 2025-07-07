@@ -535,7 +535,7 @@ class Config:
             cls._instance = super().__new__(cls)
         return cls._instance
 
-    def __init__(self, site: str = "wis"):
+    def __init__(self, site: str | None = None):
         if self._initialized:
             return
 
