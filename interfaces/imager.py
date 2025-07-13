@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+import ulid
 from pydantic import BaseModel, Field
 
 from common.dlipowerswitch import PowerStatus
@@ -196,7 +197,20 @@ class ImagerStatus(PowerStatus, ComponentStatus):
     date: str | None = None
 
 
+class ImagerExposureSeries:
+    """
+    Represents a series of exposures taken by the imager.
+    This is used to maintain context for a series of exposures, e.g. in PHD2.
+    """
+
+    def __init__(self, purpose: str | None = None):
+        self.series_id: str = str(ulid.ulid())
+        self.purpose: str | None = purpose
+
+
 class ImagerInterface(Component, ABC):
+
+    current_exposure_series: ImagerExposureSeries | None = None
 
     @property
     @abstractmethod
@@ -234,8 +248,49 @@ class ImagerInterface(Component, ABC):
 
     @abstractmethod
     def start_exposure(self, settings: ImagerSettings):
+        if self.current_exposure_series is None:
+            raise ValueError(
+                "ImagerInterface.start_exposure(): must call start_exposure_series() before starting an exposure"
+            )
         self.latest_settings = settings
         pass
+
+    @abstractmethod
+    def start_exposure_series(self, purpose: str | None = None) -> ImagerExposureSeries:
+        """
+        Maintains and exposure series context by using a unique series id.
+        This method should be called before starting a series of exposures.
+        It returns a unique series id that should be used in subsequent calls to end_exposure_series().
+
+        Some imagers (e.g. PHD2) may need to stop guiding before an exposure series, so this method
+        should be called before starting the series.
+        """
+        if self.current_exposure_series is not None:
+            raise ValueError(
+                f"ImagerInterface.start_exposure_series(): already in an exposure series id={self.current_exposure_series.series_id}, purpose={self.current_exposure_series.purpose}"
+            )
+        self.current_exposure_series = ImagerExposureSeries(purpose=purpose)
+        return self.current_exposure_series
+
+    @abstractmethod
+    def end_exposure_series(self, series: ImagerExposureSeries):
+        """
+        Do any post-exposure series cleanup required by the imager (e.g. PHD2 should resume guiding if it was stopped).
+        This method is called after the exposure series is completed.
+        """
+        if series is None:
+            raise ValueError(
+                "ImagerInterface.end_exposure_series(): series cannot be None"
+            )
+        if self.current_exposure_series is None:
+            raise ValueError(
+                "ImagerInterface.end_exposure_series(): no self.current_exposure_series to end"
+            )
+        if series.series_id != self.current_exposure_series.series_id:
+            raise ValueError(
+                f"ImagerInterface.end_exposure_series(): series_id mismatch {series.series_id=} != {self.current_exposure_series=}"
+            )
+        self.current_exposure_series = None
 
     @abstractmethod
     def stop_exposure(self):
