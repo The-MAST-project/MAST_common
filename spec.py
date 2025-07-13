@@ -42,7 +42,7 @@ class SpecExposureSettings:
         self.image_full_path: str | None = None
 
     @property
-    def number_in_sequence(self) -> int:
+    def number_in_sequence(self) -> int | None:
         return self._number_in_sequence
 
     @number_in_sequence.setter
