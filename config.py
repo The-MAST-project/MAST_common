@@ -209,6 +209,7 @@ class PHD2SettleConfig(BaseModel):
 class PHD2Config(BaseModel):
     profile: str
     settle: PHD2SettleConfig
+    validation_interval: float
 
 
 class ToleranceConfig(BaseModel):
