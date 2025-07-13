@@ -317,11 +317,11 @@ def wslpath(path: str, to_windows: bool = False) -> str | None:
         return None
 
 
-def boxed_info(info_logger, ll: str | list[str], center: bool = False):
-    if isinstance(ll, str):
-        ll = [ll]
-    for line in boxed_lines(ll, center):
-        info_logger.info(line)
+def boxed_info(logger: logging.Logger, lines: str | list[str], center: bool = False):
+    if isinstance(lines, str):
+        lines = [lines]
+    for line in boxed_lines(lines, center):
+        logger.info(line)
 
 
 def canonic_unit_name(name: str) -> str | None:
@@ -337,6 +337,7 @@ def canonic_unit_name(name: str) -> str | None:
 
     if not name:
         raise ValueError(f"{op}: Empty name")
+    name = name.lower().strip()
     if name.startswith("mast"):
         suffix = name[4:]
         if suffix == "w" or suffix == "00":
