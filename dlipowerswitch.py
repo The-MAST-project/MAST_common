@@ -317,6 +317,7 @@ class SwitchedOutlet:
             "Mount",
             "Stage",
             "Camera",
+            "CameraUSB",
             "Focuser",
             "Covers",
             "Computer",
@@ -348,8 +349,8 @@ class SwitchedOutlet:
         ],
     }
 
-    def __init__(
-        self, domain: OutletDomain, outlet_name: str, unit_name: str | None = None
+    def __init__(  # noqa: C901
+        self, domain: OutletDomain, outlet_name: str, unit_name: str | None = None, *, _from_group: bool = False
     ):
         """
         SwitchedOutlets belong to an OutletDomain and have a canonical name,
@@ -359,63 +360,127 @@ class SwitchedOutlet:
 
         op = function_name()
 
-        self.power_switch: DliPowerSwitch | None = None
-        self.outlet_name = outlet_name
-
-        if (
-            self.outlet_name not in SwitchedOutlet.valid_names[domain]
-            and self.outlet_name not in SwitchedOutlet.valid_names[OutletDomain.Unnamed]
-        ):
+        if outlet_name not in SwitchedOutlet.valid_names[domain] \
+                and outlet_name not in SwitchedOutlet.valid_names[OutletDomain.Unnamed]:
             raise ValueError(
-                f"{op}: bad outlet name '{self.outlet_name}' for {domain=}, "
+                f"{op}: bad outlet name '{outlet_name}' for {domain=}, "
                 + f"not in {SwitchedOutlet.valid_names[domain]} or "
                 + f"{SwitchedOutlet.valid_names[OutletDomain.Unnamed]}"
             )
 
-        if domain == OutletDomain.Unit:
-            # Unit outlets have always the same names but the socket number may differ from unit to unit
-            if unit_name is None:
-                unit_name = socket.gethostname()
-            try:
-                self.power_switch = PowerSwitchFactory.get_instance(name=unit_name)
-            except ValueError:
-                raise
-            try:
-                conf = Config().get_unit(unit_name=unit_name).power_switch
-                if self.outlet_name not in conf.outlets.values():
-                    raise ValueError(
-                        f"outlet name '{self.outlet_name}' not in {list(conf.outlets.values())}"
-                    )
-            except:
-                raise
+        self.power_switch: DliPowerSwitch | None = None
+        self.outlet_names = [outlet_name]
+        self.outlets = [self]
+        self.group_name = None
 
-        elif domain == OutletDomain.Spec:
-            # Spec outlets have pre-defined names but may belong to any one of the spec power switches
-            conf = Config().get_specs().power_switch
-            for switch_name in conf:
-                if self.outlet_name in conf[switch_name].outlets.values():
-                    # we located the switch
-                    self.power_switch = PowerSwitchFactory.get_instance(
-                        name=switch_name
-                    )
+        try:
+            self.power_switch = self.get_power_switch(
+                domain=domain,
+                outlet_names=self.outlet_names,
+                unit_name=unit_name
+            )
+        except ValueError as e:
+            logger.error(f"{op}: {e}")
+            raise
 
         self.delay_after_on = (self.power_switch.conf.delay_after_on if self.power_switch else 0)
 
+    @property
+    def is_outlet_group(self) -> bool:
+        """
+        Returns True if this SwitchedOutlet is a group of outlets, i.e. it has multiple outlets.
+        """
+        return self.group_name is not None
+
+    @classmethod
+    def group(cls,
+              group_name: str,
+              domain: OutletDomain,
+              outlet_names: list[str],
+              unit_name: str | None = None):
+        """
+        Creates a group of outlets with the given group name and outlet names.
+        """
+        if len(outlet_names) < 1:
+            raise ValueError("Cannot create a group with no outlets")
+
+        for name in outlet_names:
+            if name not in cls.valid_names[domain] and name not in cls.valid_names[OutletDomain.Unnamed]:
+                raise ValueError(
+                    f"Outlet name '{name}' is not valid for {domain=}, "
+                    + f"not in {cls.valid_names[domain]} or {cls.valid_names[OutletDomain.Unnamed]}"
+                )
+
+        try:
+            obj = cls(domain=domain, outlet_name=outlet_names[0], unit_name=unit_name, _from_group=True)
+            obj.group_name = group_name
+            obj.outlet_names = outlet_names
+
+            try:
+                obj.power_switch = cls.get_power_switch(
+                    domain=domain,
+                    outlet_names=obj.outlet_names,
+                    unit_name=unit_name
+                )
+            except ValueError as e:
+                logger.error(f"group: {e}")
+                raise
+
+            obj.outlets = [cls(domain, name, unit_name) for name in outlet_names]
+        except ValueError as e:
+            raise ValueError(f"Cannot create group '{group_name}' with {outlet_names=}: {e}") from e
+
+        obj.delay_after_on = (obj.power_switch.conf.delay_after_on if obj.power_switch else 0)
+        return obj
+
+    @staticmethod
+    def get_power_switch(domain: OutletDomain, outlet_names: list[str], unit_name: str | None = None) -> DliPowerSwitch:
+        """
+        Gets the DliPowerSwitch instance for the given:
+        - domain (either OutletDomain.Unit or OutletDomain.Spec),
+        - outlet name(s), and
+        - unit name
+
+        NOTES:
+        - If the domain is OutletDomain.Unit, the unit's power switch is returned
+        - If the domain is OutletDomain.Spec, the power switch containing ALL the specified outlet names is returned.
+        - If no power switch can be determined, a ValueError is raised.
+        """
+        from common.utils import function_name
+
+        op = function_name()
+
+        if domain == OutletDomain.Unit:
+            if unit_name is None:
+                unit_name = socket.gethostname()
+            return PowerSwitchFactory.get_instance(name=unit_name)
+        elif domain == OutletDomain.Spec:
+            conf = Config().get_specs().power_switch
+            for switch_name in conf:
+                if all([outlet_name in conf[switch_name].outlets.values() for outlet_name in outlet_names]):
+                    return PowerSwitchFactory.get_instance(name=switch_name)
+
+        raise ValueError(f"{op}: Cannot create power switch for {domain=}, {outlet_names=}, {unit_name=}")
+
     def __repr__(self):
-        # logger.info(f"__repr__: {self.outlet_name=}")
-        return f"{self.power_switch}:{self.outlet_name}"
+        ret = "SwitchedOutlet("
+        if self.is_outlet_group:
+            ret += f"group='{self.group_name}', "
+        ret += f"switch={self.power_switch}, "
+        ret += f"outlets={self.outlet_names}" if self.is_outlet_group else f"outlet='{self.outlet_names[0]}'"
+        ret += ")"
+        return ret
 
     @property
     def name(self) -> str:
-        return self.outlet_name
+        return self.group_name if (self.group_name and self.is_outlet_group) else self.outlet_names[0]
 
     @property
     def state(self) -> TriStateBool:
-        # self.power_switch.fetch_outlets()
-        # return [o.state for o in self.power_switch.outlets if o.label == self.outlet_name][0]
         if self.power_switch is None:
             return None
-        return self.power_switch.get_outlet_state(self.outlet_name)
+
+        return all([self.power_switch.get_outlet_state(name) for name in self.outlet_names])
 
     def power_on_or_off(self, new_state: bool):
         from common.utils import function_name
@@ -423,15 +488,17 @@ class SwitchedOutlet:
         op = function_name()
 
         if self.power_switch is None or not self.power_switch.detected:
-            logger.error(f"{op}: {self.outlet_name=}: {self.power_switch} not detected")
+            logger.error(f"{op}: {self.outlet_names=}: {self.power_switch} not detected")
             return
 
-        current_state = self.power_switch.get_outlet_state(self.outlet_name)
-        if current_state != new_state:
-            self.power_switch.set_outlet_state(self.outlet_name, new_state)
+        # current_states = [self.power_switch.get_outlet_state(name) for name in self.outlet_names]
+        current_states = [outlet.state for outlet in self.outlets]
+        if any(state != new_state for state in current_states):
+            for name in self.outlet_names:
+                self.power_switch.set_outlet_state(name, new_state)
             if new_state is True and self.delay_after_on:
                 logger.info(
-                    f"{op}: delaying {self.delay_after_on} sec. after powering ON  ({self.name})"
+                    f"{op}: delaying {self.delay_after_on} sec. after powering ON  ({self})"
                 )
                 time.sleep(self.delay_after_on)
 
@@ -444,7 +511,8 @@ class SwitchedOutlet:
     def toggle(self):
         if self.power_switch is None:
             return
-        self.power_switch.toggle_outlet(self.outlet_name)
+        for name in self.outlet_names:
+            self.power_switch.toggle_outlet(name)
 
     def cycle(self):
         if self.is_on():
@@ -457,17 +525,26 @@ class SwitchedOutlet:
     def is_on(self) -> bool:
         if self.power_switch is None:
             return False
-        state = self.power_switch.get_outlet_state(self.outlet_name)
-        return state is True
+        return all(outlet.state for outlet in self.outlets)
 
     def is_off(self) -> bool:
         if self.power_switch is None:
             return True
-        state = self.power_switch.get_outlet_state(self.outlet_name)
-        return state is False
+        return all(not outlet.state for outlet in self.outlets)
 
     def power_status(self) -> PowerStatus:
         return PowerStatus(powered=self.is_on())
+
+    def populate(self, target: object):
+        """
+        Populates the target object with our attributes and methods
+
+        Use-case:
+        - SwitchedOutlet.group(...).populate(self) in an object's constructor inheriting from SwitchedOutlet
+        """
+        for key, value in self.__dict__.items():
+            setattr(target, key, value)
+        return target
 
 
 if __name__ == "__main__":
@@ -477,3 +554,14 @@ if __name__ == "__main__":
     print(f"Original: {o8}")
     o8.toggle()
     print(f"After toggle: {o8}")
+
+    g = SwitchedOutlet.group(group_name="Camera", domain=OutletDomain.Unit,
+                             outlet_names=["Camera", "CameraUSB"])
+    print(f"{g}, is_on: {g.is_on()}")
+    g.toggle()
+    print(f"{g}, is_on: {g.is_on()}")
+    if g.is_on():
+        g.power_off()
+    else:
+        g.power_on()
+    print(f"{g}, is_on: {g.is_on()}")
