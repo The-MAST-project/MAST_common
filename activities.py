@@ -64,7 +64,7 @@ class Activities:
             await client.put("activity_notification", data=data)
 
     def start_activity(
-        self, activity: IntFlag, existing_ok: bool = False, label: str | None = None
+        self, activity: IntFlag, existing_ok: bool = False, label: str | None = None, details: str | None = None
     ):
         """
         Marks the start of an activity.
@@ -78,10 +78,13 @@ class Activities:
 
         self.activities |= activity
         self.timings[activity] = Timing()
+        info = ""
         if label:
-            logger.info(f"{label}: started activity {activity.__repr__()}")
-        else:
-            logger.info(f"started activity {activity.__repr__()}")
+            info += f"{label}: "
+        info += f"started activity {activity.__repr__()}"
+        if details:
+            info += f" details='{details}'"
+        logger.info(info)
 
         data = ActivityNotification(
             activity=activity, activity_verbal=activity.__repr__(), started=True
