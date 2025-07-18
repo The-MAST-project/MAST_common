@@ -305,15 +305,15 @@ class PowerStatus(BaseModel):
 
 
 class OutletDomain(IntFlag):
-    Unit = auto()
-    Spec = auto()
-    Unnamed = auto()
+    UnitOutlets = auto()
+    SpecOutlets = auto()
+    UnnamedOutlets = auto()
 
 
 class SwitchedOutlet:
 
     valid_names = {
-        OutletDomain.Unit: [
+        OutletDomain.UnitOutlets: [
             "Mount",
             "Stage",
             "Camera",
@@ -322,7 +322,7 @@ class SwitchedOutlet:
             "Covers",
             "Computer",
         ],
-        OutletDomain.Spec: [
+        OutletDomain.SpecOutlets: [
             "ThArWheel",
             "ThArLamp",
             "qThWheel",
@@ -337,7 +337,7 @@ class SwitchedOutlet:
             "DeepShutter",
             "HighShutter",
         ],
-        OutletDomain.Unnamed: [
+        OutletDomain.UnnamedOutlets: [
             "Outlet1",
             "Outlet2",
             "Outlet3",
@@ -361,11 +361,11 @@ class SwitchedOutlet:
         op = function_name()
 
         if outlet_name not in SwitchedOutlet.valid_names[domain] \
-                and outlet_name not in SwitchedOutlet.valid_names[OutletDomain.Unnamed]:
+                and outlet_name not in SwitchedOutlet.valid_names[OutletDomain.UnnamedOutlets]:
             raise ValueError(
                 f"{op}: bad outlet name '{outlet_name}' for {domain=}, "
                 + f"not in {SwitchedOutlet.valid_names[domain]} or "
-                + f"{SwitchedOutlet.valid_names[OutletDomain.Unnamed]}"
+                + f"{SwitchedOutlet.valid_names[OutletDomain.UnnamedOutlets]}"
             )
 
         self.power_switch: DliPowerSwitch | None = None
@@ -405,10 +405,10 @@ class SwitchedOutlet:
             raise ValueError("Cannot create a group with no outlets")
 
         for name in outlet_names:
-            if name not in cls.valid_names[domain] and name not in cls.valid_names[OutletDomain.Unnamed]:
+            if name not in cls.valid_names[domain] and name not in cls.valid_names[OutletDomain.UnnamedOutlets]:
                 raise ValueError(
                     f"Outlet name '{name}' is not valid for {domain=}, "
-                    + f"not in {cls.valid_names[domain]} or {cls.valid_names[OutletDomain.Unnamed]}"
+                    + f"not in {cls.valid_names[domain]} or {cls.valid_names[OutletDomain.UnnamedOutlets]}"
                 )
 
         try:
@@ -450,11 +450,11 @@ class SwitchedOutlet:
 
         op = function_name()
 
-        if domain == OutletDomain.Unit:
+        if domain == OutletDomain.UnitOutlets:
             if unit_name is None:
                 unit_name = socket.gethostname()
             return PowerSwitchFactory.get_instance(name=unit_name)
-        elif domain == OutletDomain.Spec:
+        elif domain == OutletDomain.SpecOutlets:
             conf = Config().get_specs().power_switch
             for switch_name in conf:
                 if all([outlet_name in conf[switch_name].outlets.values() for outlet_name in outlet_names]):
@@ -549,13 +549,13 @@ class SwitchedOutlet:
 
 if __name__ == "__main__":
     o8 = SwitchedOutlet(
-        domain=OutletDomain.Unit, unit_name="mastw", outlet_name="Outlet8"
+        domain=OutletDomain.UnitOutlets, unit_name="mastw", outlet_name="Outlet8"
     )
     print(f"Original: {o8}")
     o8.toggle()
     print(f"After toggle: {o8}")
 
-    g = SwitchedOutlet.group(group_name="Camera", domain=OutletDomain.Unit,
+    g = SwitchedOutlet.group(group_name="Camera", domain=OutletDomain.UnitOutlets,
                              outlet_names=["Camera", "CameraUSB"])
     print(f"{g}, is_on: {g.is_on()}")
     g.toggle()
