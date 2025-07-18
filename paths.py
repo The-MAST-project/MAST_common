@@ -1,7 +1,7 @@
 import datetime
 import os
 from pathlib import Path
-from typing import List, Literal
+from typing import Literal
 
 from common.filer import Filer
 
@@ -9,7 +9,7 @@ from common.filer import Filer
 class PathMaker:
 
     @staticmethod
-    def make_seq(folder: str, start_with: int | None = None) -> str:
+    def make_seq(folder: str, start_with: int | None = None, dont_bump: bool = False) -> str:
         """
         Creates a sequence number by maintaining a '.seq' file.
         The sequence may be camera specific or camera agnostic.
@@ -20,19 +20,19 @@ class PathMaker:
         seq_file = Path(folder) / "seq.txt"
         seq_file.parent.mkdir(parents=True, exist_ok=True)
 
-        if seq_file.exists():
-            seq = int(seq_file.read_text())
-        else:
-            seq = start_with if start_with is not None else 0
-        seq += 1
-        seq_file.write_text(str(seq))
+        seq = int(seq_file.read_text()) if seq_file.exists() else start_with if start_with is not None else 0
+        if not dont_bump:
+            seq += 1
+            seq_file.write_text(str(seq))
 
         return f"{seq:04d}"
 
     @staticmethod
     def make_daily_folder_name(root: str | None = None) -> str:
         if not root:
-            root = Filer().ram.root
+            ram = Filer().ram
+            assert(ram)
+            root = ram.root
         d = Path(root) / datetime.datetime.now().strftime("%Y-%m-%d")
         d.mkdir(parents=True, exist_ok=True)
         return str(d)
@@ -53,7 +53,7 @@ class PathMaker:
     ) -> str:
         acquisitions_folder = Path(self.make_daily_folder_name()) / "Acquisitions"
         acquisitions_folder.mkdir(parents=True, exist_ok=True)
-        parts: List[str] = [
+        parts: list[str] = [
             f"seq={PathMaker.make_seq(folder=str(acquisitions_folder))}",
             f"time={self.current_utc()}",
         ]
@@ -74,7 +74,9 @@ class PathMaker:
             guiding_folder = Path(base_folder) / "Guidings"
         else:
             if not root:
-                root = Filer().ram.root
+                ram = Filer().ram
+                assert(ram)
+                root = ram.root
             guiding_folder = Path(self.make_daily_folder_name(root=root)) / "Guidings"
 
         guiding_folder.mkdir(parents=True, exist_ok=True)
@@ -87,7 +89,9 @@ class PathMaker:
             spirals_folder = Path(base_folder) / "Spirals"
         else:
             if not root:
-                root = Filer().ram.root
+                ram = Filer().ram
+                assert(ram)
+                root = ram.root
             spirals_folder = Path(self.make_daily_folder_name(root=root)) / "Spirals"
 
         spirals_folder = spirals_folder / PathMaker().make_seq(str(spirals_folder))
@@ -96,7 +100,7 @@ class PathMaker:
 
     @staticmethod
     def current_utc():
-        return datetime.datetime.now(datetime.timezone.utc).strftime("%H-%M-%S_%f")[:-3]
+        return datetime.datetime.now(datetime.UTC).strftime("%H-%M-%S_%f")[:-3]
 
     # def make_guiding_root_name(self, root: str | None = None):
     #     if not root:
