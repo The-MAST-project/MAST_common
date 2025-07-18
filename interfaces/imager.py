@@ -101,6 +101,7 @@ class ImagerSettings(BaseModel):
     start: datetime.datetime = Field(default=datetime.datetime.now(), exclude=True)
     file_name_parts: list[str] = Field(default=[], exclude=True)
     folder: str | None = Field(default=None, exclude=True)
+    dont_bump_sequence: bool = False
 
     def model_post_init(self, context: dict[str, Any] | None):  # noqa: C901
         defaults: ImagerSettings | None = None
@@ -127,15 +128,15 @@ class ImagerSettings(BaseModel):
 
             if self.image_path is not None:
                 folder = Path(self.image_path).parent
-                self.folder = str(folder)
+                self.folder = str(folder.as_posix())
                 folder.mkdir(parents=True, exist_ok=True)
             elif self.base_folder is not None:
                 folder = Path(self.base_folder)
                 folder.mkdir(parents=True, exist_ok=True)
                 self.folder = str(folder)
-                self.make_file_name()
+                self.make_file_name(dont_bump_sequence=self.dont_bump_sequence)
 
-    def make_file_name(self, additional_tags: dict | None = None):
+    def make_file_name(self, additional_tags: dict | None = None, dont_bump_sequence: bool = False):
         """
         Makes the file part of the image path.  This will:
         - generate current seq= and time= file name parts
@@ -151,7 +152,7 @@ class ImagerSettings(BaseModel):
 
         self.file_name_parts = []
         self.file_name_parts.append(
-            f"seq={PathMaker().make_seq(self.folder, start_with=-1)}"
+            f"seq={PathMaker().make_seq(self.folder, start_with=-1, dont_bump=dont_bump_sequence)}"
         )
         self.file_name_parts.append(f"time={PathMaker().current_utc()}")
 
