@@ -7,15 +7,15 @@ if platform.system() == "Windows":
 import fnmatch
 import os
 import shutil
+from collections.abc import Callable
 from enum import Enum, auto
 from pathlib import Path
 from threading import Thread
-from typing import List, Optional
 
 
 def is_windows_drive_mapped(drive_letter):
     if platform.system() != "Windows":
-        raise Exception(f"is_windows_drive_mapped: this is not a Windows platform")
+        raise Exception("is_windows_drive_mapped: this is not a Windows platform")
 
     try:
         drives = win32api.GetLogicalDriveStrings()
@@ -33,7 +33,7 @@ class FilerTop(Enum):
 
 
 class Location:
-    def __init__(self, drive: Optional[str], prefix: str):
+    def __init__(self, drive: str | None, prefix: str):
         self.drive = drive
         self.prefix = prefix
         self.root = os.path.join(self.drive, self.prefix) if self.drive else self.prefix
@@ -78,7 +78,7 @@ class Filer:
         else:
             print(msg)
 
-    def move(self, src: str, dst: str):
+    def move(self, src, dst):
         """
         Moves a source path (either file or folder) to a destination path
 
@@ -87,28 +87,32 @@ class Filer:
         :return:
         """
         op = "move"
+        if not isinstance(src, Path):
+            src = Path(src)
+        if not isinstance(dst, Path):
+            dst = Path(dst)
 
         try:
-            if os.path.isfile(src):
+            if src.is_file():
                 shutil.copy2(src, dst)
                 os.unlink(src)
-            elif os.path.isdir(src):
+            elif src.is_dir():
                 shutil.copytree(src, dst)
                 shutil.rmtree(src)
             else:
-                self.error(f"{op}: not a file or folder, ignoring: '{src}'")
+                self.error(f"{op}: not a file or folder, ignoring: '{src.as_posix()}'")
                 return
 
-            self.info(f"moved '{src}' to '{dst}'")
+            self.info(f"moved '{src.as_posix()}' to '{dst.as_posix()}'")
         except Exception as e:
-            self.error(f"failed to move '{src} to '{dst}' (exception: {e})")
+            self.error(f"failed to move '{src.as_posix()} to '{dst.as_posix()}' (exception: {e})")
 
-    def change_top_to(self, top: FilerTop, path: str) -> str:
+    def change_top_to(self, top: FilerTop, path: str):
         for t in self.tops:
             if path.startswith(self.tops[t].root):
                 return path.replace(self.tops[t].root, self.tops[top].root)
 
-    def move_to(self, dst_top: FilerTop, src_paths: str | List[str]):
+    def move_to(self, dst_top: FilerTop, src_paths: str | list[str]):
         """
         Moves one or more source paths (files or folders) to a destination top,
          unless the source path already resides on the destination root.
@@ -125,7 +129,7 @@ class Filer:
             src_root = None
             if src_path.startswith(dst_root):
                 continue  # it's already on the destination root
-            for top in self.tops.keys():
+            for top in self.tops:
                 if src_path.startswith(self.tops[top].root):
                     src_root = self.tops[top].root
                     break
@@ -133,7 +137,7 @@ class Filer:
                 continue
             self.move(src_path, src_path.replace(src_root, dst_root))
 
-    def move_ram_to_shared(self, paths: str | List[str]):
+    def move_ram_to_shared(self, paths: str | list[str]):
         """
         Moves stuff from the 'ram' storage to the 'shared' storage.
         The path name hierarchy is preserved, only the 'root' is changed from the 'ram' root to the 'shared' root
@@ -147,6 +151,7 @@ class Filer:
         if isinstance(paths, str):
             paths = [paths]
 
+        assert(self.ram is not None)
         for file in paths:
             src = Path(file).as_posix()
             dst = Path(str(src).replace(self.ram.root, self.shared.root))
@@ -160,10 +165,12 @@ class Filer:
         root: str,
         name: str | None = None,
         pattern=None,
-        qualifier: callable = os.path.isfile,
-    ) -> str:
+        qualifier: Callable = os.path.isfile,
+    ) -> str | None:
         matches = []
-        roots = [self.ram.root, self.shared.root, self.local.root]
+        roots = [self.shared.root, self.local.root]
+        if self.ram:
+            roots.append(self.ram.root)
 
         if root not in roots:
             raise Exception(f"root must be one of {','.join(roots)}")
@@ -171,13 +178,11 @@ class Filer:
         # Walk through the directory and find matching files
         for top, folders, files in os.walk(root):
             # If name is provided, look for an exact match
-            if name:
-                if qualifier is os.path.isfile and name in files:
-                    matches.append(os.path.join(top, name))
-                elif qualifier is os.path.isdir and name in folders:
+            if name and ((qualifier is os.path.isfile and name in files) \
+                         or (qualifier is os.path.isdir and name in folders)):
                     matches.append(os.path.join(top, name))
 
-            # If pattern is provided, look for matching files using the pattern
+            # If pattern is provided, look for matching files using it
             if pattern:
                 where = files if qualifier is os.path.isfile else folders
                 for filename in fnmatch.filter(where, pattern):
@@ -186,4 +191,4 @@ class Filer:
         # Sort the matched files by creation date
         matches_sorted = sorted(matches, key=os.path.getctime, reverse=True)
 
-        return matches_sorted[0] if len(matches_sorted) > 0 else None
+        return matches_sorted[0] if (matches_sorted and len(matches_sorted) > 0) else None
