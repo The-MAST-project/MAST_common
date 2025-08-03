@@ -288,7 +288,7 @@ class UnitConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_unit_config(self):
-        conditions = [self.guider.method == "phd2", self.imager.imager_type == "phd2"]
+        # conditions = [self.guider.method == "phd2", self.imager.imager_type == "phd2"]
 
         if any(conditions) and not all(conditions):
             raise ValidationError(
