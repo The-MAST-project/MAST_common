@@ -8,11 +8,14 @@ import matplotlib.pyplot as plt
 import pymongo
 from cachetools import TTLCache, cached
 from PIL import Image
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import (BaseModel, ConfigDict, Field, ValidationError,
+                      model_validator)
 from pymongo.errors import ConnectionFailure, PyMongoError
 
+import ASI
 from common.const import Const
-from common.deep import deep_dict_difference, deep_dict_is_empty, deep_dict_update
+from common.deep import (deep_dict_difference, deep_dict_is_empty,
+                         deep_dict_update)
 from common.mast_logging import init_log
 
 logger = logging.getLogger("mast.unit." + __name__)
@@ -184,6 +187,8 @@ class ImagerConfig(BaseModel):
     roi: RoiConfig | None = None
     temp_check_interval: int = 60
     pixel_scale_at_bin1: float
+    format: ASI.ValidOutputFormats
+    gain: int
 
 
 class CoversConfig(BaseModel):
@@ -290,10 +295,10 @@ class UnitConfig(BaseModel):
     def validate_unit_config(self):
         # conditions = [self.guider.method == "phd2", self.imager.imager_type == "phd2"]
 
-        if any(conditions) and not all(conditions):
-            raise ValidationError(
-                f"if any of {self.imager.imager_type=} or {self.guider.method=} is 'phd2', then BOTH must be 'phd2'"
-            )
+        # if any(conditions) and not all(conditions):
+        #     raise ValidationError(
+        #         f"if any of {self.imager.imager_type=} or {self.guider.method=} is 'phd2', then BOTH must be 'phd2'"
+        #     )
 
         return self
 
