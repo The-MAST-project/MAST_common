@@ -221,6 +221,7 @@ class ImagerExposureSeries:
 class ImagerInterface(Component, ABC):
 
     current_exposure_series: ImagerExposureSeries | None = None
+    ccd_temp_at_mid_exposure: float | None = None
 
     @property
     @abstractmethod
