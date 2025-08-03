@@ -278,7 +278,8 @@ class ImagerInterface(Component, ABC):
         """
         if self.current_exposure_series is not None:
             raise ValueError(
-                f"ImagerInterface.start_exposure_series(): already in an exposure series id={self.current_exposure_series.series_id}, purpose={self.current_exposure_series.purpose}"
+                "ImagerInterface.start_exposure_series(): already in an exposure series "
+                + f"id={self.current_exposure_series.series_id}, purpose={self.current_exposure_series.purpose}"
             )
         self.current_exposure_series = ImagerExposureSeries(purpose=purpose)
         return self.current_exposure_series
@@ -299,7 +300,8 @@ class ImagerInterface(Component, ABC):
             )
         if series.series_id != self.current_exposure_series.series_id:
             raise ValueError(
-                f"ImagerInterface.end_exposure_series(): series_id mismatch {series.series_id=} != {self.current_exposure_series=}"
+                f"ImagerInterface.end_exposure_series(): series_id mismatch {series.series_id=} != "
+                + f"{self.current_exposure_series=}"
             )
         self.current_exposure_series = None
 
