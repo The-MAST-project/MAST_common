@@ -8,6 +8,7 @@ import numpy as np
 import ulid
 from pydantic import BaseModel, Field
 
+import ASI
 from common.dlipowerswitch import PowerStatus
 from common.interfaces.components import Component, ComponentStatus
 from common.paths import PathMaker
@@ -102,6 +103,7 @@ class ImagerSettings(BaseModel):
     file_name_parts: list[str] = Field(default=[], exclude=True)
     folder: str | None = Field(default=None, exclude=True)
     dont_bump_sequence: bool = False
+    format: ASI.ValidOutputFormats = "raw16"
 
     def model_post_init(self, context: dict[str, Any] | None):  # noqa: C901
         defaults: ImagerSettings | None = None
