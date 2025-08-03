@@ -186,6 +186,7 @@ class ImagerExposure(BaseModel):
 
 class ImagerStatus(PowerStatus, ComponentStatus):
     type: ImagerTypes | None = None
+    model: str | None = None
     camera_x_size: int | None = None
     camera_y_size: int | None = None
     errors: list[str] | None = None
