@@ -100,10 +100,10 @@ class Filer:
                 shutil.copytree(src, dst)
                 shutil.rmtree(src)
             else:
-                self.error(f"{op}: not a file or folder, ignoring: '{src.as_posix()}'")
+                # self.error(f"{op}: not a file or folder, ignoring: '{src.as_posix()}'")
                 return
 
-            self.info(f"moved '{src.as_posix()}' to '{dst.as_posix()}'")
+            # self.info(f"moved '{src.as_posix()}' to '{dst.as_posix()}'")
         except Exception as e:
             self.error(f"failed to move '{src.as_posix()} to '{dst.as_posix()}' (exception: {e})")
 
