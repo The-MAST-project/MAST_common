@@ -86,14 +86,14 @@ class Activities:
             info += f" details='{details}'"
         logger.info(info)
 
-        data = ActivityNotification(
-            activity=activity, activity_verbal=activity.__repr__(), started=True
-        ).model_dump_json()
-        try:
-            loop = asyncio.get_event_loop()
-            loop.create_task(self.notify_activity(data))
-        except RuntimeError:
-            asyncio.run(self.notify_activity(data))
+        # data = ActivityNotification(
+        #     activity=activity, activity_verbal=activity.__repr__(), started=True
+        # ).model_dump_json()
+        # try:
+        #     loop = asyncio.get_event_loop()
+        #     loop.create_task(self.notify_activity(data))
+        # except RuntimeError:
+        #     asyncio.run(self.notify_activity(data))
 
     def end_activity(self, activity: IntFlag, label: str | None = None):
         """
