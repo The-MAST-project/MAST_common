@@ -129,6 +129,7 @@ class ImagerSettings(BaseModel):
                 )
 
             if self.image_path is not None:
+                self.image_path = Path(self.image_path).as_posix()
                 folder = Path(self.image_path).parent
                 self.folder = str(folder.as_posix())
                 folder.mkdir(parents=True, exist_ok=True)
@@ -137,6 +138,11 @@ class ImagerSettings(BaseModel):
                 folder.mkdir(parents=True, exist_ok=True)
                 self.folder = str(folder)
                 self.make_file_name(dont_bump_sequence=self.dont_bump_sequence)
+
+    def model_dump(self, **kwargs):
+        base = super().model_dump(**kwargs)
+        base['image_path'] = Path(base['image_path']).as_posix()
+        return base
 
     def make_file_name(self, additional_tags: dict | None = None, dont_bump_sequence: bool = False):
         """
@@ -172,7 +178,7 @@ class ImagerSettings(BaseModel):
         self.file_name_parts.append(f"roi={self.roi}")
 
         self.image_path = str(
-            Path(self.folder, ",".join(self.file_name_parts) + ".fits")
+            Path(self.folder, ",".join(self.file_name_parts) + ".fits").as_posix()
         )
         pass
 
