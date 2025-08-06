@@ -1,9 +1,10 @@
 from abc import ABC, abstractmethod
 
 from astropy.coordinates import Angle
+from pydantic import BaseModel
 
 
-class SolvingSolution:
+class SolvingSolution(BaseModel):
     ra_rads: float | None = None
     dec_rads: float | None = None
     ra_hours: float = 0.0
@@ -12,18 +13,8 @@ class SolvingSolution:
     catalog_stars: int = 0
     rotation_angle_degs: float | None = None
     pixel_scale: float | None = None
-
-    def to_dict(self):
-        return {
-            "ra_rads": self.ra_rads,
-            "dec_rads": self.dec_rads,
-            "ra_hours": self.ra_hours,
-            "dec_degs": self.dec_degs,
-            "matched_stars": self.matched_stars,
-            "catalog_stars": self.catalog_stars,
-            "rotation_angle_degs": self.rotation_angle_degs,
-            "pixel_scale": self.pixel_scale,
-        }
+    sources: int | None = None
+    index_file: str | None = None
 
 
 class SolvingResult:
@@ -49,7 +40,7 @@ class SolvingResult:
         return {
             "succeeded": self.succeeded,
             "errors": self.errors,
-            "solution": self.solution.to_dict() if self.solution else None,
+            "solution": self.solution.model_dump() if self.solution else None,
             "native_result": (
                 self.native_result.to_dict() if self.native_result else None
             ),
