@@ -8,7 +8,7 @@ import subprocess
 import threading
 import time
 from pathlib import Path
-from threading import Thread
+from threading import Event, Thread
 
 import psutil
 
@@ -153,6 +153,7 @@ class WatchedProcess:
         env: dict | None = None,
         cwd: str | None = None,
         shell: bool = False,
+        restart_event: Event | None = None
     ):
 
         self.command_pattern: str | None = command_pattern
@@ -163,6 +164,9 @@ class WatchedProcess:
         self.shell: bool = shell
         self.process: subprocess.Popen | None = None
         self._terminate: bool = False
+        self.process_started_event: threading.Event = threading.Event()
+        self.restart_event: Event | None = restart_event
+        self.watcher_thread: threading.Thread | None = None
 
     def start(self):
         if not self.command:
@@ -213,10 +217,12 @@ class WatchedProcess:
             print(f"WatchedProcess.start: exception: {ex}")
             return
 
-        Thread(target=self.watcher).start()
-        if self.logger:
-            Thread(target=self.log_stream, args=[stdout]).start()
-            Thread(target=self.log_stream, args=[stderr]).start()
+        if not self.watcher_thread:
+            self.watcher_thread = Thread(name="process-watcher", target=self.watcher)
+            self.watcher_thread.start()
+            if self.logger:
+                Thread(target=self.log_stream, args=[stdout]).start()
+                Thread(target=self.log_stream, args=[stderr]).start()
 
     def log_stream(self, stream):
         """
@@ -256,6 +262,8 @@ class WatchedProcess:
             if self.logger:
                 self.logger.info(f"Starting {self.command} ...")
             self.start()
+            if self.restart_event:
+                self.restart_event.set()
 
 
 def kill_process_by_name(name):
