@@ -14,6 +14,7 @@ from multiprocessing import shared_memory
 from threading import Lock, Timer
 from typing import Any, Callable, NamedTuple
 
+import numpy as np
 from astropy.coordinates import Angle
 from astropy.units import deg, hourangle  # type: ignore
 
@@ -153,6 +154,14 @@ class Coord(NamedTuple):
             + f"{self.ra.to_string(unit=hourangle, decimal=True, precision=9)}, "
             + f"{self.dec.to_string(unit=deg, decimal=True, precision=9)}"
             + "]"
+        )
+
+    def __eq__(self, other):
+        if not isinstance(other, Coord):
+            return NotImplemented
+        return (
+            np.isclose(self.ra.degree, other.ra.degree, atol=1e-6) and # type: ignore
+            np.isclose(self.dec.degree, other.dec.degree, atol=1e-6) # type: ignore
         )
 
 
