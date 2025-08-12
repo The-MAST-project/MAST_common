@@ -419,11 +419,25 @@ class GratingConfig(BaseModel):
     position: int  # for focusing the HighSpec camera
 
 
+HighspecPresets = Literal["Ca", "Halpha", "Mg", "Future"]
+DeepspecPresets = Literal["deepspec", "highspec"]
+StagePresetNames = [HighspecPresets, DeepspecPresets]
+
+
 class SpecStageConfig(BaseModel):
     """Configuration for the spectrograph stages"""
 
     peripheral: str
-    presets: dict[Literal["Ca", "Halpha", "Mg", "Future"], int]
+    presets: dict[str, int]
+    startup_preset: str | None
+    shutdown_preset: str | None
+
+    @model_validator(mode="after")
+    def validate_spec_stage_config(self):
+        for name in [self.presets.keys(), self.startup_preset, self.shutdown_preset]:
+            if name not in StagePresetNames:
+                raise ValidationError(f"{name=} not in {StagePresetNames}")
+        return self
 
 
 class SpecStageControllerConfig(BaseModel):
@@ -435,7 +449,16 @@ class SpecStageControllerConfig(BaseModel):
 
 class FiberStageConfig(BaseModel):
     peripheral: str
-    presets: dict[Literal["deepspec", "highspec"], int]
+    presets: dict[str, int]
+    startup_preset: str | None
+    shutdown_preset: str | None
+
+    @model_validator(mode="after")
+    def validate_spec_stage_config(self):
+        for name in [self.presets.keys(), self.startup_preset, self.shutdown_preset]:
+            if name not in StagePresetNames:
+                raise ValidationError(f"{name=} not in {StagePresetNames}")
+        return self
 
 
 class SpecStagesConfig(BaseModel):
