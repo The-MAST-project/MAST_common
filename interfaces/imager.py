@@ -4,6 +4,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
+import ASI
 import numpy as np
 import ulid
 from pydantic import BaseModel, Field
@@ -141,10 +142,12 @@ class ImagerSettings(BaseModel):
 
     def model_dump(self, **kwargs):
         base = super().model_dump(**kwargs)
-        base['image_path'] = Path(base['image_path']).as_posix()
+        base["image_path"] = Path(base["image_path"]).as_posix()
         return base
 
-    def make_file_name(self, additional_tags: dict | None = None, dont_bump_sequence: bool = False):
+    def make_file_name(
+        self, additional_tags: dict | None = None, dont_bump_sequence: bool = False
+    ):
         """
         Makes the file part of the image path.  This will:
         - generate current seq= and time= file name parts
@@ -214,12 +217,11 @@ class ImagerExposureSeries:
     """
 
     def __init__(self, purpose: str | None = None):
-        self.series_id: str = str(ulid.ulid())
+        self.series_id: str = str(ulid.new())
         self.purpose: str | None = purpose
 
 
 class ImagerInterface(Component, ABC):
-
     current_exposure_series: ImagerExposureSeries | None = None
     ccd_temp_at_mid_exposure: float | None = None
 
