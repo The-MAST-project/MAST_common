@@ -4,6 +4,7 @@ import socket
 from copy import deepcopy
 from typing import Literal
 
+import ASI
 import matplotlib.pyplot as plt
 import pymongo
 from cachetools import TTLCache, cached
@@ -11,7 +12,7 @@ from PIL import Image
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 from pymongo.errors import ConnectionFailure, PyMongoError
 
-import common.ASI as ASI
+from cameras.andor.newton import common.ASI as CoolerMode
 from common.const import Const
 from common.deep import deep_dict_difference, deep_dict_is_empty, deep_dict_update
 from common.mast_logging import init_log
@@ -554,8 +555,8 @@ class ServerConfig(BaseModel):
 class NewtonTemperatureConfig(BaseModel):
     """Configuration for the Newton camera temperature settings."""
 
-    set_point: float = -10.0  # Default target temperature in Celsius
-    cooler_mode: int = 0
+    set_point: int = -10  # Default target temperature in Celsius
+    cooler_mode: CoolerMode = CoolerMode.RETURN_TO_AMBIENT
 
 
 class NewtonSettingsConfig(BaseModel):
@@ -569,6 +570,7 @@ class NewtonSettingsConfig(BaseModel):
     em_gain: int = 254  # Default EM gain value
     pre_amp_gain: int = 0  # Default pre-amplifier gain value
     temperature: NewtonTemperatureConfig
+    read_mode: int
 
     @model_validator(mode="after")
     def validate_newton_settings(self):
@@ -587,18 +589,47 @@ class HighspecConfig(BaseModel):
 class SpecsConfig(BaseModel):
     """Configuration for the spectrograph."""
 
-    wheels: dict[Literal["ThAr", "qTh"], WheelConfig]
-    gratings: dict[Literal["Halpha", "Mg", "Ca HK", "Future"], GratingConfig]
+    wheels: dict[str, WheelConfig]
+    gratings: dict[str, GratingConfig]
     power_switch: dict[str, PowerSwitchConfig]
     stage: SpecStagesConfig
     chiller: ChillerConfig
-    deepspec: dict[Literal["G", "I", "U", "R", "common"], GreateyesConfig]
+    deepspec: dict[str, GreateyesConfig]
     highspec: HighspecConfig
-    lamps: dict[Literal["ThAr", "qTh"], PowerConfig]
+    lamps: dict[str, PowerConfig]
     server: ServerConfig
 
     @model_validator(mode="after")
     def validate_specs_config(self):
+        # filter wheels
+        valid_wheel_names = ["ThAr", "qTh"]
+        for name in str(self.wheels.keys()):
+            if name not in valid_wheel_names:
+                raise ValidationError(
+                    f"SpecsConfig: invalid wheel name '{name}', '{valid_wheel_names=}'"
+                )
+
+        # gratings
+        valid_grating_names = ["Halpha", "Mg", "Ca", "Future"]
+        for name in str(self.gratings.keys()):
+            if name not in valid_grating_names:
+                raise ValidationError(
+                    f"SpecsConfig: invalid grating name '{name}', {valid_grating_names=}"
+                )
+
+        valid_lamp_names = valid_wheel_names
+        for name in str(self.lamps.keys()):
+            if name not in valid_lamp_names:
+                raise ValidationError(
+                    f"SpecsConfig: invalid lamp name '{name}', '{valid_lamp_names=}'"
+                )
+
+        valid_deepspec_camera_names = ["G", "I", "U", "R", "common"]
+        for name in str(self.deepspec.keys()):
+            if name not in valid_deepspec_camera_names:
+                raise ValidationError(
+                    f"SpecsConfig: invalid deepspec camera name '{name}', {valid_deepspec_camera_names=}"
+                )
 
         if "common" not in self.deepspec:
             raise ValidationError(
@@ -738,7 +769,6 @@ class Config:
         return UnitConfig(**combined_dict)
 
     def set_unit(self, unit_name: str, unit_conf: UnitConfig):
-
         unit_dict = unit_conf.model_dump()
 
         common_conf = self.db["units"].find_one({"name": "common"})
