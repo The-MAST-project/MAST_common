@@ -128,13 +128,20 @@ class HighSpecAssignment(BaseModel):
 
 
 class SpectrographAssignmentModel(BaseModel):
+    """
+    The spectrograph-related part of a FullAssignment, containing:
+    - The initiator machine (usually the control machine)
+    - The task
+    - A spectrograph part, either for deepspec or highspec (discriminated by the instrument field)
+    """
+
     instrument: Literal["deepspec", "highspec"]
     initiator: Initiator
     task: TaskSettingsModel
     spec: SpectrographModel
 
 
-class RemoteAssignment(BaseModel):
+class TransmittedAssignment(BaseModel):
     """
     This is what gets sent out via UnitApi or SpecApi
     """
@@ -147,8 +154,7 @@ class RemoteAssignment(BaseModel):
     @classmethod
     def from_site_colon_unit(
         cls, site_colon_unit: str, assignment
-    ) -> "RemoteAssignment":
-
+    ) -> "TransmittedAssignment":
         site_name, unit_id = site_colon_unit.split(":")
         sites = Config().sites
         site = [s for s in sites if site_name == s.name][0]
@@ -168,12 +174,12 @@ class RemoteAssignment(BaseModel):
     @classmethod
     def from_units_specifier(
         cls, units_specifier: str | list[str], assignment
-    ) -> list["RemoteAssignment"]:
+    ) -> list["TransmittedAssignment"]:
         if isinstance(units_specifier, str):
             units_specifier = [units_specifier]
-        ret: list[RemoteAssignment] = []
+        ret: list[TransmittedAssignment] = []
         for site_colon_unit in parse_units(units_specifier):
-            remote = RemoteAssignment.from_site_colon_unit(
+            remote = TransmittedAssignment.from_site_colon_unit(
                 site_colon_unit, assignment=assignment
             )
             if remote:
