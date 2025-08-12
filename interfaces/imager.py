@@ -8,7 +8,7 @@ import numpy as np
 import ulid
 from pydantic import BaseModel, Field
 
-import ASI
+import common.ASI as ASI
 from common.dlipowerswitch import PowerStatus
 from common.interfaces.components import Component, ComponentStatus
 from common.paths import PathMaker
