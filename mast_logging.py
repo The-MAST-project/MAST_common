@@ -3,7 +3,6 @@ import io
 import logging
 import os
 import platform
-from logging import StreamHandler
 
 from rich.logging import RichHandler
 
@@ -17,7 +16,6 @@ default_log_level = logging.DEBUG
 
 
 class DailyFileHandler(logging.FileHandler):
-
     filename: str = ""
     path: str
 
@@ -61,7 +59,7 @@ class DailyFileHandler(logging.FileHandler):
                 # we have an open file handle, clean it up
                 self.stream.flush()
                 self.stream.close()
-                self.stream = None  # See Issue #21742: _open () might fail.
+                self.stream = None  # type: ignore # See Issue #21742: _open () might fail.
 
             self.baseFilename = filename
             os.makedirs(os.path.dirname(self.baseFilename), exist_ok=True)
