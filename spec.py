@@ -1,5 +1,8 @@
 from enum import IntFlag, auto
+from pathlib import Path
 from typing import Literal, Optional
+
+from common.paths import PathMaker
 
 Disperser = Literal["Ca", "Mg", "Halpha", "Empty"]
 SpecName = Literal["Deepspec", "Highspec"]
@@ -25,10 +28,11 @@ class SpecExposureSettings:
     def __init__(
         self,
         exposure_duration: float,
-        number_of_exposures: Optional[int] = 1,
-        x_binning: Optional[int] = 1,
-        y_binning: Optional[int] = 2,
-        output_folder: Optional[str] = None,
+        number_of_exposures: int | None = 1,
+        x_binning: int | None = 1,
+        y_binning: int | None = 1,
+        folder: str | None = None,
+        image_path: str | None = None,
     ):
         # TODO: get rid of this class, basically we only use the image_file field
 
@@ -36,10 +40,25 @@ class SpecExposureSettings:
         self.number_of_exposures = number_of_exposures
         self.x_binning = x_binning
         self.y_binning = y_binning
-        self.output_folder = output_folder  # A folder path underneath the Filer().root
+        self.output_folder = folder  # A folder path underneath the Filer().root
         self._number_in_sequence: int | None = None
-        self.image_file: str | None = None
-        self.image_full_path: str | None = None
+
+        if image_path is not None:
+            path = Path(image_path)
+            self.image_path = str(path)
+            self.folder = str(path.parent)
+        else:
+            if folder is not None:
+                self.image_path = (
+                    Path(folder) / f"seq={PathMaker.make_seq(folder=folder)}"
+                )
+                self.folder = folder
+            else:
+                self.image_path = None
+                self.folder = None
+
+        if self.folder is not None:
+            Path(self.folder).mkdir(parents=True, exist_ok=True)
 
     @property
     def number_in_sequence(self) -> int | None:
