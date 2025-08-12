@@ -385,7 +385,7 @@ class Site(BaseModel):
 # Configuration for a single wheel
 class WheelConfig(BaseModel):
     serial_number: str
-    filters: dict[Literal["1", "2", "3", "4", "5", "6", "default"], str]
+    filters: dict[str, str]
     power: OutletConfig
 
     @model_validator(mode="after")
@@ -401,9 +401,14 @@ class WheelConfig(BaseModel):
             raise ValueError("Wheel serial number must be provided.")
         if not self.filters:
             raise ValueError("Wheel filters must be defined.")
+
+        valid_filter_names = ["1", "2", "3", "4", "5", "6", "default"]
+        for key in str(self.filters.keys()):
+            if key not in valid_filter_names:
+                raise ValidationError(f"filter name {key} not in {valid_filter_names} ")
         if "default" not in self.filters:
             self.filters["default"] = "Empty"
-        elif self.filters["default"] not in self.filters.values():
+        elif self.filters["default"] not in valid_filter_names:
             raise ValueError(
                 f"Default filter '{self.filters['default']}' must be one of the defined filters."
             )
