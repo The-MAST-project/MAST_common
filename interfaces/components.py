@@ -17,7 +17,6 @@ class ComponentStatus(BaseModel):
 
 
 class Component(ABC, Activities):
-
     @abstractmethod
     def startup(self):
         """
@@ -53,13 +52,13 @@ class Component(ABC, Activities):
 
     @property
     @abstractmethod
-    def name(self) -> str:
+    def _name(self) -> str:
         """The getter method for the abstract name property."""
         pass
 
-    @name.setter
+    @_name.setter
     @abstractmethod
-    def name(self, value: str):
+    def _name(self, value: str):
         """The setter method for the abstract name property."""
         pass
 
