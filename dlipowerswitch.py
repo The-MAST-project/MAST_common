@@ -269,7 +269,10 @@ class PowerSwitchFactory:
             if unit_name is not None:
                 power_switch_name = unit_name.replace("mast", "mastps")
                 power_switch_config = Config().get_unit(unit_name).power_switch
-            elif (name.startswith("mast-spec-ps") and name[len("mast-spec-ps") :].isdigit()):
+            elif (
+                name.startswith("mast-spec-ps")
+                and name[len("mast-spec-ps") :].isdigit()
+            ):
                 power_switch_name = name
                 power_switch_config = Config().get_specs().power_switch[power_switch_name]
 
