@@ -232,6 +232,7 @@ class TaskModel(BaseModel, Activities):
     @property
     def remote_spec_assignment(self) -> TransmittedAssignment | None:
         local_site = Config().local_site
+        assert local_site is not None
         hostname = local_site.spec_host
         if hostname is None:
             return
@@ -486,7 +487,10 @@ class TaskModel(BaseModel, Activities):
         Tells units to end 'guiding'
         :return:
         """
-        self.spec_api = SpecApi(Config().local_site.name)
+        local_site = Config().local_site
+        assert local_site is not None
+
+        self.spec_api = SpecApi(local_site.name)
         self.controller = controller
         unit_apis: list[UnitApi] = []
 
