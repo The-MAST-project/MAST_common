@@ -52,13 +52,13 @@ class Component(ABC, Activities):
 
     @property
     @abstractmethod
-    def _name(self) -> str:
+    def name(self) -> str:
         """The getter method for the abstract name property."""
         pass
 
-    @_name.setter
+    @name.setter
     @abstractmethod
-    def _name(self, value: str):
+    def name(self, value: str):
         """The setter method for the abstract name property."""
         pass
 
