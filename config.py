@@ -4,7 +4,6 @@ import socket
 from copy import deepcopy
 from typing import Literal
 
-import ASI
 import matplotlib.pyplot as plt
 import pymongo
 from cachetools import TTLCache, cached
@@ -12,7 +11,9 @@ from PIL import Image
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 from pymongo.errors import ConnectionFailure, PyMongoError
 
-from cameras.andor.newton import common.ASI as CoolerMode
+import common.ASI as ASI
+
+# from src.cameras.andor.newton import CoolerMode
 from common.const import Const
 from common.deep import deep_dict_difference, deep_dict_is_empty, deep_dict_update
 from common.mast_logging import init_log
@@ -556,7 +557,7 @@ class NewtonTemperatureConfig(BaseModel):
     """Configuration for the Newton camera temperature settings."""
 
     set_point: int = -10  # Default target temperature in Celsius
-    cooler_mode: CoolerMode = CoolerMode.RETURN_TO_AMBIENT
+    # cooler_mode: CoolerMode = CoolerMode.RETURN_TO_AMBIENT
 
 
 class NewtonSettingsConfig(BaseModel):
