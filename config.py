@@ -557,6 +557,8 @@ class NewtonTemperatureConfig(BaseModel):
     """Configuration for the Newton camera temperature settings."""
 
     set_point: int = -10  # Default target temperature in Celsius
+    # TODO: This is a 'spec' specific configuration, it SHOULD NOT be here
+    #  The whole Newton configuration (and maybe others) should be moved to specs config
     # cooler_mode: CoolerMode = CoolerMode.RETURN_TO_AMBIENT
 
 
