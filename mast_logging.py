@@ -104,7 +104,9 @@ def init_log(
     if not daily_handlers:
         handler = DailyFileHandler(
             path=os.path.join(
-                PathMaker().make_daily_folder_name(root=Filer().shared.root), file_name
+                # PathMaker().make_daily_folder_name(root=Filer().shared.root), file_name
+                PathMaker().make_daily_folder_name(root=Filer().local.root),
+                file_name,
             ),
             mode="a",
         )
