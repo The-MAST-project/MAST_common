@@ -1,9 +1,13 @@
+import asyncio
 import logging
 import re
 import socket
+from datetime import UTC, datetime
 from enum import Enum, auto
+from xml import dom
 
 import httpx
+import humanfriendly
 
 from common.canonical import CanonicalResponse
 from common.config import Config, Site
@@ -19,6 +23,7 @@ class ApiDomain(Enum):
     Unit = auto()
     Spec = auto()
     Control = auto()
+    Safety = auto()
 
 
 api_devices = {
@@ -91,11 +96,15 @@ class ApiClient:
         if ipaddr is not None:
             self.domain = domain
             self.ipaddr = ipaddr
-            domain_base = (
-                Const.BASE_UNIT_PATH
-                if domain == ApiDomain.Unit
-                else Const.BASE_SPEC_PATH if domain == ApiDomain.Spec else Const.BASE_CONTROL_PATH
-            )
+            domain_base = ""
+            if domain == ApiDomain.Safety:
+                pass
+            elif domain == ApiDomain.Unit:
+                domain_base = Const.BASE_UNIT_PATH
+            elif domain == ApiDomain.Spec:
+                domain_base = Const.BASE_SPEC_PATH
+            elif domain == ApiDomain.Control:
+                domain_base = Const.BASE_CONTROL_PATH
         else:
             if hostname is None:
                 raise ValueError("if 'ipaddr' is None, 'hostname' must be provided")
@@ -117,7 +126,9 @@ class ApiClient:
                 self.ipaddr = socket.gethostbyname(hostname)
             except socket.gaierror:
                 try:
-                    self.ipaddr = socket.gethostbyname(hostname + "." + Const.WEIZMANN_DOMAIN)
+                    self.ipaddr = socket.gethostbyname(
+                        hostname + "." + Const.WEIZMANN_DOMAIN
+                    )
                 except socket.gaierror as err:
                     raise ValueError(f"cannot get 'ipaddr' for {hostname=}") from err
 
@@ -208,7 +219,10 @@ class ApiClient:
         # logger.error(err)
 
     def _handle_canonical_response(self, canonical_response, op):
-        if hasattr(canonical_response, "exception") and canonical_response.exception is not None:
+        if (
+            hasattr(canonical_response, "exception")
+            and canonical_response.exception is not None
+        ):
             e = canonical_response.exception
             self.append_error(f"{op}: Remote Exception     type: {e.type}")
             self.append_error(f"{op}: Remote Exception  message: {e.message}")
@@ -219,12 +233,18 @@ class ApiClient:
                     self.append_error(f"{op}: Remote Exception traceback: {line}")
                 return None
 
-        if hasattr(canonical_response, "errors") and canonical_response.errors is not None:
+        if (
+            hasattr(canonical_response, "errors")
+            and canonical_response.errors is not None
+        ):
             for err in canonical_response.errors:
                 self.append_error(err)
             return None
 
-        if hasattr(canonical_response, "value") and canonical_response.value is not None:
+        if (
+            hasattr(canonical_response, "value")
+            and canonical_response.value is not None
+        ):
             return canonical_response.value
 
         self.append_error(
@@ -249,7 +269,7 @@ class ApiClient:
                     return CanonicalResponse(errors=self.errors)
             else:
                 value = response_dict
-                logger.error(
+                logger.warning(
                     f"{op}: received NON canonical response, returning it as 'value'"
                 )
 
@@ -267,6 +287,7 @@ class ApiClient:
 
         self.detected = True
         return CanonicalResponse(value=value)
+
 
 class UnitApi(ApiClient):
 
@@ -317,7 +338,40 @@ class ControllerApi:
             logger.error(f"{e}")
 
 
-def main():
+class SafetyApi(ApiClient):
+    def __init__(
+        self,
+        site_name: str | None = None,
+        hostname: str | None = None,
+        ipaddr: str | None = None,
+        port: int | None = None,
+        timeout: float | None = 0.5,
+    ):
+        self.client = None
+
+        if site_name:
+            site = [s for s in Config().sites if s.name == site_name][0]
+        else:
+            site: Site = Config().local_site
+        service_conf = Config().get_service(service_name="safety")
+
+        if port is None and service_conf is not None:
+            port = service_conf.port
+
+        if ipaddr is None:
+            if hostname is None:
+                hostname = f"{site.project}-{site.name}-safety"
+            try:
+                ipaddr = socket.gethostbyname(hostname)
+            except socket.gaierror as err:
+                raise ValueError(f"cannot get 'ipaddr' for {hostname=}") from err
+
+        super().__init__(
+            ipaddr=ipaddr, port=port, timeout=timeout, domain=ApiDomain.Safety
+        )
+
+
+def test_bogus_unit_api():
     try:
         unit = ApiClient(hostname="mast01")
         response = unit.get("status")
@@ -342,5 +396,49 @@ def main():
         print(f"exception: {ex}")
 
 
+def test_safety_wind_speed():
+    from common.utils import fromisoformat_zulu
+
+    try:
+        safety = SafetyApi(ipaddr="10.23.1.25", port=8001, timeout=10)
+        url = "mast/sensor/wind-speed"
+        response: CanonicalResponse = asyncio.run(safety.get(url))
+        if response.succeeded and response.value is not None:
+            if (
+                "sensor" in response.value
+                and "readings" in response.value["sensor"]
+                and isinstance(response.value["sensor"]["readings"], list)
+            ):
+                readings = response.value["sensor"]["readings"]
+                if len(readings) > 0:
+                    latest_reading = readings[-1]
+                    wind_speed = latest_reading["value"]
+                    logger.info(f"wind speed tstamp:'{latest_reading["time"]}'")
+                    age = datetime.now(UTC) - fromisoformat_zulu(latest_reading["time"])
+
+            print(
+                f"{wind_speed=}, age='{humanfriendly.format_timespan(age.total_seconds())}'"
+            )
+
+    except Exception as e:
+        logger.error(f"Error accessing safety API: {e}")
+        pass
+
+
+def test_safety_sensors():
+    import json
+
+    try:
+        safety = SafetyApi(ipaddr="10.23.1.25", port=8001, timeout=10)
+        url = "mast/sensors"
+        response: CanonicalResponse = asyncio.run(safety.get(url))
+        if response.succeeded and response.value is not None:
+            print(json.dumps(response.value, indent=2))
+
+    except Exception as e:
+        logger.error(f"Error accessing safety API: {e}")
+        pass
+
+
 if __name__ == "__main__":
-    main()
+    test_safety_sensors()
