@@ -37,6 +37,7 @@ class Timing:
         self.end_time = datetime.datetime.now()
         self.duration = self.end_time - self.start_time
 
+
 class Activity(IntFlag):
     Idle = 0
 
@@ -55,6 +56,7 @@ class Activities:
     def __init__(self):
         self.activities: IntFlag = Activity.Idle
         self.timings: dict[IntFlag, Timing] = {}
+        self.details: dict[IntFlag, str] = {}
 
     async def notify_activity(self, data):
         from common.api import ControllerApi
@@ -64,7 +66,11 @@ class Activities:
             await client.put("activity_notification", data=data)
 
     def start_activity(
-        self, activity: IntFlag, existing_ok: bool = False, label: str | None = None, details: str | None = None
+        self,
+        activity: IntFlag,
+        existing_ok: bool = False,
+        label: str | None = None,
+        details: str | None = None,
     ):
         """
         Marks the start of an activity.
@@ -83,6 +89,7 @@ class Activities:
             info += f"{label}: "
         info += f"started activity {activity.__repr__()}"
         if details:
+            self.details[activity] = details
             info += f" details='{details}'"
         logger.info(info)
 
@@ -114,9 +121,12 @@ class Activities:
         )
 
         label = label + ": " if label else ""
-        logger.info(
-            f"{label}ended   activity {activity.__repr__()}, duration='{duration}'"
-        )
+        info = f"{label}ended   activity {activity.__repr__()}"
+        if self.details.get(activity):
+            info += f" details='{self.details[activity]}'"
+            del self.details[activity]
+        info += f", duration='{duration}'"
+        logger.info(info)
 
         data = ActivityNotification(
             activity=int(activity),
