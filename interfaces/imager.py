@@ -202,7 +202,7 @@ class ImagerStatus(PowerStatus, ComponentStatus):
     errors: list[str] | None = None
     set_point: float | None = None
     temperature: float | None = None
-    cooler: bool = False
+    cooler: bool | None = None
     cooler_power: float | None = None
     latest_exposure: ImagerExposure | None = None
     latest_settings: ImagerSettings | None = None
