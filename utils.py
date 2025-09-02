@@ -159,10 +159,11 @@ class Coord(NamedTuple):
     def __eq__(self, other):
         if not isinstance(other, Coord):
             return NotImplemented
-        return (
-            np.isclose(self.ra.degree, other.ra.degree, atol=1e-6) and # type: ignore
-            np.isclose(self.dec.degree, other.dec.degree, atol=1e-6) # type: ignore
-        )
+        return np.isclose(
+            self.ra.degree, other.ra.degree, atol=1e-6
+        ) and np.isclose(  # type: ignore
+            self.dec.degree, other.dec.degree, atol=1e-6
+        )  # type: ignore
 
 
 # class UnitRoi:
@@ -414,3 +415,30 @@ if __name__ == "__main__":
     response = CanonicalResponse(value={"tf": True, "val": 17})
     response = CanonicalResponse_Ok
     pass
+
+
+def isoformat_zulu(dt: datetime.datetime) -> str:
+    """
+    Returns an ISO-8601 formatted string with a 'Z' suffix for UTC datetimes
+    :param dt: The datetime to format
+    :return: The ISO-8601 formatted string
+    """
+    if dt.tzinfo is None:
+        return dt.isoformat() + "Z"
+    elif dt.tzinfo.utcoffset(dt) == datetime.timedelta(0):
+        return dt.replace(tzinfo=None).isoformat() + "Z"
+    else:
+        return dt.isoformat()
+
+
+def fromisoformat_zulu(s: str) -> datetime.datetime:
+    """
+    Parses an ISO-8601 formatted string with optional 'Z' suffix for UTC datetimes
+    :param s: The ISO-8601 formatted string
+    :return: The corresponding datetime
+    """
+    if s.endswith("Z"):
+        s = s[:-1]
+        return datetime.datetime.fromisoformat(s).replace(tzinfo=datetime.timezone.utc)
+    else:
+        return datetime.datetime.fromisoformat(s)
