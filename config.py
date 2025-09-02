@@ -73,10 +73,14 @@ class SkyRoiConfig(BaseModel):
 
 
 class SpecRoiConfig(BaseModel):
-    """Configuration for the region of interest (ROI) in the spectrograph."""
+    """
+    Configuration for the region of interest (ROI) in 'spec' mode.<br>
+    Used for acquisition phase 'spec' and for guiding.<br>
+    The margins (in pixels) are used to ignore the coma at the edges of the field.
+    """
 
-    width: int
-    height: int
+    margin_horizontal: int
+    margin_vertical: int
     fiber_x: int
     fiber_y: int
 
