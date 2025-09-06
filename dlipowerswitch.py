@@ -9,7 +9,8 @@ from threading import Lock
 import httpx
 from pydantic import BaseModel
 
-from common.config import Config, PowerSwitchConfig
+from common.config import Config
+from common.config.power import PowerSwitchConfig
 from common.const import Const
 from common.interfaces.components import Component
 from common.mast_logging import init_log
@@ -38,6 +39,7 @@ class PowerSwitchStatus(BaseModel):
 
 class DliPowerSwitch(Component):
     NUM_OUTLETS: int = 8
+    _instantiated: list[str] = []
 
     def __init__(self, hostname: str, ipaddr: str | None, conf: PowerSwitchConfig):
         Component.__init__(self)
