@@ -80,8 +80,10 @@ class DliPowerSwitch(Component):
             self._detected = not (isinstance(result, dict) and "error" in result)
 
             if self.detected:
-                logger.info(f"{self} detected")
-                self.upload_outlet_names()
+                if self.ipaddr is not None and self.ipaddr not in self._instantiated:
+                    self._instantiated.append(self.ipaddr)
+                    logger.info(f"{self} detected")
+                    self.upload_outlet_names()
 
     def on_timer(self):
         self.probe()
