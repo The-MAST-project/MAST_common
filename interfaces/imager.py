@@ -216,7 +216,7 @@ class ImagerExposureSeries:
     """
 
     def __init__(self, purpose: str | None = None):
-        self.series_id: str = str(ulid.ulid())
+        self.series_id: str = str(ulid.new())
         self.purpose: str | None = purpose
 
 
