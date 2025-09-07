@@ -86,8 +86,8 @@ def safety_get_sensor(
     ret = None
 
     if project_name is None:
-        sites = Config().get_sites()
-        local_site = [s for s in sites if s.local][0]
+        local_site = Config().local_site
+        assert local_site is not None
         project_name = local_site.project
 
     try:
