@@ -10,7 +10,8 @@ import httpx
 import humanfriendly
 
 from common.canonical import CanonicalResponse
-from common.config import Config, Site
+from common.config import Config
+from common.config.site import Site
 from common.const import Const
 from common.mast_logging import init_log
 from common.utils import function_name
