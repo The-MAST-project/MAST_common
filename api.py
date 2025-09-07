@@ -4,7 +4,6 @@ import re
 import socket
 from datetime import UTC, datetime
 from enum import Enum, auto
-from xml import dom
 
 import httpx
 import humanfriendly
@@ -348,15 +347,19 @@ class SafetyApi(ApiClient):
     ):
         self.client = None
 
+        site: Site | None = None
         if site_name:
-            site = [s for s in Config().sites if s.name == site_name][0]
+            found = [s for s in Config().sites if s.name == site_name]
+            if found:
+                site = found[0]
         else:
-            site: Site = Config().local_site
+            site = Config().local_site
         service_conf = Config().get_service(service_name="safety")
 
         if port is None and service_conf is not None:
             port = service_conf.port
 
+        assert site is not None
         if ipaddr is None:
             if hostname is None:
                 hostname = f"{site.project}-{site.name}-safety"
