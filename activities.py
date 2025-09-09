@@ -2,6 +2,7 @@ import asyncio
 import datetime
 import logging
 import socket
+import threading
 from enum import IntFlag, auto
 
 import humanfriendly
@@ -54,16 +55,21 @@ class Activities:
     Idle = 0
 
     def __init__(self):
+        from common.api import ControllerApi
+
         self.activities: IntFlag = Activity.Idle
         self.timings: dict[IntFlag, Timing] = {}
         self.details: dict[IntFlag, str] = {}
+        self.lock = threading.Lock()
+        self.notification_client = ControllerApi("wis").client
+        if self.notification_client:
+            self.notification_client.timeout = 2
 
-    async def notify_activity(self, data):
-        from common.api import ControllerApi
-
-        client = ControllerApi("wis").client
-        if client:
-            await client.put("activity_notification", data=data)
+    def notify_activity(self, data):
+        if self.notification_client:
+            asyncio.run(
+                self.notification_client.put("activity_notification", data=data)
+            )
 
     def start_activity(
         self,
@@ -82,7 +88,8 @@ class Activities:
         if existing_ok and (self.activities & activity) != 0:
             return
 
-        self.activities |= activity
+        with self.lock:
+            self.activities |= activity
         self.timings[activity] = Timing()
         info = ""
         if label:
@@ -111,7 +118,8 @@ class Activities:
         """
         if not self.is_active(activity):
             return
-        self.activities &= ~activity
+        with self.lock:
+            self.activities &= ~activity
 
         if activity in self.timings:
             self.timings[activity].end()
@@ -135,11 +143,9 @@ class Activities:
             duration=duration,
         ).model_dump_json()
 
-        try:
-            loop = asyncio.get_event_loop()
-            loop.create_task(self.notify_activity(data))
-        except RuntimeError:
-            asyncio.run(self.notify_activity(data))
+        threading.Thread(
+            name="ActivityNotifier", target=self.notify_activity, args=(data,)
+        ).start()
 
     def is_active(self, activity):
         """
@@ -147,14 +153,18 @@ class Activities:
         :param activity:
         :return:
         """
-        return (self.activities & activity) != 0
+        with self.lock:
+            bits = self.activities & activity
+        return bits != 0
 
     def is_idle(self):
         """
         Checks if no activities are in-progress
         :return: True if no in-progress activities, False otherwise
         """
-        return self.activities == 0
+        with self.lock:
+            idle = self.activities == 0
+        return idle
 
     def __repr__(self):
         return self.activities.__repr__()
