@@ -153,7 +153,8 @@ class WatchedProcess:
         env: dict | None = None,
         cwd: str | None = None,
         shell: bool = False,
-        restart_event: Event | None = None
+        restart_event: Event | None = None,
+        no_restart: bool = False,
     ):
 
         self.command_pattern: str | None = command_pattern
@@ -166,6 +167,7 @@ class WatchedProcess:
         self._terminate: bool = False
         self.process_started_event: threading.Event = threading.Event()
         self.restart_event: Event | None = restart_event
+        self.no_restart = no_restart
         self.watcher_thread: threading.Thread | None = None
 
     def start(self):
@@ -215,6 +217,9 @@ class WatchedProcess:
                 logger.info(f"{function_name()}: started '{" ".join(args)}'")
         except FileNotFoundError as ex:
             print(f"WatchedProcess.start: exception: {ex}")
+            return
+
+        if self.no_restart:
             return
 
         if not self.watcher_thread:
