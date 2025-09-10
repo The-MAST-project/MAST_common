@@ -136,16 +136,16 @@ class Activities:
         info += f", duration='{duration}'"
         logger.info(info)
 
-        data = ActivityNotification(
-            activity=int(activity),
-            activity_verbal=activity.__repr__(),
-            started=False,
-            duration=duration,
-        ).model_dump_json()
+        # data = ActivityNotification(
+        #     activity=int(activity),
+        #     activity_verbal=activity.__repr__(),
+        #     started=False,
+        #     duration=duration,
+        # ).model_dump_json()
 
-        threading.Thread(
-            name="ActivityNotifier", target=self.notify_activity, args=(data,)
-        ).start()
+        # threading.Thread(
+        #     name="ActivityNotifier", target=self.notify_activity, args=(data,)
+        # ).start()
 
     def is_active(self, activity):
         """
