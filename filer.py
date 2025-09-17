@@ -94,6 +94,7 @@ class Filer:
 
         try:
             if src.is_file():
+                dst.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(src, dst)
                 os.unlink(src)
             elif src.is_dir():
@@ -155,7 +156,6 @@ class Filer:
         for file in paths:
             src = Path(file).as_posix()
             dst = Path(str(src).replace(self.ram.root, self.shared.root))
-            dst.parent.mkdir(parents=True, exist_ok=True)
             Thread(
                 name="ram-to-shared-mover", target=self.move, args=[str(src), str(dst)]
             ).start()
