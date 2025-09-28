@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 
-from common.interfaces.imager import ImagerBinning, ImagerRoi
+# from common.interfaces.imager import ImagerBinning, ImagerRoi
 
 
 class UnitRoi:
@@ -19,19 +19,19 @@ class UnitRoi:
         self.width = width
         self.height = height
 
-    def to_imager_roi(self, binning: ImagerBinning | None = None) -> ImagerRoi:
-        """
-        An imager (e.g. ASCOM camera) ROI has a starting pixel (x, y) at lower left corner, width and height
-        """
-        if not binning:
-            binning = ImagerBinning(x=1, y=1)
+    # def to_imager_roi(self, binning: ImagerBinning | None = None) -> ImagerRoi:
+    #     """
+    #     An imager (e.g. ASCOM camera) ROI has a starting pixel (x, y) at lower left corner, width and height
+    #     """
+    #     if not binning:
+    #         binning = ImagerBinning(x=1, y=1)
 
-        return ImagerRoi(
-            x=(self.center_x - int(self.width / 2)) * binning.x,
-            y=(self.center_y - int(self.height / 2)) * binning.y,
-            width=self.width * binning.x,
-            height=self.height * binning.y,
-        )
+    #     return ImagerRoi(
+    #         x=(self.center_x - int(self.width / 2)) * binning.x,
+    #         y=(self.center_y - int(self.height / 2)) * binning.y,
+    #         width=self.width * binning.x,
+    #         height=self.height * binning.y,
+    #     )
 
     def __repr__(self) -> str:
         return f"UnitRoi(center_x={self.center_x},center_y={self.center_y},width={self.width},height={self.height})"
@@ -43,9 +43,15 @@ class SkyRoi(BaseModel):
     width: int
     height: int
 
+    def __repr__(self) -> str:
+        return f"SkyRoi(center_x={self.sky_x},center_y={self.sky_y},width={self.width},height={self.height})"
+
 class SpecRoi(BaseModel):
     """Configuration for the region of interest (ROI) in the spectrograph."""
     width: int
     height: int
     fiber_x: int
     fiber_y: int
+
+    def __repr__(self) -> str:
+        return f"SpecRoi(center_x={self.fiber_x},center_y={self.fiber_y},width={self.width},height={self.height})"
