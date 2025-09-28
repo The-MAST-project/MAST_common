@@ -7,12 +7,13 @@ import re
 import string
 import subprocess
 import time
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeout
 from contextlib import AbstractContextManager
 from multiprocessing import shared_memory
 from threading import Lock, Timer
-from typing import Any, Callable, NamedTuple
+from typing import Any, NamedTuple
 
 import numpy as np
 from astropy.coordinates import Angle
