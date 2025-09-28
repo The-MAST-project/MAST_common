@@ -22,6 +22,7 @@ class StageConfig(BaseModel):
     """Configuration for the telescope stage."""
 
     presets: StagePresets
+    close_enough: int
 
 
 class SpecStageConfig(BaseModel):
