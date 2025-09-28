@@ -182,6 +182,7 @@ class UnitActivities(IntFlag):
     Positioning = auto()  # getting in position (e.g. for acquisition)
     Solving = auto()
     Correcting = auto()
+    SequenceOfExposures = auto()
 
 
 class ImagerActivities(IntFlag):
