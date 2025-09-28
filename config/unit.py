@@ -1,9 +1,11 @@
 from pydantic import BaseModel, model_validator
 
-from .imager import ImagerBinningConfig, ImagerConfig
+from common.ASI import ASI_294MM_SUPPORTED_BINNINGS_LITERAL
+
+from .imager import ImagerConfig
 from .phd2 import PHD2Config
 from .power import PowerSwitchConfig
-from .rois import RoiConfig, SkyRoiConfig, SpecRoiConfig
+from .rois import RoisConfig
 from .stage import StageConfig
 
 
@@ -37,24 +39,24 @@ class AcquisitionConfig(BaseModel):
     """Configuration for the acquisition settings."""
 
     exposure: float
-    binning: ImagerBinningConfig
+    binning: ASI_294MM_SUPPORTED_BINNINGS_LITERAL
     tolerance: ToleranceConfig
     tries: int
     gain: int
-    roi: SkyRoiConfig
+    rois: RoisConfig
 
 
 class GuidingConfig(BaseModel):
     """Configuration for guiding settings."""
 
     exposure: float
-    binning: ImagerBinningConfig
+    binning: ASI_294MM_SUPPORTED_BINNINGS_LITERAL
     tolerance: ToleranceConfig
     gain: int
     min_ra_correction_arcsec: float
     min_dec_correction_arcsec: float
     cadence_seconds: int
-    roi: SpecRoiConfig
+    rois: RoisConfig
 
 
 class GuiderConfig(BaseModel):
@@ -71,8 +73,8 @@ class AutofocusConfig(BaseModel):
     """Configuration for autofocus settings."""
 
     exposure: float
-    binning: ImagerBinningConfig
-    roi: RoiConfig | None = None
+    binning: ASI_294MM_SUPPORTED_BINNINGS_LITERAL
+    rois: RoisConfig | None = None
     images: int
     spacing: int
     max_tolerance: int
