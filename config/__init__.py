@@ -8,7 +8,7 @@ import socket
 import tempfile
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Literal, Optional
+from typing import Any, Literal
 
 import matplotlib.pyplot as plt
 import pymongo
@@ -70,7 +70,7 @@ def _mongo_cache_key(
     mongo_uri: str,
     database_name: str,
     collections_tuple: tuple[str, ...],
-    query_filter_json: Optional[str],
+    query_filter_json: str | None,
     drop_object_id: bool,
 ) -> tuple[Any, ...]:
     return (
@@ -188,7 +188,7 @@ class Config:
     def _load_config_from_file_cached(
         self, resolved_path: str, file_mtime: float
     ) -> dict[str, list[dict[str, Any]]]:
-        with open(resolved_path, "r", encoding="utf-8") as fp:
+        with open(resolved_path, encoding="utf-8") as fp:
             raw = json.load(fp)
 
         if not isinstance(raw, dict):
@@ -256,7 +256,7 @@ class Config:
         mongo_uri: str,
         database_name: str,
         collections: list[str],
-        query_filter: Optional[dict[str, Any]] = None,
+        query_filter: dict[str, Any] | None = None,
         drop_object_id: bool = True,
     ) -> dict[str, list[dict[str, Any]]]:
         collections_tuple = tuple(collections)
@@ -389,7 +389,7 @@ class Config:
                 if not config_path.exists():
                     raise FileNotFoundError(f"Config file '{config_path}' not found.")
 
-                with open(config_path, "r", encoding="utf-8") as f:
+                with open(config_path, encoding="utf-8") as f:
                     config_data = json.load(f)
 
                 units = config_data.get("units", [])
@@ -521,7 +521,7 @@ class Config:
             return found[0]
 
 
-if __name__ == "__main__":
+def main():
     import json
 
     def test_specs_config():
@@ -568,7 +568,7 @@ if __name__ == "__main__":
         print(json.dumps(Config().get_unit(name).model_dump(), indent=1))
 
     # test_specs_config()
-    test_users()
+    # test_users()
 
     # test_service_config("control")
     # test_service_config("spec")
@@ -576,4 +576,7 @@ if __name__ == "__main__":
 
     # test_sites_config()
     # test_local_site()
-    # test_unit_config(name="mastw")
+    test_unit_config(name="mastw")
+
+if __name__ == "__main__":
+    main()
