@@ -1,21 +1,26 @@
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel
 
 import common.ASI as ASI
 
 from .rois import RoiConfig
 
+# class ImagerBinningConfig(BaseModel):
+#     """Configuration for the imager binning."""
 
-class ImagerBinningConfig(BaseModel):
-    """Configuration for the imager binning."""
+#     x: int
+#     y: int
 
-    x: int
-    y: int
+#     @model_validator(mode="after")
+#     def validate_binning(self):
+#         from common.ASI import ASI_294MM_SUPPORTED_BINNINGS
 
-    @model_validator(mode="after")
-    def validate_binning(self):
-        if self.x <= 0 or self.y <= 0:
-            raise ValueError("Binning values must be positive integers.")
-        return self
+#         if any([v not in ASI_294MM_SUPPORTED_BINNINGS for v in [self.x, self.y]]):
+#             raise ValueError(f"Binning values ({self.x=}, {self.y=}) must be one of {ASI_294MM_SUPPORTED_BINNINGS=}")
+
+#         if self.x != self.y:
+#             raise ValueError(f"Unequal horizontal/vertical binning values ({self.x=} != {self.y=})")
+
+#         return self
 
 
 class OffsetConfig(BaseModel):
