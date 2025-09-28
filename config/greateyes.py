@@ -1,6 +1,5 @@
 from pydantic import BaseModel, model_validator
 
-from .imager import ImagerBinningConfig
 from .network import NetworkConfig
 from .power import OutletConfig
 from .shutter import ShutterConfig
@@ -29,11 +28,14 @@ class GreateyesProbingConfig(BaseModel):
     boot_delay: int = 25  # seconds to wait after booting the camera
     interval: int = 60  # seconds to check the camera status
 
+class GreateyesBinningConfig(BaseModel):
+    x: int
+    y: int
 
 class GreateyesSettingConfig(BaseModel):
     """Configuration for Greateyes settings."""
 
-    binning: ImagerBinningConfig | None = None  # Binning configuration for the camera
+    binning: GreateyesBinningConfig | None = None  # Binning configuration for the camera
     bytes_per_pixel: int = 4  # Default bytes per pixel for Greateyes camera
     number_of_exposures: int = 1
     exposure_duration: float = 5.0  # Default exposure duration in seconds
@@ -46,7 +48,7 @@ class GreateyesSettingConfig(BaseModel):
     @model_validator(mode="after")
     def validate_greateyes_setting(self):
         if self.binning is None:
-            self.binning = ImagerBinningConfig(x=1, y=1)
+            self.binning = GreateyesBinningConfig(x=1, y=1)
         return self
 
 
