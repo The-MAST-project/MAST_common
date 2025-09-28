@@ -1,11 +1,14 @@
 import ctypes
 import logging
-from ctypes import c_int
 from enum import IntEnum, auto
 from typing import Literal, get_args
 
 logger = logging.Logger("ASI")
 
+ASI_294MM_SUPPORTED_BINNINGS_LITERAL = Literal[1, 2] # the binnings implemented by the camera firmware
+ASI_294MM_SUPPORTED_BINNINGS_SET: set = {1, 2}
+ASI_294MM_WIDTH = 8828
+ASI_294MM_HEIGHT = 5644
 
 #
 # Extracted at runtime from the ZWO ASI SDK for camera model: ZWO ASI294MM Pro
@@ -209,29 +212,29 @@ ASI_MAX_CAMERA_NAME = 64
 class ASI_CAMERA_INFO(ctypes.Structure):  # noqa: N801
     _fields_ = [
         ("Name", ctypes.c_char * ASI_MAX_CAMERA_NAME),
-        ("CameraID", c_int),
-        ("MaxHeight", c_int),
-        ("MaxWidth", c_int),
-        ("IsColorCam", c_int),
-        ("BayerPattern", c_int),
-        ("SupportedBins", c_int * 16),
-        ("SupportedVideoFormat", c_int * 8),
-        ("SupportedPreviewFormat", c_int * 8),
+        ("CameraID", ctypes.c_int),
+        ("MaxHeight", ctypes.c_int),
+        ("MaxWidth", ctypes.c_int),
+        ("IsColorCam", ctypes.c_int),
+        ("BayerPattern", ctypes.c_int),
+        ("SupportedBins", ctypes.c_int * 16),
+        ("SupportedVideoFormat", ctypes.c_int * 8),
+        ("SupportedPreviewFormat", ctypes.c_int * 8),
         ("PixelSize", ctypes.c_float),
-        ("MechanicalShutter", c_int),
-        ("ST4Port", c_int),
-        ("IsCoolerCam", c_int),
-        ("IsUSB3Host", c_int),
-        ("IsUSB3Camera", c_int),
+        ("MechanicalShutter", ctypes.c_int),
+        ("ST4Port", ctypes.c_int),
+        ("IsCoolerCam", ctypes.c_int),
+        ("IsUSB3Host", ctypes.c_int),
+        ("IsUSB3Camera", ctypes.c_int),
         ("ElecPerADU", ctypes.c_float),
-        ("BitDepth", c_int),
-        ("IsTriggerCam", c_int),
-        ("Unused", c_int * 8),
+        ("BitDepth", ctypes.c_int),
+        ("IsTriggerCam", ctypes.c_int),
+        ("Unused", ctypes.c_int * 8),
         ("CameraSN", ctypes.c_char * 16),
-        ("PortType", c_int),
+        ("PortType", ctypes.c_int),
         ("DevPath", ctypes.c_char * 32),
-        ("ProductID", c_int),
-        ("VendorID", c_int),
+        ("ProductID", ctypes.c_int),
+        ("VendorID", ctypes.c_int),
     ]
 
 
