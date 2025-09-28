@@ -1,8 +1,9 @@
 import datetime
+import logging
 from abc import ABC, abstractmethod
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 import ulid
@@ -11,8 +12,13 @@ from pydantic import BaseModel, Field
 import common.ASI as ASI
 from common.dlipowerswitch import PowerStatus
 from common.interfaces.components import Component, ComponentStatus
+from common.mast_logging import init_log
 from common.paths import PathMaker
+from common.rois import SkyRoi, SpecRoi, UnitRoi
+from common.utils import function_name
 
+logger = logging.Logger(__name__)
+init_log(logger)
 
 class ImagerTypes(str, Enum):
     Ascom = "ascom"
@@ -20,59 +26,102 @@ class ImagerTypes(str, Enum):
     Zwo = "zwo"
 
 
-class ImagerBinning(BaseModel):
-    x: int = 1
-    y: int = 1
+# class ImagerBinning(BaseModel):
+#     x: int = 1
+#     y: int = 1
 
-    def __str__(self):
-        return f"{self.x}x{self.y}"
+#     def __str__(self):
+#         return f"{self.x}x{self.y}"
+
+class ImagerPixel(BaseModel):
+    x: int
+    y: int
 
 
 class ImagerRoi(BaseModel):
     """
-    Lower left corner of the ROI, and its width and height.
+    MAST Region-Of-Interest.  Always conditioned to conform to:
+
+    - MAST constraints:
+        - The center pixel is expected to be on the optical axis of the system, at any binning
+
+    - ASI ZWO constraints:
+        - At any supported binning the width must be congruent to mod 8 == 0 and the height must be congruent to mod 2 == 0
+
+    Since both width and height are EVEN there is no center-pixel.  The center pixel will always be the highest pixel
+    of the lower  half of dimension (width/height).
+
+    An ImagerRoi can be derived from other ROIs:
+    - UnitRoi or SkyRoi: both don't specify center pixel
+    - SpecRoi: specifies a center pixel
     """
 
-    x: int = 0
-    y: int = 0
+    x: int = 0  # start.x
+    y: int = 0  # start.y
     width: int = 1000
     height: int = 1000
+    _center: ImagerPixel | None = None
+
+    def model_post_init(self, context: dict[str, Any] | None):
+        from common.ASI import ASI_294MM_SUPPORTED_BINNINGS_SET
+        self.width -= self.width % (8 * max(ASI_294MM_SUPPORTED_BINNINGS_SET))
+        self.height -= self.height % (2 * max(ASI_294MM_SUPPORTED_BINNINGS_SET))
+
+        if not self._center:
+            self._center = ImagerPixel(x=(self.width // 2) - 1 , y=(self.height // 2) - 1)
+        logger.debug(f"{function_name()}: {self=}")
 
     def __str__(self):
-        return f"{self.x},{self.y},{self.width},{self.height}"
+        return f"{self.width}x{self.height}@{self.x},{self.y}"
+
+    def __repr__(self):
+        return f"ImagerRoi(x={self.x}, y={self.y}, width={self.width}, height={self.height}, _center={self._center})"
 
     @staticmethod
-    def from_other(binning: ImagerBinning, other):
+    def from_other(roi: SkyRoi | SpecRoi | UnitRoi):
         """
-        An imager ROI has a starting pixel (x, y) at lower left corner, width and height
+        Makes an ImagerRoi from other types of ROIs
         """
-        if not binning:
-            binning = ImagerBinning(x=1, y=1)
 
-        if other.width is None or other.height is None:
-            raise ValueError(
-                f"ImagerRoi.from_other(): width or height is None in {other}"
-            )
+        msg = f"{function_name()}: {roi=} => "
+        width: int = roi.width
+        height: int = roi.height
 
-        if hasattr(other, "sky_x") and hasattr(other, "sky_y"):
-            center_x = other.sky_x
-            center_y = other.sky_y
-        elif hasattr(other, "fiber_x") and hasattr(other, "fiber_y"):
-            center_x = other.fiber_x
-            center_y = other.fiber_y
-        elif hasattr(other, "center_x") and hasattr(other, "center_y"):
-            center_x = other.center_x
-            center_y = other.center_y
+        if isinstance(roi, SkyRoi):
+            start = ImagerPixel(x=roi.sky_x - (roi.width // 2), y=roi.sky_y - (roi.height // 2))
+            center = ImagerPixel(x=roi.sky_x, y=roi.sky_y)
+        elif isinstance(roi, SpecRoi):
+            start = ImagerPixel(x=roi.fiber_x - (roi.width // 2), y=roi.fiber_y - (roi.height // 2))
+            center = ImagerPixel(x=roi.fiber_x, y=roi.fiber_y)
+        elif isinstance(roi, UnitRoi):
+            start = ImagerPixel(x=roi.center_x - (roi.width // 2), y=roi.center_y - (roi.height // 2))
+            center = ImagerPixel(x=roi.center_x, y=roi.center_y)
         else:
-            raise ValueError(f"ImagerRoi.from_other(): unknown type {type(other)}")
+            raise ValueError(f"ImagerRoi.from_other(): unknown type {type(roi)}")
 
-        return ImagerRoi(
-            x=(center_x - int(other.width / 2)) * binning.x,
-            y=(center_y - int(other.height / 2)) * binning.y,
-            width=other.width * binning.x,
-            height=other.height * binning.y,
+        # adjust dimensions around the center pixel
+        width = min(width, (center.x - start.x) * 2) // 8
+        height = min(height, (center.y - start.y) * 2) // 2
+
+        # adjust origin accordingly
+        start.x = max(0, center.x - (width // 2))
+        start.y = max(0, center.y - (height // 2))
+
+        ret = ImagerRoi(
+            x=start.x,
+            y=start.y,
+            width=width,
+            height=height,
+            _center=center
         )
+        logger.debug(msg + f"{ret=}")
+        return ret
 
+    def binned(self, binning: int | None):
+
+        b = binning or 1
+
+        return ImagerRoi(x=self.x // b, y=self.y // b, width=self.width // b, height=self.height // b)
 
 class ImagerSettings(BaseModel):
     """
@@ -93,7 +142,7 @@ class ImagerSettings(BaseModel):
     seconds: float
     base_folder: str | None = None
     image_path: str | None = None
-    binning: ImagerBinning | None = ImagerBinning(x=1, y=1)
+    binning: ASI.ASI_294MM_SUPPORTED_BINNINGS_LITERAL
     gain: int | None = None
     roi: ImagerRoi | None = None
     tags: dict | None = {}
@@ -177,13 +226,28 @@ class ImagerSettings(BaseModel):
         self.file_name_parts.append(f"seconds={self.seconds}")
         self.file_name_parts.append(f"binning={self.binning}")
         self.file_name_parts.append(f"gain={self.gain}")
-        self.file_name_parts.append(f"roi={self.roi}")
+        if self.roi:
+            self.file_name_parts.append(f"binned_roi={self.roi.binned(self.binning)}")
 
         self.image_path = str(
             Path(self.folder, ",".join(self.file_name_parts) + ".fits").as_posix()
         )
         pass
 
+class ImagerPublicSettings(BaseModel):
+    seconds: float
+    binning: int
+    gain: int
+    roi: ImagerRoi
+
+
+class ImagerSequenceOfExposures(BaseModel):
+    exposure_settings: ImagerPublicSettings
+    repeats: int = 1
+    pause_between_exposures: float | None = None
+    disconnect_camera: bool = False
+    tell_guider_to_start: None | Literal["loop", "guide", "nothing"] = None
+    delay_before_telling_guider: float | None = None
 
 class ImagerExposure(BaseModel):
     file: str | None = None
@@ -195,18 +259,18 @@ class ImagerExposure(BaseModel):
 
 
 class ImagerStatus(PowerStatus, ComponentStatus):
-    type: ImagerTypes | None = None
-    model: str | None = None
+    identifier: str | None = None
     camera_x_size: int | None = None
     camera_y_size: int | None = None
     errors: list[str] | None = None
     set_point: float | None = None
     temperature: float | None = None
-    cooler: bool | None = None
+    cooler_on: bool | None = None
     cooler_power: float | None = None
     latest_exposure: ImagerExposure | None = None
     latest_settings: ImagerSettings | None = None
     date: str | None = None
+    backend: object | None = None
 
 
 class ImagerExposureSeries:
