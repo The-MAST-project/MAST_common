@@ -105,7 +105,7 @@ def store_params(memory: shared_memory.SharedMemory, d: dict):
 
 
 def time_stamp():
-    return datetime.datetime.now().isoformat()
+    return isoformat_zulu(datetime.datetime.now())
 
 
 def function_name():
