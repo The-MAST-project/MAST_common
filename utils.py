@@ -439,6 +439,6 @@ def fromisoformat_zulu(s: str) -> datetime.datetime:
     """
     if s.endswith("Z"):
         s = s[:-1]
-        return datetime.datetime.fromisoformat(s).replace(tzinfo=datetime.timezone.utc)
+        return datetime.datetime.fromisoformat(s).replace(tzinfo=datetime.UTC)
     else:
         return datetime.datetime.fromisoformat(s)
