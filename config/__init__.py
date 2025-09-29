@@ -1,3 +1,4 @@
+import datetime
 import io
 import json
 import logging
@@ -5,6 +6,7 @@ import os
 import platform
 import re
 import socket
+import sys
 import tempfile
 from copy import deepcopy
 from pathlib import Path
@@ -48,7 +50,7 @@ class ServiceConfig(BaseModel):
 file_cache = TTLCache(maxsize=32, ttl=60)  # 60s TTL
 mongo_cache = TTLCache(maxsize=32, ttl=60)  # 60s TTL
 config_db_cache = TTLCache(maxsize=100, ttl=30)
-
+DataSource = Literal["file", "mongodb"] | None
 
 #
 # Cache management helpers, should be 'manually' called to clear the TTL caches when configuration is changed
@@ -110,7 +112,7 @@ class ConfigOrigin:
         self.client: MongoClient | None = None
         self.db: pymongo.database.Database | None = None
 
-        self.loaded_from: Literal["file", "mongodb"] | None = None
+        self.loaded_from: DataSource = None
         self._initialized = True
 
 
@@ -125,7 +127,13 @@ class Config:
             cls._instance = super().__new__(cls)
         return cls._instance
 
-    def __init__(self, site: str | None = None):
+    def __init__(self, site: str | None = None, load_from: DataSource = None):
+        """
+        - Loads the MAST configuration database.  By default:
+          - from local file, if it exists (linux: `~mast/mast-config-db.json`, windows: `C:/MAST/mast-config-db.json`)
+          - from MongoDB server
+        - If `load_from` is provided, enforces loading ONLY from the specified data source
+        """
         if self._initialized:
             return
 
@@ -271,16 +279,15 @@ class Config:
             drop_object_id,
         )
 
-    def get_config(self) -> dict[str, list[dict[str, Any]]]:
-        """
-        If `json_file_path` exists -> load JSON (TTL-cached + mtime in key).
-        Else -> load from MongoDB (TTL-cached). Raises if Mongo params missing.
-        Returns a normalized dict: {collection_name: [documents...]}.
-        """
+    def get_config(self, load_from: DataSource = None) -> dict[str, list[dict[str, Any]]]:
+
         if self.origin.local_config_file is not None:
             file_path = Path(self.origin.local_config_file)
             if file_path.exists():
                 return self.load_config_from_file(str(file_path))
+
+        if load_from == "file": # we were asked to load from local file, but failed
+            return {}
 
         # fallback to Mongo
         if not (
@@ -521,51 +528,52 @@ class Config:
             return found[0]
 
 
+
+def test_specs_config():
+    print(json.dumps(Config().get_specs().model_dump(), indent=2))
+
+def test_sites_config():
+    sites: list[Site] = Config().sites
+    for site in sites:
+        print(json.dumps(site.model_dump(), indent=2))
+
+def test_local_site():
+    local_site = Config().local_site
+    print(json.dumps(local_site.model_dump() if local_site else None, indent=2))
+
+def test_services_config():
+    result = Config().get_services()
+    assert result is not None
+    [print(json.dumps(service.model_dump(), indent=2)) for service in result]
+
+def test_service_config(service_name: str | None):
+    result = Config().get_services()
+    assert result is not None
+    [
+        print(json.dumps(service.model_dump(), indent=2))
+        for service in result
+        if service.name == service_name
+    ]
+
+def test_users():
+    for conf in Config().get_users():
+        if conf.picture:
+            img = Image.open(io.BytesIO(conf.picture))
+            plt.imshow(img)
+            plt.axis("off")  # Hide axes
+            plt.show()
+        else:
+            print(f"no picture for user '{conf.name}'")
+        print(json.dumps(conf.model_dump(), indent=2))
+
+def test_user(name: str):
+    print(json.dumps(Config().get_user(name), indent=2))
+
+def test_unit_config(name: str | None = None):
+    print(json.dumps(Config().get_unit(name).model_dump(), indent=1))
+
+
 def main():
-    import json
-
-    def test_specs_config():
-        print(json.dumps(Config().get_specs().model_dump(), indent=2))
-
-    def test_sites_config():
-        sites: list[Site] = Config().sites
-        for site in sites:
-            print(json.dumps(site.model_dump(), indent=2))
-
-    def test_local_site():
-        local_site = Config().local_site
-        print(json.dumps(local_site.model_dump() if local_site else None, indent=2))
-
-    def test_services_config():
-        result = Config().get_services()
-        assert result is not None
-        [print(json.dumps(service.model_dump(), indent=2)) for service in result]
-
-    def test_service_config(service_name: str | None):
-        result = Config().get_services()
-        assert result is not None
-        [
-            print(json.dumps(service.model_dump(), indent=2))
-            for service in result
-            if service.name == service_name
-        ]
-
-    def test_users():
-        for conf in Config().get_users():
-            if conf.picture:
-                img = Image.open(io.BytesIO(conf.picture))
-                plt.imshow(img)
-                plt.axis("off")  # Hide axes
-                plt.show()
-            else:
-                print(f"no picture for user '{conf.name}'")
-            print(json.dumps(conf.model_dump(), indent=2))
-
-    def test_user(name: str):
-        print(json.dumps(Config().get_user(name), indent=2))
-
-    def test_unit_config(name: str | None = None):
-        print(json.dumps(Config().get_unit(name).model_dump(), indent=1))
 
     # test_specs_config()
     # test_users()
@@ -576,7 +584,8 @@ def main():
 
     # test_sites_config()
     # test_local_site()
-    test_unit_config(name="mastw")
+    # test_unit_config(name="mastw")
+    pass
 
 if __name__ == "__main__":
     main()
