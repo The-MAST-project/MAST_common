@@ -49,7 +49,7 @@ class ImagerRoi(BaseModel):
         - At any supported binning the width must be congruent to mod 8 == 0 and the height must be congruent to mod 2 == 0
 
     Since both width and height are EVEN there is no center-pixel.  The center pixel will always be the highest pixel
-    of the lower  half of dimension (width/height).
+    of the lower half of the dimension (width/height).
 
     An ImagerRoi can be derived from other ROIs:
     - UnitRoi or SkyRoi: both don't specify center pixel
@@ -64,11 +64,27 @@ class ImagerRoi(BaseModel):
 
     def model_post_init(self, context: dict[str, Any] | None):
         from common.ASI import ASI_294MM_SUPPORTED_BINNINGS_SET
+
+        if self._center:    # _center was specified, it will govern width and height
+            pass
+        else:               # no _center was specified, it will be governed by width/height
+            self._center = ImagerPixel(x=(self.width // 2) - 1 , y=(self.height // 2) - 1)
+
+        # adjust width/height according to _center and start point
+        half_width = min(self._center.x - self.x, (self.x + self.width) - self._center.x)   # min(left-of-center, right-of-center)
+        half_height = min(self._center.y - self.y, (self.y + self.height) - self._center.y) # min(below-center, above-center)
+
+        self.width = half_width * 2
+        self.height = half_height *2
+
+        # apply ASI constraints
         self.width -= self.width % (8 * max(ASI_294MM_SUPPORTED_BINNINGS_SET))
         self.height -= self.height % (2 * max(ASI_294MM_SUPPORTED_BINNINGS_SET))
 
-        if not self._center:
-            self._center = ImagerPixel(x=(self.width // 2) - 1 , y=(self.height // 2) - 1)
+        # adjust start point according to _center and possibly adjusted width and height
+        self.x = self._center.x - half_width
+        self.y = self._center.y - half_height
+
         logger.debug(f"{function_name()}: {self=}")
 
     def __str__(self):
@@ -100,8 +116,10 @@ class ImagerRoi(BaseModel):
             raise ValueError(f"ImagerRoi.from_other(): unknown type {type(roi)}")
 
         # adjust dimensions around the center pixel
-        width = min(width, (center.x - start.x) * 2) // 8
-        height = min(height, (center.y - start.y) * 2) // 2
+        width = min(width, (center.x - start.x) * 2)
+        width -= width % 8
+        height = min(height, (center.y - start.y) * 2)
+        height -= height % 2
 
         # adjust origin accordingly
         start.x = max(0, center.x - (width // 2))
