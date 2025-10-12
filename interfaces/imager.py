@@ -68,7 +68,7 @@ class ImagerRoi(BaseModel):
         if self._center:    # _center was specified, it will govern width and height
             pass
         else:               # no _center was specified, it will be governed by width/height
-            self._center = ImagerPixel(x=(self.width // 2) - 1 , y=(self.height // 2) - 1)
+            self._center = ImagerPixel(x=self.x + (self.width // 2) - 1 , y=self.y + (self.height // 2) - 1)
 
         # adjust width/height according to _center and start point
         half_width = min(self._center.x - self.x, (self.x + self.width) - self._center.x)   # min(left-of-center, right-of-center)
@@ -82,8 +82,8 @@ class ImagerRoi(BaseModel):
         self.height -= self.height % (2 * max(ASI_294MM_SUPPORTED_BINNINGS_SET))
 
         # adjust start point according to _center and possibly adjusted width and height
-        self.x = self._center.x - half_width
-        self.y = self._center.y - half_height
+        self.x = self._center.x - (self.width // 2)
+        self.y = self._center.y - (self.height // 2)
 
         logger.debug(f"{function_name()}: {self=}")
 
