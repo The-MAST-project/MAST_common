@@ -57,6 +57,8 @@ class HighspecConfig(BaseModel):
 
     power: OutletConfig
     settings: NewtonSettingsConfig
+    camera: str # which camera to use, e.g. 'qhy600' or 'newton'
+    valid_cameras: list[str] # list of valid camera names
 
 
 class ServerConfig(BaseModel):
