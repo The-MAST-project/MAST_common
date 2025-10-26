@@ -58,8 +58,8 @@ class ImagerRoi(BaseModel):
 
     x: int = 0  # start.x
     y: int = 0  # start.y
-    width: int = 1000
-    height: int = 1000
+    width: int = ASI.ASI_294MM_WIDTH
+    height: int = ASI.ASI_294MM_HEIGHT
     _center: ImagerPixel | None = None
 
     def model_post_init(self, context: dict[str, Any] | None):
