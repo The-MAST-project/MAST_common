@@ -264,7 +264,7 @@ class ImagerSequenceOfExposures(BaseModel):
     repeats: int = 1
     pause_between_exposures: float | None = None
     disconnect_camera: bool = False
-    tell_guider_to_start: None | Literal["loop", "guide", "nothing"] = None
+    tell_guider_to_start: None | Literal["loop", "guide", "nothing"] = "guide"
     delay_before_telling_guider: float | None = None
 
 class ImagerExposure(BaseModel):
