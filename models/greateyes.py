@@ -1,13 +1,12 @@
 from enum import IntEnum
-from typing import Optional
+from typing import Literal
 
-from pydantic import BaseModel, model_validator, field_validator
-from typing_extensions import Literal
+from pydantic import BaseModel, field_validator
 
 
 class Gain(IntEnum):
-    Low = (0,)  # Low ( Max. Dyn. Range )
-    High = (1,)  # Std ( High Sensitivity )
+    Low = 0  # Low ( Max. Dyn. Range )
+    High = 1  # Std ( High Sensitivity )
 
 
 class GainSettingModel(BaseModel):
@@ -20,9 +19,9 @@ class BinningModel(BaseModel):
 
 
 class ReadoutAmplifiers(IntEnum):
-    OSR = (0,)
-    OSL = (1,)
-    OSR_AND_OSL = (2,)
+    OSR = 0
+    OSL = 1
+    OSR_AND_OSL = 2
 
 
 class CropModeModel(BaseModel):
@@ -44,12 +43,12 @@ class ShutterModel(BaseModel):
 
 
 class ReadoutSpeed(IntEnum):
-    ReadoutSpeed_50_kHz = int(50)
-    ReadoutSpeed_100_kHz = int(100)
-    ReadoutSpeed_250_kHz = int(250)
-    ReadoutSpeed_500_kHz = int(500)
-    ReadoutSpeed_1_MHz = int(1000)
-    ReadoutSpeed_3_MHz = int(3000)
+    ReadoutSpeed_50_kHz = 50
+    ReadoutSpeed_100_kHz = 100
+    ReadoutSpeed_250_kHz = 250
+    ReadoutSpeed_500_kHz = 500
+    ReadoutSpeed_1_MHz = 1000
+    ReadoutSpeed_3_MHz = 3000
 
 
 class ReadoutModel(BaseModel):
@@ -62,19 +61,19 @@ class ReadoutModel(BaseModel):
 
 
 class ProbingModel(BaseModel):
-    interval: Optional[float]
-    boot_delay: Optional[float]
+    interval:   float | None = None
+    boot_delay:   float | None = None
 
 
 class GreateyesSettingsModel(BaseModel):
-    enabled: Optional[bool] = True
-    binning: Optional[BinningModel]
-    bytes_per_pixel: Optional[Literal[1, 2, 3, 4]]
-    temp: Optional[TemperatureSettingsModel]
-    crop: Optional[CropModeModel]
-    shutter: Optional[ShutterModel]
-    readout: Optional[ReadoutModel]
-    probing: Optional[ProbingModel]
-    exposure_duration: Optional[float]
-    number_of_exposures: Optional[int] = 1
-    image_file: Optional[str] = None
+    enabled: bool | None = True
+    binning: BinningModel | None = None
+    bytes_per_pixel: Literal[1, 2, 3, 4] | None = 2
+    temp: TemperatureSettingsModel | None = None
+    crop: CropModeModel | None = None
+    shutter: ShutterModel | None = None
+    readout: ReadoutModel | None = None
+    probing: ProbingModel | None = None
+    exposure_duration:   float | None = None
+    number_of_exposures:   int | None = 1
+    image_file:   str | None = None
