@@ -352,7 +352,7 @@ class ImagerInterface(Component, ABC):
     @abstractmethod
     def start_exposure_series(self, purpose: str | None = None) -> ImagerExposureSeries:
         """
-        Maintains and exposure series context by using a unique series id.
+        Maintains an exposure series context by using a unique series id.
         This method should be called before starting a series of exposures.
         It returns a unique series id that should be used in subsequent calls to end_exposure_series().
 
