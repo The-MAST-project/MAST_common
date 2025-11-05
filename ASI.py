@@ -28,138 +28,158 @@ class Control(IntEnum):
     TargetTemp = 16  # Target temperature(cool camera only),
     CoolerOn = 17  # turn on/off cooler(cool camera only),
 
+class ControlEntry:
+    def __init__(
+        self,
+        description: str,
+        min_value: int,
+        max_value: int,
+        default: int,
+        is_writable: bool,
+        is_auto_supported: bool,
+        control_type: int,
+        auto: bool,
+    ):
+        self.description = description
+        self.min_value = min_value
+        self.max_value = max_value
+        self.default = default
+        self.is_writable = is_writable
+        self.is_auto_supported = is_auto_supported
+        self.control_type = control_type
+        self.auto = auto
 
-ControlDict: dict[Control, dict] = {
-    Control.Gain: {
-        "description": "Gain",
-        "min_value": 0,
-        "max_value": 570,
-        "default": 200,
-        "is_writable": 1,
-        "is_auto_supported": 1,
-        "control_type": 0,
-        "auto": False,
-    },
-    Control.Exposure: {
-        "description": "Exposure Time(us)",
-        "min_value": 32,
-        "max_value": 2000000000,
-        "default": 10000,
-        "is_writable": 1,
-        "is_auto_supported": 1,
-        "control_type": 1,
-        "auto": False,
-    },
-    Control.Offset: {
-        "description": "offset",
-        "min_value": 0,
-        "max_value": 80,
-        "default": 8,
-        "is_writable": 1,
-        "is_auto_supported": 0,
-        "control_type": 5,
-        "auto": False,
-    },
-    Control.BandWidth: {
-        "description": "The total data transfer rate percentage",
-        "min_value": 40,
-        "max_value": 100,
-        "default": 50,
-        "is_writable": 1,
-        "is_auto_supported": 1,
-        "control_type": 6,
-        "auto": True,
-    },
-    Control.Flip: {
-        "description": "Flip: 0->None 1->Horiz 2->Vert 3->Both",
-        "min_value": 0,
-        "max_value": 3,
-        "default": 0,
-        "is_writable": 1,
-        "is_auto_supported": 0,
-        "control_type": 9,
-        "auto": False,
-    },
-    Control.AutoExpMaxGain: {
-        "description": "Auto exposure maximum gain value",
-        "min_value": 0,
-        "max_value": 570,
-        "default": 285,
-        "is_writable": 1,
-        "is_auto_supported": 0,
-        "control_type": 10,
-        "auto": False,
-    },
-    Control.AutoExpMaxExpMS: {
-        "description": "Auto exposure maximum exposure value(unit ms)",
-        "min_value": 1,
-        "max_value": 60000,
-        "default": 100,
-        "is_writable": 1,
-        "is_auto_supported": 0,
-        "control_type": 11,
-        "auto": False,
-    },
-    Control.AutoExpTargetBrightness: {
-        "description": "Auto exposure target brightness value",
-        "min_value": 50,
-        "max_value": 160,
-        "default": 100,
-        "is_writable": 1,
-        "is_auto_supported": 0,
-        "control_type": 12,
-        "auto": False,
-    },
-    Control.HighSpeedMode: {
-        "description": "Is high speed mode:0->No 1->Yes",
-        "min_value": 0,
-        "max_value": 1,
-        "default": 0,
-        "is_writable": 1,
-        "is_auto_supported": 0,
-        "control_type": 14,
-        "auto": False,
-    },
-    Control.Temperature: {
-        "description": "Sensor temperature(degrees Celsius)",
-        "min_value": -500,
-        "max_value": 1000,
-        "default": 20,
-        "is_writable": 0,
-        "is_auto_supported": 0,
-        "control_type": 8,
-        "auto": False,
-    },
-    Control.CoolPowerPerc: {
-        "description": "Cooler power percent",
-        "min_value": 0,
-        "max_value": 100,
-        "default": 0,
-        "is_writable": 0,
-        "is_auto_supported": 0,
-        "control_type": 15,
-        "auto": False,
-    },
-    Control.TargetTemp: {
-        "description": "Target temperature(cool camera only)",
-        "min_value": -40,
-        "max_value": 30,
-        "default": 0,
-        "is_writable": 1,
-        "is_auto_supported": 0,
-        "control_type": 16,
-        "auto": False,
-    },
-    Control.CoolerOn: {
-        "description": "turn on/off cooler(cool camera only)",
-        "min_value": 0,
-        "max_value": 1,
-        "default": 0,
-        "is_writable": 1,
-        "is_auto_supported": 0,
-        "control_type": 17,
-        "auto": False,
-    },
+ControlDict: dict[Control, ControlEntry] = {
+    Control.Gain: ControlEntry(
+        description="Gain",
+        min_value=0,
+        max_value=570,
+        default=200,
+        is_writable=True,
+        is_auto_supported=True,
+        control_type=0,
+        auto=False,
+    ),
+    Control.Exposure: ControlEntry(
+        description="Exposure Time(us)",
+        min_value=32,
+        max_value=2000000000,
+        default=10000,
+        is_writable=True,
+        is_auto_supported=True,
+        control_type=1,
+        auto=False,
+    ),
+    Control.Offset: ControlEntry(
+        description="offset",
+        min_value=0,
+        max_value=80,
+        default=8,
+        is_writable=True,
+        is_auto_supported=False,
+        control_type=5,
+        auto=False,
+    ),
+    Control.BandWidth: ControlEntry(
+        description="The total data transfer rate percentage",
+        min_value=40,
+        max_value=100,
+        default=50,
+        is_writable=True,
+        is_auto_supported=True,
+        control_type=6,
+        auto=True,
+    ),
+    Control.Flip: ControlEntry(
+        description="Flip: 0->None 1->Horiz 2->Vert 3->Both",
+        min_value=0,
+        max_value=3,
+        default=0,
+        is_writable=True,
+        is_auto_supported=False,
+        control_type=9,
+        auto=False,
+    ),
+    Control.AutoExpMaxGain: ControlEntry(
+        description="Auto exposure maximum gain value",
+        min_value=0,
+        max_value=570,
+        default=285,
+        is_writable=True,
+        is_auto_supported=False,
+        control_type=10,
+        auto=False,
+    ),
+    Control.AutoExpMaxExpMS: ControlEntry(
+        description="Auto exposure maximum exposure value(unit ms)",
+        min_value=1,
+        max_value=60000,
+        default=100,
+        is_writable=True,
+        is_auto_supported=False,
+        control_type=11,
+        auto=False,
+    ),
+    Control.AutoExpTargetBrightness: ControlEntry(
+        description="Auto exposure target brightness value",
+        min_value=50,
+        max_value=160,
+        default=100,
+        is_writable=True,
+        is_auto_supported=False,
+        control_type=12,
+        auto=False,
+    ),
+    Control.HighSpeedMode: ControlEntry(
+        description="Is high speed mode:0->No 1->Yes",
+        min_value=0,
+        max_value=1,
+        default=0,
+        is_writable=True,
+        is_auto_supported=False,
+        control_type=14,
+        auto=False,
+    ),
+    Control.Temperature: ControlEntry(
+        description="Sensor temperature(degrees Celsius)",
+        min_value=-500,
+        max_value=1000,
+        default=20,
+        is_writable=False,
+        is_auto_supported=False,
+        control_type=8,
+        auto=False,
+    ),
+    Control.CoolPowerPerc: ControlEntry(
+        description="Cooler power percent",
+        min_value=0,
+        max_value=100,
+        default=0,
+        is_writable=False,
+        control_type=15,
+        is_auto_supported=False,
+        auto=False,
+    ),
+    Control.TargetTemp: ControlEntry(
+        description="Target temperature(cool camera only)",
+        min_value=-40,
+        max_value=30,
+        default=0,
+        is_writable=True,
+        is_auto_supported=False,
+        control_type=16,
+        auto=False,
+    ),
+    Control.CoolerOn: ControlEntry(
+        description="turn on/off cooler(cool camera only)",
+        min_value=0,
+        max_value=1,
+        default=0,
+        is_writable=True,
+        is_auto_supported=False,
+        control_type=17,
+        auto=False,
+    ),
 }
 
 
@@ -239,18 +259,18 @@ class ASI_CAMERA_INFO(ctypes.Structure):  # noqa: N801
 
 
 def gain_absolute_to_percent(value) -> float:
-    d = ControlDict[Control.Gain]
-    min = d["min_value"]
-    max = d["max_value"]
+    control_entry = ControlDict[Control.Gain]
+    min = control_entry.min_value
+    max = control_entry.max_value
     ret = ((value - min) / (max - min)) * 100
     # print(f"{max=}, {min=}, {value=}, {ret=}")
     return ret
 
 
 def gain_percent_to_absolute(percent: float) -> int:
-    d = ControlDict[Control.Gain]
-    min = d["min_value"]
-    max = d["max_value"]
+    control_entry = ControlDict[Control.Gain]
+    min = control_entry.min_value
+    max = control_entry.max_value
     ret = int(min + (max - min) * (percent / 100))
     # print(f"{max=}, {min=}, {percent=:2.0f}%, {ret=}")
     return ret
@@ -273,7 +293,7 @@ def make_pythonian_classes():
 
     n_controls = asi.getNumOfControls(cam_id)
     enum_lines = ["class Control(IntEnum):"]
-    dict_lines = ["ControlDict: dict[AsiControl, dict] = {"]
+    entry_lines = ["ControlDict: dict[AsiControl, ControlEntry] = {"]
 
     info = asi.getCameraProperty(cam_id)
     model = info.Name.decode()
@@ -285,17 +305,17 @@ def make_pythonian_classes():
         enum_lines.append(
             f"    {line}{' ' * (30 - len(line))}# {cap.Description.decode()}, "
         )
-        dict_lines.append(f"    Control.{cap.Name.decode()}: {{")
-        dict_lines.append(f"        'description': '{cap.Description.decode()}',")
-        dict_lines.append(f"        'min_value': {cap.MinValue},")
-        dict_lines.append(f"        'max_value': {cap.MaxValue},")
-        dict_lines.append(f"        'default': {cap.DefaultValue},")
-        dict_lines.append(f"        'is_writable': {cap.IsWritable},")
-        dict_lines.append(f"        'is_auto_supported': {cap.IsAutoSupported},")
-        dict_lines.append(f"        'control_type': {cap.ControlType},")
-        dict_lines.append(f"        'auto': {auto},")
-        dict_lines.append("    },")
-    dict_lines.append("}")
+        entry_lines.append(f"    Control.{cap.Name.decode()}: {{ControlEntry(")
+        entry_lines.append(f"        description='{cap.Description.decode()}',")
+        entry_lines.append(f"        min_value={cap.MinValue},")
+        entry_lines.append(f"        max_value={cap.MaxValue},")
+        entry_lines.append(f"        default={cap.DefaultValue},")
+        entry_lines.append(f"        is_writable={cap.IsWritable},")
+        entry_lines.append(f"        is_auto_supported={cap.IsAutoSupported},")
+        entry_lines.append(f"        control_type={cap.ControlType},")
+        entry_lines.append(f"        auto={auto},")
+        entry_lines.append("    ),")
+    entry_lines.append("}")
 
     print(
         f"#\n# Extracted at runtime from the ZWO ASI SDK for camera model: {model}\n#"
@@ -303,7 +323,7 @@ def make_pythonian_classes():
     for line in enum_lines:
         print(line)
     print()
-    for line in dict_lines:
+    for line in entry_lines:
         print(line)
     print()
 
