@@ -148,7 +148,7 @@ class ImagerSettings(BaseModel):
     Callers to start_exposure() fill in:
     - seconds - duration in seconds
     - base_folder - [optional] supplied folder under which the new folder/file will reside
-    - gain - to be applied to the self by start_exposure()
+    - gain - to be applied to the self by start_exposure() (absolute value)
     - binning - ditto
     - roi - ditto
     - tags - a flat dictionary of tags, will be added to the file name as ',name=value' or
