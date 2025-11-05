@@ -55,7 +55,7 @@ class DailyFileHandler(logging.FileHandler):
         :return:
         """
         filename = self.make_file_name()
-        if not filename == self.filename:
+        if filename != self.filename:
             if self.stream is not None:
                 # we have an open file handle, clean it up
                 self.stream.flush()
