@@ -207,12 +207,18 @@ class DliPowerSwitch(Component):
 
     def startup(self):
         pass
-
     def shutdown(self):
         pass
-
     def abort(self):
         pass
+    def endpoint_startup(self):
+        return self.startup()
+
+    def endpoint_shutdown(self):
+        return self.shutdown()
+
+    def endpoint_abort(self):
+        return self.abort()
 
     @property
     def why_not_operational(self) -> list[str]:
@@ -224,6 +230,9 @@ class DliPowerSwitch(Component):
     @property
     def operational(self) -> bool:
         return self.detected
+
+    def endpoint_status(self) -> PowerSwitchStatus:
+        return self.status()
 
     def status(self) -> PowerSwitchStatus:
         return PowerSwitchStatus(
