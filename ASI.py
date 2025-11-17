@@ -9,6 +9,7 @@ ASI_294MM_SUPPORTED_BINNINGS_LITERAL = Literal[1, 2] # the binnings implemented 
 ASI_294MM_SUPPORTED_BINNINGS_SET: set = {1, 2}
 ASI_294MM_WIDTH = 8828
 ASI_294MM_HEIGHT = 5644
+ASI_294MM_DEFAULT_GAIN = 170
 
 #
 # Extracted at runtime from the ZWO ASI SDK for camera model: ZWO ASI294MM Pro
