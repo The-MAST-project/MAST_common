@@ -14,7 +14,8 @@ from typing import Literal
 import tomlkit
 import tomlkit.exceptions
 import ulid
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, computed_field
+from pydantic import (BaseModel, ConfigDict, Field, ValidationError,
+                      computed_field)
 
 from common.activities import Activities, AssignmentActivities, UnitActivities
 from common.api import ApiDomain, SpecApi, UnitApi
@@ -23,14 +24,10 @@ from common.config import Config
 from common.deep import deep_dict_update
 from common.interfaces.components import ComponentStatus
 from common.mast_logging import init_log
-from common.models.assignments import (
-    Initiator,
-    SpectrographAssignmentModel,
-    TargetModel,
-    TaskSettingsModel,
-    TransmittedAssignment,
-    UnitAssignmentModel,
-)
+from common.models.assignments import (Initiator, SpectrographAssignmentModel,
+                                       TargetModel, TaskSettingsModel,
+                                       TransmittedAssignment,
+                                       UnitAssignmentModel)
 from common.models.constraints import ConstraintsModel
 from common.models.spectrographs import SpectrographModel
 from common.parsers import parse_units

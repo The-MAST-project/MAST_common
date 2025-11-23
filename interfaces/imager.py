@@ -16,6 +16,7 @@ from common.mast_logging import init_log
 from common.paths import PathMaker
 from common.rois import SkyRoi, SpecRoi, UnitRoi
 from common.utils import function_name
+from src.imagers import Imager
 
 logger = logging.Logger(__name__)
 init_log(logger)
@@ -298,13 +299,14 @@ class ImagerExposureSeries:
     """
 
     def __init__(self, purpose: str | None = None):
-        self.series_id: str = str(ulid.new())
+        self.series_id: str = str(ulid.ulid())
         self.purpose: str | None = purpose
 
 
 class ImagerInterface(Component, ABC):
     current_exposure_series: ImagerExposureSeries | None = None
     ccd_temp_at_mid_exposure: float | None = None
+    parent_imager: Imager | None = None
 
     @property
     @abstractmethod
