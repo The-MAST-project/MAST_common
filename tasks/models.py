@@ -307,7 +307,7 @@ class TaskModel(BaseModel, Activities):
 
         # Generate ULID if needed
         if "ulid" not in task_section:
-            task_section["ulid"] = str(ulid.new()).lower()
+            task_section["ulid"] = str(ulid.ulid()).lower()
             modified = True
 
         # Update file path if needed
