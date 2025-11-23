@@ -47,7 +47,7 @@ class AscomDispatcher(ABC):
     def ascom_status(self) -> AscomStatus:
         info = ascom_driver_info(self.ascom)
         response = ascom_run(self, "Connected")
-        info["connected"] = response.value if response.succeeded else "unknown"
+        info["connected"] = response.value if response.succeeded else False
         return AscomStatus(ascom=AscomDriverInfoModel(**info))
 
 
