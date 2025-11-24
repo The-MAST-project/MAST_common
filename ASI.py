@@ -6,7 +6,7 @@ from typing import Literal, get_args
 logger = logging.Logger("ASI")
 
 ASI_294MM_SUPPORTED_BINNINGS_LITERAL = Literal[1, 2] # the binnings implemented by the camera firmware
-ASI_294MM_SUPPORTED_BINNINGS_SET: set = {1, 2}
+ASI_294MM_SUPPORTED_BINNINGS_SET = set(get_args(ASI_294MM_SUPPORTED_BINNINGS_LITERAL))
 ASI_294MM_WIDTH = 8828
 ASI_294MM_HEIGHT = 5644
 ASI_294MM_DEFAULT_GAIN = 170
