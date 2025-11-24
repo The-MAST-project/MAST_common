@@ -16,7 +16,6 @@ from common.mast_logging import init_log
 from common.paths import PathMaker
 from common.rois import SkyRoi, SpecRoi, UnitRoi
 from common.utils import function_name
-from src.imagers import Imager
 
 logger = logging.Logger(__name__)
 init_log(logger)
@@ -306,7 +305,7 @@ class ImagerExposureSeries:
 class ImagerInterface(Component, ABC):
     current_exposure_series: ImagerExposureSeries | None = None
     ccd_temp_at_mid_exposure: float | None = None
-    parent_imager: Imager | None = None
+    parent_imager = None
 
     @property
     @abstractmethod
