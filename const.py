@@ -1,3 +1,6 @@
+from typing import Literal
+
+
 class Const:
 
     WEIZMANN_DOMAIN: str = "weizmann.ac.il"
@@ -8,3 +11,5 @@ class Const:
 
 
     PLATE_SOLVING_SHM_NAME: str = "PlateSolving_Image"
+
+    SolvingPhase = Literal["sky", "spec"]
