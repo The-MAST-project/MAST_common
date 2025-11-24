@@ -6,10 +6,9 @@ from pydantic import BaseModel
 
 from common.utils import isoformat_zulu
 
-correction_phases = ["sky", "spec"]
 
 class Correction(BaseModel):
-    time_iso_str: str
+    time: str
     ra_delta: float
     dec_delta: float
 
@@ -33,13 +32,13 @@ if __name__ == "__main__":
     for _ in range(5):
         corrections.sequence.append(
             Correction(
-                time_iso_str=isoformat_zulu(datetime.datetime.now(datetime.UTC)),
+                time=isoformat_zulu(datetime.datetime.now(datetime.UTC)),
                 ra_delta=random.uniform(0, 10),
                 dec_delta=random.uniform(0, 10),
             )
         )
     corrections.last_delta = Correction(
-        time_iso_str=isoformat_zulu(datetime.datetime.now(datetime.UTC)), ra_delta=0.13, dec_delta=0.21
+        time=isoformat_zulu(datetime.datetime.now(datetime.UTC)), ra_delta=0.13, dec_delta=0.21
     )
 
     out_json = json.dumps(corrections.model_dump(), indent=2)

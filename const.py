@@ -12,4 +12,5 @@ class Const:
 
     PLATE_SOLVING_SHM_NAME: str = "PlateSolving_Image"
 
-    SolvingPhase = Literal["sky", "spec"]
+    SolvingPhase = Literal["sky", "spec"]   # acquisition phases that use plate solving
+    CorrectionPhase = SolvingPhase          # acquisition phases that use corrections
