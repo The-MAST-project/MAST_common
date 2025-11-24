@@ -536,7 +536,7 @@
         }
       },
       "phd2": {
-        "profile": "PWI4+ASI-native",
+        "profile": "PWI4+asi-native",
         "settle": {
           "pixels": 1,
           "time": 0,

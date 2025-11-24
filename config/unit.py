@@ -1,6 +1,6 @@
 from pydantic import BaseModel, model_validator
 
-from common.ASI import ASI_294MM_SUPPORTED_BINNINGS_LITERAL
+from common.asi import ASI_294MM_SUPPORTED_BINNINGS_LITERAL
 
 from .imager import ImagerConfig
 from .phd2 import PHD2Config

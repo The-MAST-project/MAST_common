@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 
-import common.ASI as ASI
+import common.asi as asi
 
 from .rois import RoiConfig
 
@@ -12,7 +12,7 @@ from .rois import RoiConfig
 
 #     @model_validator(mode="after")
 #     def validate_binning(self):
-#         from common.ASI import ASI_294MM_SUPPORTED_BINNINGS
+#         from common.asi import ASI_294MM_SUPPORTED_BINNINGS
 
 #         if any([v not in ASI_294MM_SUPPORTED_BINNINGS for v in [self.x, self.y]]):
 #             raise ValueError(f"Binning values ({self.x=}, {self.y=}) must be one of {ASI_294MM_SUPPORTED_BINNINGS=}")
@@ -38,5 +38,5 @@ class ImagerConfig(BaseModel):
     roi: RoiConfig | None = None
     temp_check_interval: int = 60
     pixel_scale_at_bin1: float
-    format: ASI.ValidOutputFormats
+    format: asi.ValidOutputFormats
     gain: int
