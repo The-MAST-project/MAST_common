@@ -4,12 +4,12 @@ This file is part of MAST_common and shared across all MAST projects.
 """
 
 from functools import wraps
-from typing import Callable, Optional
+from typing import Callable
 
 def gui_endpoint(
-    capability: Optional[str] = None,
+    capability: str | None = None,
     description: str = "",
-    rate_limit: Optional[int] = None
+    rate_limit: int | None = None
 ):
     """
     Mark a backend endpoint as accessible from the GUI.
@@ -45,7 +45,7 @@ def is_gui_endpoint(func: Callable) -> bool:
     return getattr(func, '_gui_exposed', False)
 
 
-def get_endpoint_capability(func: Callable) -> Optional[str]:
+def get_endpoint_capability(func: Callable) -> str | None:
     """Get the required capability for a GUI endpoint"""
     return getattr(func, '_gui_capability', None)
 
