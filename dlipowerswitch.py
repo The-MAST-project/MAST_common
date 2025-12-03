@@ -23,12 +23,21 @@ logging.getLogger("httpcore").setLevel(logging.WARN)
 logging.getLogger("httpx").setLevel(logging.WARN)
 
 
+class OutletStatus(BaseModel):
+    name: str | None = None
+    state: TriStateBool = None
+
+    def __repr__(self):
+        return f"OutletStatus(name='{self.name}', state={self.state})"
+
+
 class PowerSwitchStatus(BaseModel):
     host: str | None = None
     ipaddr: str | None = None
     detected: bool = False
     operational: bool = False
     why_not_operational: list[str] = []
+    outlets: list[OutletStatus] = []
 
     def __repr__(self):
         return (
@@ -207,10 +216,13 @@ class DliPowerSwitch(Component):
 
     def startup(self):
         pass
+
     def shutdown(self):
         pass
+
     def abort(self):
         pass
+
     def endpoint_startup(self):
         return self.startup()
 
@@ -235,13 +247,17 @@ class DliPowerSwitch(Component):
         return self.status()
 
     def status(self) -> PowerSwitchStatus:
-        return PowerSwitchStatus(
+        ret = PowerSwitchStatus(
             detected=self.detected,
             host=self.hostname,
             ipaddr=self.ipaddr,
             operational=self.operational,
             why_not_operational=self.why_not_operational,
         )
+        for outlet in self.outlet_names:
+            state = self.get_outlet_state(outlet)
+            ret.outlets.append(OutletStatus(name=outlet, state=state))
+        return ret
 
     @property
     def name(self):
