@@ -1,6 +1,5 @@
 import asyncio
 import datetime
-from gc import enable
 from logging import Logger
 
 import humanfriendly

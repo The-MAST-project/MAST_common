@@ -1,4 +1,3 @@
-import datetime
 import io
 import json
 import logging
@@ -6,7 +5,6 @@ import os
 import platform
 import re
 import socket
-import sys
 import tempfile
 from copy import deepcopy
 from pathlib import Path
@@ -27,7 +25,7 @@ from common.deep import deep_dict_difference, deep_dict_is_empty, deep_dict_upda
 from common.mast_logging import init_log
 
 from .identification import GroupConfig, UserConfig
-from .site import Site, Sites
+from .site import Site
 from .unit import UnitConfig
 
 logger = logging.getLogger("mast.unit." + __name__)
@@ -432,8 +430,17 @@ class Config:
         assert db is not None and section in db
         return db[section]
 
-    def get_sites(self) -> Sites:
-        return Sites.model_validate(self.fetch_config_section("sites"))
+    def get_sites(self) -> list[Site]:
+        """
+        Get all sites from MongoDB configuration
+        Returns list of Site objects
+        """
+        
+        sites = []
+        for site in self.db['sites']:
+            sites.append(Site(**site))
+        
+        return sites
 
     def get_specs(self) -> "SpecsConfig":  # type: ignore # noqa: F821
         from .specs import SpecsConfig
@@ -519,15 +526,13 @@ class Config:
 
     @property
     def sites(self) -> list[Site]:
-        return self.get_sites().root
+        return self.get_sites()
 
     @property
     def local_site(self) -> Site | None:
         found = [s for s in self.sites if s.local]
         if len(found) != 0:
             return found[0]
-
-
 
 def test_specs_config():
     print(json.dumps(Config().get_specs().model_dump(), indent=2))
