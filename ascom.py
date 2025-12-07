@@ -4,10 +4,10 @@ from abc import ABC, abstractmethod
 
 import pywintypes
 import win32com.client
-from pydantic import BaseModel
 
 from common.canonical import CanonicalResponse, CanonicalResponse_Ok
 from common.mast_logging import init_log
+from common.models.statuses import AscomDriverInfoModel, AscomStatus
 
 logger = logging.getLogger("mast.unit." + __name__)
 init_log(logger)
@@ -19,17 +19,6 @@ def ascom_driver_info(driver):
         "description": driver.Description,
         "version": driver.DriverVersion,
     }
-
-
-class AscomDriverInfoModel(BaseModel):
-    name: str
-    description: str
-    version: str
-    connected: bool = False
-
-
-class AscomStatus(BaseModel):
-    ascom: AscomDriverInfoModel
 
 
 class AscomDispatcher(ABC):
