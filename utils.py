@@ -330,12 +330,11 @@ def wslpath(path: str, to_windows: bool = False) -> str | None:
         return None
 
 
-def boxed_info(logger: logging.Logger, lines: str | list[str], center: bool = False):
+def boxed_log(logger: logging.Logger, lines: str | list[str], center: bool = False, level=logging.INFO):
     if isinstance(lines, str):
         lines = [lines]
     for line in boxed_lines(lines, center):
-        logger.info(line)
-
+        logger.log(level, line)
 
 def canonic_unit_name(name: str) -> str | None:
     """
