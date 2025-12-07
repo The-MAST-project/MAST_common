@@ -157,19 +157,20 @@ class ApiClient:
     def operational(self) -> bool:
         return len(self.errors) == 0
 
-    async def get(self, method: str, params: dict | None = None):
+    async def get(self, method: str, params: dict | None = None, timeout: float | None = None):
         url = f"{self.base_url}/{method}"
         op = f"{function_name()}, {url=}"
         self.errors = []
+        timeout = timeout or self.timeout
         async with httpx.AsyncClient(trust_env=False) as client:
             try:
                 response = await client.get(
-                    url=url, params=params, timeout=self.timeout
+                    url=url, params=params, timeout=timeout
                 )
 
             except httpx.TimeoutException:
                 self.errors.append(
-                    f"{op}: timeout after {self.timeout} seconds, {url=}"
+                    f"{op}: timeout after {timeout} seconds, {url=}"
                 )
                 self.detected = False
                 return CanonicalResponse(errors=self.errors)
@@ -187,10 +188,12 @@ class ApiClient:
         params: dict | None = None,
         data: dict | None = None,
         json: dict | None = None,
+        timeout: float | None = None,
     ):
         url = f"{self.base_url}/{method}"
         op = f"{function_name()}, {url=}"
         self.errors = []
+        timeout = timeout or self.timeout
         async with httpx.AsyncClient(trust_env=False) as client:
             try:
                 response = await client.put(
@@ -199,10 +202,10 @@ class ApiClient:
                     params=params,
                     data=data,
                     json=json,
-                    timeout=self.timeout,
+                    timeout=timeout,
                 )
             except httpx.TimeoutException:
-                self.append_error(f"{op}: timeout after {self.timeout} seconds, {url=}")
+                self.append_error(f"{op}: timeout after {timeout} seconds, {url=}")
                 self.detected = False
                 return CanonicalResponse(errors=self.errors)
 
@@ -331,7 +334,7 @@ class ControllerApi:
         port = service_conf.port
         try:
             assert site is not None
-            self.client = ApiClient(f"{site.project}-{site.name}-control", port=port)
+            self.client = ApiClient(site.controller_host, port=port)
         except ValueError as e:
             logger.error(f"{e}")
 
