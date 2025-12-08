@@ -2,30 +2,14 @@ from pydantic import BaseModel, model_validator
 
 from common.asi import ASI_294MM_SUPPORTED_BINNINGS_LITERAL
 
+from .covers import CoversConfig
+from .focuser import FocuserConfig
 from .imager import ImagerConfig
+from .mount import MountConfig
 from .phd2 import PHD2Config
 from .power import PowerSwitchConfig
 from .rois import RoisConfig
 from .stage import StageConfig
-
-
-class FocuserConfig(BaseModel):
-    """Configuration for the telescope focuser."""
-
-    ascom_driver: str
-    known_as_good_position: int
-
-
-class CoversConfig(BaseModel):
-    """Configuration for the telescope covers."""
-
-    ascom_driver: str
-
-
-class MountConfig(BaseModel):
-    """Configuration for the telescope mount."""
-
-    ascom_driver: str
 
 
 class ToleranceConfig(BaseModel):
