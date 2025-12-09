@@ -7,6 +7,7 @@ class FocuserConfig(BaseModel):
     """Configuration for the telescope focuser."""
 
     ascom_driver: str = Field(
+        default="ASCOM.PWI4.Focuser",
         json_schema_extra={
             "ui": {
                 "hidden": True,
@@ -14,6 +15,7 @@ class FocuserConfig(BaseModel):
         }
     )
     known_as_good_position: int = Field(
+        default=0,
         ge=0,
         lt=50000,
         json_schema_extra={
@@ -23,7 +25,7 @@ class FocuserConfig(BaseModel):
                 "unit": "ticks",
                 "label": "Known As Good Position",
                 "tooltip": "Latest successful autofocus position",
-                "required_capabilities": [UserCapabilities.CAN_CHANGE_CONFIGURATION],
             },
+            "required_capabilities": [UserCapabilities.CAN_CHANGE_CONFIGURATION.value],
         },
     )
