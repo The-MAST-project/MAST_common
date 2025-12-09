@@ -8,17 +8,22 @@ class FocuserConfig(BaseModel):
 
     ascom_driver: str = Field(
         json_schema_extra={
-            "hidden": True,
+            "ui": {
+                "hidden": True,
+            }
         }
     )
     known_as_good_position: int = Field(
         ge=0,
         lt=50000,
         json_schema_extra={
-            "editable": True,
-            "ui_widget": "number",
-            "ui_unit": "steps",
-            "tooltip": "A position known to be good for imaging",
-            "required_capabilities": [UserCapabilities.CAN_CHANGE_CONFIGURATION],
+            "ui": {
+                "editable": True,
+                "widget": "number",
+                "unit": "ticks",
+                "label": "Known As Good Position",
+                "tooltip": "Latest successful autofocus position",
+                "required_capabilities": [UserCapabilities.CAN_CHANGE_CONFIGURATION],
+            },
         },
     )
