@@ -1,3 +1,5 @@
+import logging
+
 from pydantic import BaseModel, model_validator
 
 from common.asi import ASI_294MM_SUPPORTED_BINNINGS_LITERAL
@@ -94,5 +96,8 @@ class UnitConfig(BaseModel):
         #     raise ValueError(
         #         f"if any of {self.imager.imager_type=} or {self.guider.method=} is 'phd2', then BOTH must be 'phd2'"
         #     )
-
+        logger = logging.getLogger("mast.config.unit")
+        logger.debug(
+            f"Validated UnitConfig for unit '{self.name}', focuser: '{self.focuser}'"
+        )
         return self
