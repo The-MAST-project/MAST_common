@@ -16,3 +16,4 @@ nosetests.xml
 /coverage.xml
 /pytest_*.xml
 **/__pycache__
+vault/
