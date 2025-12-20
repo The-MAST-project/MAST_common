@@ -12,4 +12,6 @@ class SpectrographModel(BaseModel):
     exposure_duration: float
     number_of_exposures: int | None = 1
     calibration: CalibrationModel | None
-    spec: HighspecModel | DeepspecModel = Field(discriminator="instrument")
+    setings: HighspecModel | DeepspecModel | None = Field(
+        discriminator="instrument", default=None
+    )

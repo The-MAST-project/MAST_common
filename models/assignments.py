@@ -1,43 +1,15 @@
 import socket
 from typing import Literal
 
-import astropy.coordinates
-from pydantic import BaseModel, Field, computed_field, field_validator, model_validator
+from pydantic import BaseModel, computed_field, model_validator
 
-from common.config import Config
 from common.const import Const
 from common.models.deepspec import DeepspecModel
 from common.models.highspec import HighspecModel
+from common.models.plans import Plan
 from common.models.spectrographs import SpectrographModel
-from common.parsers import parse_units
+from common.models.targets import Target
 from common.spec import Disperser
-
-
-class TargetModel(BaseModel):
-    ra: str | float = Field(description="RightAscension [sexagesimal or decimal]")
-    dec: str | float = Field(description="Declination [sexagesimal or decimal]")
-
-    @field_validator("ra")
-    @classmethod
-    def validate_ra(cls, value):
-        """
-        Validates RightAscension inputs
-        :param value: sexagesimal string or float
-        :return: a float
-        """
-        ra = astropy.coordinates.Longitude(value, unit="hour").value
-        return float(ra)  # converts np.float64 to float
-
-    @field_validator("dec")
-    @classmethod
-    def validate_dec(cls, value):
-        """
-        Validates Declination inputs
-        :param value: sexagesimal string or float
-        :return: a float
-        """
-        dec = astropy.coordinates.Latitude(value, unit="deg").value
-        return float(dec)  # converts np.float64 to float
 
 
 class Initiator(BaseModel):
@@ -85,35 +57,17 @@ class Initiator(BaseModel):
         return cls(hostname=hostname, fqdn=fqdn, ipaddr=ipaddr)
 
 
-class TaskSettingsModel(BaseModel):
-    ulid: str | None = Field(default=None, description="Unique ID")
-    file: str | None = None
-    owner: str | None = None
-    merit: int | None = 1
-    quorum: int | None = Field(default=1, description="Least number of units")
-    timeout_to_guiding: int | None = Field(
-        default=600, description="How long to wait for all units to achieve 'guiding'"
-    )
-    autofocus: bool | None = Field(
-        default=False, description="Should the units start with 'autofocus'"
-    )
-    run_folder: str | None = None
-    production: bool | None = Field(
-        default=True, description="if 'false' some availability tests are more relaxed"
-    )
-
-
 class AssignmentModel(BaseModel):
     initiator: Initiator
-    task: TaskSettingsModel
+    plan: Plan
 
 
 class UnitAssignmentModel(AssignmentModel):
-    target: TargetModel
+    target: Target
 
     @computed_field
     def autofocus(self) -> bool:
-        return self.task.autofocus if self.task.autofocus else False
+        return self.plan.autofocus if self.plan.autofocus else False
 
 
 class DeepSpecAssignment(BaseModel):
@@ -137,51 +91,5 @@ class SpectrographAssignmentModel(BaseModel):
 
     instrument: Literal["deepspec", "highspec"]
     initiator: Initiator
-    task: TaskSettingsModel
+    # plan: PlanSettingsModel
     spec: SpectrographModel
-
-
-class TransmittedAssignment(BaseModel):
-    """
-    This is what gets sent out via UnitApi or SpecApi
-    """
-
-    hostname: str
-    fqdn: str
-    ipaddr: str | None
-    assignment: UnitAssignmentModel | SpectrographAssignmentModel
-
-    @classmethod
-    def from_site_colon_unit(
-        cls, site_colon_unit: str, assignment
-    ) -> "TransmittedAssignment":
-        site_name, unit_id = site_colon_unit.split(":")
-        sites = Config().sites
-        site = [s for s in sites if site_name == s.name][0]
-
-        if unit_id.isdigit():
-            unit_id = f"{int(unit_id):02}"
-
-        hostname = f"{site.project}{unit_id}"
-        fqdn = f"{hostname}.{site.domain}"
-        try:
-            ipaddr = socket.gethostbyname(hostname)
-        except socket.gaierror:
-            ipaddr = None
-
-        return cls(hostname=hostname, fqdn=fqdn, ipaddr=ipaddr, assignment=assignment)
-
-    @classmethod
-    def from_units_specifier(
-        cls, units_specifier: str | list[str], assignment
-    ) -> list["TransmittedAssignment"]:
-        if isinstance(units_specifier, str):
-            units_specifier = [units_specifier]
-        ret: list[TransmittedAssignment] = []
-        for site_colon_unit in parse_units(units_specifier):
-            remote = TransmittedAssignment.from_site_colon_unit(
-                site_colon_unit, assignment=assignment
-            )
-            if remote:
-                ret.append(remote)
-        return ret
