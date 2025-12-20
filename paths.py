@@ -7,9 +7,10 @@ from common.filer import Filer
 
 
 class PathMaker:
-
     @staticmethod
-    def make_seq(folder: str, start_with: int | None = None, dont_bump: bool = False) -> str:
+    def make_seq(
+        folder: str, start_with: int | None = None, dont_bump: bool = False
+    ) -> str:
         """
         Creates a sequence number by maintaining a '.seq' file.
         The sequence may be camera specific or camera agnostic.
@@ -20,7 +21,13 @@ class PathMaker:
         seq_file = Path(folder) / "seq.txt"
         seq_file.parent.mkdir(parents=True, exist_ok=True)
 
-        seq = int(seq_file.read_text()) if seq_file.exists() else start_with if start_with is not None else 0
+        seq = (
+            int(seq_file.read_text())
+            if seq_file.exists()
+            else start_with
+            if start_with is not None
+            else 0
+        )
         if not dont_bump:
             seq += 1
             seq_file.write_text(str(seq))
@@ -31,7 +38,7 @@ class PathMaker:
     def make_daily_folder_name(root: str | None = None) -> str:
         if not root:
             ram = Filer().ram
-            assert(ram)
+            assert ram
             root = ram.root
         d = Path(root) / datetime.datetime.now().strftime("%Y-%m-%d")
         d.mkdir(parents=True, exist_ok=True)
@@ -75,7 +82,7 @@ class PathMaker:
         else:
             if not root:
                 ram = Filer().ram
-                assert(ram)
+                assert ram
                 root = ram.root
             guiding_folder = Path(self.make_daily_folder_name(root=root)) / "Guidings"
 
@@ -90,7 +97,7 @@ class PathMaker:
         else:
             if not root:
                 ram = Filer().ram
-                assert(ram)
+                assert ram
                 root = ram.root
             spirals_folder = Path(self.make_daily_folder_name(root=root)) / "Spirals"
 
@@ -122,8 +129,8 @@ class PathMaker:
     #     return os.path.join(daily_folder, 'log.txt')
 
     @staticmethod
-    def make_tasks_folder() -> str:
-        return str(Path(Filer().shared.root) / "tasks")
+    def make_plans_folder() -> str:
+        return str(Path(Filer().shared.root) / "plans")
 
     @staticmethod
     def make_run_folder():
