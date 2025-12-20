@@ -12,7 +12,6 @@ init_log(logger)
 
 
 class FsWatcher:
-
     def __init__(self, folder: str, handlers: dict):
         self.folder = folder
         self.observer = Observer()
@@ -26,7 +25,7 @@ class FsWatcher:
         try:
             while True:
                 time.sleep(5)
-        except:
+        except Exception as _:
             self.observer.stop()
             logger.info("Observer Stopped")
 
@@ -38,7 +37,6 @@ class FsWatcher:
 
 
 class Handler(FileSystemEventHandler):
-
     def __init__(self, handlers):
         self.handlers = handlers
 
