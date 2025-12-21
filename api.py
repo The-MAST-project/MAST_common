@@ -85,6 +85,9 @@ class ApiClient:
         if hostname is None and ipaddr is None:
             raise ValueError("both 'hostname' and 'ipaddr' are None")
 
+        if ipaddr is None and hostname is not None:
+            ipaddr = socket.gethostbyname(hostname)
+
         if ipaddr is not None and domain is None:
             raise ValueError(
                 "if 'ipaddr' is provided a 'domain' must be provided as well"
@@ -157,21 +160,20 @@ class ApiClient:
     def operational(self) -> bool:
         return len(self.errors) == 0
 
-    async def get(self, method: str, params: dict | None = None, timeout: float | None = None):
+    async def get(
+        self, method: str, params: dict | None = None, timeout: float | None = None
+    ):
         url = f"{self.base_url}/{method}"
-        op = f"{function_name()}, {url=}"
+        op = f"{self.__class__.__name__}({url=}, params={params})"
         self.errors = []
         timeout = timeout or self.timeout
+        logger.debug(op)
         async with httpx.AsyncClient(trust_env=False) as client:
             try:
-                response = await client.get(
-                    url=url, params=params, timeout=timeout
-                )
+                response = await client.get(url=url, params=params, timeout=timeout)
 
             except httpx.TimeoutException:
-                self.errors.append(
-                    f"{op}: timeout after {timeout} seconds, {url=}"
-                )
+                self.errors.append(f"{op}: timeout after {timeout} seconds")
                 self.detected = False
                 return CanonicalResponse(errors=self.errors)
 
@@ -191,9 +193,10 @@ class ApiClient:
         timeout: float | None = None,
     ):
         url = f"{self.base_url}/{method}"
-        op = f"{function_name()}, {url=}"
+        op = f"{self.__class__.__name__}.put({url=}, params={params}, data={data}, json={json})"
         self.errors = []
         timeout = timeout or self.timeout
+        logger.debug(op)
         async with httpx.AsyncClient(trust_env=False) as client:
             try:
                 response = await client.put(
@@ -296,10 +299,11 @@ class UnitApi(ApiClient):
         self,
         hostname: str | None = None,
         ipaddr: str | None = None,
-        domain: ApiDomain | None = None,
         device: str | None = None,
     ):
-        super().__init__(hostname=hostname, ipaddr=ipaddr, device=device, domain=domain)
+        super().__init__(
+            hostname=hostname, ipaddr=ipaddr, device=device, domain=ApiDomain.Unit
+        )
 
 
 class SpecApi(ApiClient):
@@ -307,16 +311,17 @@ class SpecApi(ApiClient):
         self.client = None
 
         if site_name:
-            site = [s for s in Config().sites if s.name == site_name][0]
+            site = [s for s in Config().get_sites() if s.name == site_name][0]
         else:
             site: Site | None = Config().local_site
+
         service_conf = Config().get_service(service_name="spec")
         if service_conf is None:
             logger.error("Spec service configuration not found")
             return
         port = service_conf.port
         assert site is not None
-        super().__init__(hostname=f"{site.project}-{site.name}-spec", port=port)
+        super().__init__(hostname=site.spec_host, port=port, domain=ApiDomain.Spec)
 
 
 class ControllerApi:
@@ -334,7 +339,9 @@ class ControllerApi:
         port = service_conf.port
         try:
             assert site is not None
-            self.client = ApiClient(site.controller_host, port=port)
+            self.client = ApiClient(
+                site.controller_host, port=port, domain=ApiDomain.Control
+            )
         except ValueError as e:
             logger.error(f"{e}")
 
