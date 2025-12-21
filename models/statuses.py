@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -15,8 +15,10 @@ class AscomDriverInfoModel(BaseModel):
     version: str
     connected: bool = False
 
+
 class AscomStatus(BaseModel):
     ascom: AscomDriverInfoModel
+
 
 # Covers stuff
 # https://ascom-standards.org/Help/Developer/html/T_ASCOM_DeviceInterface_CoverStatus.htm
@@ -28,11 +30,13 @@ class CoversState(Enum):
     Unknown = 4
     Error = 5
 
+
 class CoverStatus(PowerStatus, AscomStatus, ComponentStatus):
     target_verbal: str | None = None
     state: CoversState | None = None
     state_verbal: str | None = None
     date: str | None = None
+
 
 # Focuser stuff
 class FocuserStatus(PowerStatus, AscomStatus, ComponentStatus):
@@ -45,11 +49,13 @@ class FocuserStatus(PowerStatus, AscomStatus, ComponentStatus):
     moving: bool = False
     date: str | None = None
 
+
 # Guider stuff
 class SkyQualityStatus(BaseModel):
     score: float | None = None
     state: str | None = None
     latest_update: str | None = None
+
 
 class PHD2GuiderStatus(BaseModel):
     identifier: str | None = None
@@ -58,6 +64,7 @@ class PHD2GuiderStatus(BaseModel):
     app_state: str | None = None
     avg_dist: float | None = None
     sky_quality: SkyQualityStatus | None = None
+
 
 class GuiderStatus(BaseModel):
     activities: int | None = None
@@ -99,6 +106,7 @@ class MountStatus(PowerStatus, AscomStatus, ComponentStatus):
     spiral: SpiralSettings | None = None
     date: str | None = None
 
+
 # PHD2 Imager status
 class PHD2ImagerStatus(BaseModel):
     identifier: str | None = None
@@ -109,19 +117,60 @@ class PHD2ImagerStatus(BaseModel):
     why_not_operational: list[str] = []
     connected: bool = False
 
-# Unit status stuff
-class BaseUnitStatus(BaseModel):
+
+class BaseStatus(BaseModel):
     """Base class for unit status."""
+
     powered: bool
     detected: bool
     operational: bool
+    why_not_operational: list[str] | None = None
 
-class ShortUnitStatus(BaseUnitStatus):
+
+class ShortStatus(BaseStatus):
     """Unit status returned by the controller when it cannot communicate with the unit"""
+
     type: Literal["short"] = "short"
 
-class FullUnitStatus(BaseUnitStatus, ComponentStatus, PowerStatus):
+
+class NotPoweredStatus(ShortStatus):
+    def model_post_init(self, __context: Any) -> ShortStatus:
+        return ShortStatus(
+            powered=False,
+            detected=False,
+            operational=False,
+            why_not_operational=["Not powered"],
+        )
+
+
+class NotDetectedStatus(ShortStatus):
+    def model_post_init(self, __context: Any) -> ShortStatus:
+        return ShortStatus(
+            powered=True,
+            detected=False,
+            operational=False,
+            why_not_operational=["Not detected"],
+        )
+
+
+class NotOperationalStatus(ShortStatus):
+    def model_post_init(self, __context: Any) -> ShortStatus:
+        if "reasons" in __context:
+            reasons = __context["reasons"]
+        else:
+            reasons = ["Not operational"]
+
+        return ShortStatus(
+            powered=True,
+            detected=True,
+            operational=False,
+            why_not_operational=reasons,
+        )
+
+
+class FullUnitStatus(BaseStatus, ComponentStatus, PowerStatus):
     """Full unit status with all components, returned from the unit itself."""
+
     type: Literal["full"] = "full"
     id: int
     guiding: bool = False
@@ -141,18 +190,27 @@ class FullUnitStatus(BaseUnitStatus, ComponentStatus, PowerStatus):
 
 
 # Using Annotated with Discriminator (Pydantic v2 recommended approach)
-UnitStatus = Annotated[
-    ShortUnitStatus | FullUnitStatus,
-    Field(discriminator="type")
-]
+UnitStatus = Annotated[ShortStatus | FullUnitStatus, Field(discriminator="type")]
 
 
 # Example usage in an API response model:
 class UnitStatusResponse(BaseModel):
     """API response containing unit status."""
+
     unit_name: str
     timestamp: str
     status: UnitStatus  # This is the discriminated union
+
+
+class DeepSpecStatus(BaseModel):
+    type: Literal["deepspec"] = "deepspec"
+
+
+class HighSpecStatus(BaseModel):
+    type: Literal["highspec"] = "highspec"
+
+
+SpecStatus = Annotated[DeepSpecStatus | HighSpecStatus, Field(discriminator="type")]
 
 # # Example usage:
 # if __name__ == "__main__":
