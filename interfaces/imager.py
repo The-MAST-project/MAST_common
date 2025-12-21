@@ -16,7 +16,7 @@ from common.mast_logging import init_log
 from common.paths import PathMaker
 from common.rois import SkyRoi, SpecRoi, UnitRoi
 from common.utils import function_name
-from src.imagers import Imager
+from imagers import Imager
 
 logger = logging.Logger(__name__)
 init_log(logger)
