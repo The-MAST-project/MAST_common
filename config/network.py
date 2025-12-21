@@ -3,7 +3,7 @@ from logging import Logger
 
 from pydantic import BaseModel, model_validator
 
-from ..mast_logging import init_log
+from common.mast_logging import init_log
 
 logger = Logger("mast-config-network")
 init_log(logger)

@@ -3,6 +3,8 @@ from abc import ABC, abstractmethod
 from astropy.coordinates import Angle
 from pydantic import BaseModel
 
+from common.const import Const
+
 
 class SolvingSolution(BaseModel):
     ra_rads: float | None = None
@@ -59,7 +61,7 @@ class SolvingTolerance:
 class SolverInterface(ABC):
 
     @abstractmethod
-    def solve(self, unit, settings, target) -> SolvingResult:
+    def solve(self, unit, settings, target, phase: Const.SolvingPhase) -> SolvingResult:
         pass
 
     @abstractmethod

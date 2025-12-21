@@ -3,16 +3,16 @@ import logging
 from enum import IntEnum, auto
 from typing import Literal, get_args
 
-logger = logging.Logger("ASI")
+logger = logging.Logger("asi")
 
 ASI_294MM_SUPPORTED_BINNINGS_LITERAL = Literal[1, 2] # the binnings implemented by the camera firmware
-ASI_294MM_SUPPORTED_BINNINGS_SET: set = {1, 2}
+ASI_294MM_SUPPORTED_BINNINGS_SET = set(get_args(ASI_294MM_SUPPORTED_BINNINGS_LITERAL))
 ASI_294MM_WIDTH = 8828
 ASI_294MM_HEIGHT = 5644
 ASI_294MM_DEFAULT_GAIN = 170
 
 #
-# Extracted at runtime from the ZWO ASI SDK for camera model: ZWO ASI294MM Pro
+# Extracted at runtime from the ZWO asi SDK for camera model: ZWO ASI294MM Pro
 #
 class Control(IntEnum):
     Gain = 0  # Gain,
@@ -279,15 +279,15 @@ def gain_percent_to_absolute(percent: float) -> int:
 
 def make_pythonian_classes():
     """
-    Makes pythonian classes from ASI internals (controls, etc.)
+    Makes pythonian classes from asi internals (controls, etc.)
     """
     import pyzwoasi as asi
 
     n_cameras = asi.getNumOfConnectedCameras()
-    logger.info(f"found {n_cameras} ASI camera(s), SDK={asi.getSDKVersion()}")
+    logger.info(f"found {n_cameras} asi camera(s), SDK={asi.getSDKVersion()}")
 
     if n_cameras < 1:
-        logger.error("no ASI cameras")
+        logger.error("no asi cameras")
         exit(0)
 
     cam_id = 0
@@ -319,7 +319,7 @@ def make_pythonian_classes():
     entry_lines.append("}")
 
     print(
-        f"#\n# Extracted at runtime from the ZWO ASI SDK for camera model: {model}\n#"
+        f"#\n# Extracted at runtime from the ZWO asi SDK for camera model: {model}\n#"
     )
     for line in enum_lines:
         print(line)
@@ -334,7 +334,7 @@ def list_cameras():
 
     n_cameras = asi.getNumOfConnectedCameras()
     print()
-    print(f"found {n_cameras} ASI camera(s), SDK='{asi.getSDKVersion()}'")
+    print(f"found {n_cameras} asi camera(s), SDK='{asi.getSDKVersion()}'")
 
     # for id in range(n_cameras):
     #     info = asi.getCameraProperty(id)

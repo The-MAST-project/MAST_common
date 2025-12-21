@@ -9,14 +9,13 @@ import numpy as np
 import ulid
 from pydantic import BaseModel, Field
 
-import common.ASI as ASI
+import common.asi as asi
 from common.dlipowerswitch import PowerStatus
 from common.interfaces.components import Component, ComponentStatus
 from common.mast_logging import init_log
 from common.paths import PathMaker
 from common.rois import SkyRoi, SpecRoi, UnitRoi
 from common.utils import function_name
-from imagers import Imager
 
 logger = logging.Logger(__name__)
 init_log(logger)
@@ -46,7 +45,7 @@ class ImagerRoi(BaseModel):
     - MAST constraints:
         - The center pixel is expected to be on the optical axis of the system, at any binning
 
-    - ASI ZWO constraints:
+    - asi ZWO constraints:
         - At any supported binning the width must be congruent to mod 8 == 0 and the height must be congruent to mod 2 == 0
 
     Since both width and height are EVEN there is no center-pixel.  The center pixel will always be the highest pixel
@@ -59,12 +58,12 @@ class ImagerRoi(BaseModel):
 
     x: int = 0  # start.x
     y: int = 0  # start.y
-    width: int = ASI.ASI_294MM_WIDTH
-    height: int = ASI.ASI_294MM_HEIGHT
+    width: int = asi.ASI_294MM_WIDTH
+    height: int = asi.ASI_294MM_HEIGHT
     _center: ImagerPixel | None = None
 
     def model_post_init(self, context: dict[str, Any] | None):
-        from common.ASI import ASI_294MM_SUPPORTED_BINNINGS_SET
+        from common.asi import ASI_294MM_SUPPORTED_BINNINGS_SET
 
         if self._center:    # _center was specified, it will govern width and height
             pass
@@ -78,7 +77,7 @@ class ImagerRoi(BaseModel):
         self.width = half_width * 2
         self.height = half_height *2
 
-        # apply ASI constraints
+        # apply asi constraints
         self.width -= self.width % (8 * max(ASI_294MM_SUPPORTED_BINNINGS_SET))
         self.height -= self.height % (2 * max(ASI_294MM_SUPPORTED_BINNINGS_SET))
 
@@ -161,7 +160,7 @@ class ImagerSettings(BaseModel):
     seconds: float
     base_folder: str | None = None
     image_path: str | None = None
-    binning: ASI.ASI_294MM_SUPPORTED_BINNINGS_LITERAL
+    binning: asi.ASI_294MM_SUPPORTED_BINNINGS_LITERAL
     gain: int | None = None
     roi: ImagerRoi | None = None
     tags: dict | None = {}
@@ -171,7 +170,7 @@ class ImagerSettings(BaseModel):
     file_name_parts: list[str] = Field(default=[], exclude=True)
     folder: str | None = Field(default=None, exclude=True)
     dont_bump_sequence: bool = False
-    format: ASI.ValidOutputFormats = "raw16"
+    format: asi.ValidOutputFormats = "raw16"
 
     def model_post_init(self, context: dict[str, Any] | None):  # noqa: C901
         defaults: ImagerSettings | None = None
@@ -306,7 +305,7 @@ class ImagerExposureSeries:
 class ImagerInterface(Component, ABC):
     current_exposure_series: ImagerExposureSeries | None = None
     ccd_temp_at_mid_exposure: float | None = None
-    parent_imager: Imager | None = None
+    parent_imager = None
 
     @property
     @abstractmethod

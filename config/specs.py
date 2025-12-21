@@ -45,7 +45,7 @@ class WheelConfig(BaseModel):
 
 
 class GratingConfig(BaseModel):
-    position: int  # for focusing the HighSpec camera
+    focus_position: int  # for focusing the HighSpec camera
 
 
 class DeepspecConfig(BaseModel):
@@ -57,8 +57,8 @@ class HighspecConfig(BaseModel):
 
     power: OutletConfig
     settings: NewtonSettingsConfig
-    camera: str # which camera to use, e.g. 'qhy600' or 'newton'
-    valid_cameras: list[str] # list of valid camera names
+    camera: str  # which camera to use, e.g. 'qhy600' or 'newton'
+    valid_cameras: list[str]  # list of valid camera names
 
 
 class ServerConfig(BaseModel):

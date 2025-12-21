@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict, Field, RootModel, model_validator
+from pydantic import BaseModel, ConfigDict, model_validator
 
 
 class Building(BaseModel):
@@ -79,5 +79,3 @@ class Site(BaseModel):
         # "lamps": doc["lamps"],
 
 
-class Sites(RootModel[list[Site]]):
-    root: list[Site] = Field(min_length=0)

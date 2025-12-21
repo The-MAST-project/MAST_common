@@ -79,7 +79,8 @@ class Subsystem:
 
 
 def parse_params(memory: shared_memory.SharedMemory, logger_: logging.Logger) -> dict:
-    bytes_array = bytearray(memory.buf)
+    if memory.buf is not None:
+        bytes_array = bytearray(memory.buf)
     string_array = bytes_array.decode(encoding="utf-8")
     data = string_array[: string_array.find("\x00")]
     logger_.info(f"data: '{data}'")
@@ -101,8 +102,9 @@ def store_params(memory: shared_memory.SharedMemory, d: dict):
     for k, v in d.items():
         params.append(f"{k}={v}")
     data = " ".join(params)
-    memory.buf[: memory.size] = bytearray(memory.size)  # wipe it clean
-    memory.buf[: len(data)] = bytearray(data.encode(encoding="utf-8"))
+    if memory.buf is not None:
+        memory.buf[: memory.size] = bytearray(memory.size)  # wipe it clean
+        memory.buf[: len(data)] = bytearray(data.encode(encoding="utf-8"))
 
 
 def time_stamp():
@@ -328,12 +330,11 @@ def wslpath(path: str, to_windows: bool = False) -> str | None:
         return None
 
 
-def boxed_info(logger: logging.Logger, lines: str | list[str], center: bool = False):
+def boxed_log(logger: logging.Logger, lines: str | list[str], center: bool = False, level=logging.INFO):
     if isinstance(lines, str):
         lines = [lines]
     for line in boxed_lines(lines, center):
-        logger.info(line)
-
+        logger.log(level, line)
 
 def canonic_unit_name(name: str) -> str | None:
     """
@@ -394,11 +395,11 @@ class Timeout(AbstractContextManager):
         future = self.executor.submit(func, *args, **kwargs)
         try:
             return future.result(timeout=self.timeout)
-        except FuturesTimeout:
+        except FuturesTimeout as exc:
             future.cancel()
             raise TimeoutError(
                 f"Function call exceeded timeout of {self.timeout:.2f} seconds"
-            )
+            ) from exc
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.executor.shutdown(wait=False)

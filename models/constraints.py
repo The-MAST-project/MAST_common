@@ -1,28 +1,28 @@
-from pydantic import BaseModel
-from typing import Optional
 import datetime
+
+from pydantic import BaseModel
 
 
 class MoonConstraintModel(BaseModel):
-    max_phase: Optional[float] = None
-    min_distance: Optional[float] = None
+    max_phase: float | None = None
+    min_distance: float | None = None
 
 
 class AirmassConstraintModel(BaseModel):
-    max: Optional[float] = None
+    max: float | None = None
 
 
 class SeeingConstraintModel(BaseModel):
-    max: Optional[float] = None
+    max: float | None = None
 
 
 class TimeWindowModel(BaseModel):
-    start: Optional[datetime.datetime]
-    end: Optional[datetime.datetime]
+    start: datetime.datetime | None
+    end: datetime.datetime | None
 
 
 class ConstraintsModel(BaseModel):
-    moon: Optional[MoonConstraintModel] = None
-    airmass: Optional[AirmassConstraintModel] = None
-    seeing: Optional[SeeingConstraintModel] = None
-    time_window: Optional[TimeWindowModel] = None
+    moon: MoonConstraintModel | None = None
+    airmass: AirmassConstraintModel | None = None
+    seeing: SeeingConstraintModel | None = None
+    time_window: TimeWindowModel | None = None
