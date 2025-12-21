@@ -28,6 +28,7 @@ function ControllerApi() {
 
 function UnitApi() {
     local unit="${1}"
+    shift 1
     local unit_prefix="http://${unit}:8000/${mast_api}/unit"
     local url="${@}"
 
