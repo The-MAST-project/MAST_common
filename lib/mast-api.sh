@@ -8,8 +8,8 @@ mast_api="mast/api/v1"
 
 function Wget() {
     local url="${@}"
-
-    wget --no-proxy -o /dev/null -O - ${url} | jq
+ 
+    wget --no-proxy -o /dev/null -O - ${url} | jq -C
 }
 
 function ControllerApi() {
