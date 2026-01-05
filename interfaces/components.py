@@ -17,6 +17,11 @@ class ComponentStatus(BaseModel):
 
 
 class Component(ABC, Activities):
+
+    def __init__(self, activities_type):
+        Activities.__init__(self)
+        self.activities = activities_type(0)
+
     @abstractmethod
     def startup(self):
         """
