@@ -113,17 +113,25 @@ def time_stamp():
 
 def function_name():
     frame = inspect.currentframe()
-    if frame is None or frame.f_back is None or frame.f_back.f_back is None:
+    if frame is None or frame.f_back is None:
         return "UnknownFunction"
     try:
-        outer_frame = frame.f_back.f_back  # skip current and caller
-        func_name = outer_frame.f_code.co_name
-        self_obj = outer_frame.f_locals.get("self")
-        if self_obj:
-            class_name = self_obj.__class__.__name__
-            return f"{class_name}.{func_name}"
-        else:
-            return func_name
+        caller_frame = frame.f_back
+        func_name = caller_frame.f_code.co_name
+
+        module = inspect.getmodule(caller_frame)
+        class_name = None
+        if 'self' in caller_frame.f_locals:
+            class_name = caller_frame.f_locals['self'].__class__.__name__
+        elif 'cls' in caller_frame.f_locals:
+            class_name = caller_frame.f_locals['cls'].__name__
+        ret = ''
+        if module:
+            ret += f"[{module.__name__}]."
+        if class_name:
+            ret += f"{class_name}."
+        ret += func_name
+        return ret
     finally:
         del frame  # avoid reference cycles
 
