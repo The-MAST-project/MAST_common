@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 
 from pydantic import BaseModel
 
-from common.activities import Activities, verbalize
+from common.activities import Activities
 
 
 class ComponentStatus(BaseModel):
@@ -105,7 +105,7 @@ class Component(ABC, Activities):
             detected=self.detected,
             connected=self.connected,
             activities=int(self.activities),
-            activities_verbal=verbalize(self.activities),
+            activities_verbal=self.activities_verbal(),
             operational=self.operational,
             why_not_operational=self.why_not_operational,
             was_shut_down=self.was_shut_down,
