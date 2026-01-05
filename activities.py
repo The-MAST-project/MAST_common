@@ -3,6 +3,7 @@ import datetime
 import logging
 import socket
 import threading
+from collections import deque
 from enum import IntFlag, auto
 
 import humanfriendly
@@ -10,12 +11,10 @@ from pydantic import BaseModel
 
 from common.mast_logging import init_log
 
-logger = logging.Logger("mast." + __name__)
+logger = logging.getLogger("mast." + __name__)
 init_log(logger)
 
-hostname = None
-if not hostname:
-    hostname = socket.gethostname()
+hostname = socket.gethostname()
 
 
 class ActivityNotification(BaseModel):
@@ -51,7 +50,12 @@ class Activities:
     * A timing construct that monitors the start, end and duration of the activity
 
     The activity can be started, ended and checked if in-progress
+
+    Notifications are queued and sent asynchronously by a background worker thread.
     """
+
+    NOTIFICATION_QUEUE_SIZE = 10
+    NOTIFICATION_TIMEOUT = 2.0
 
     Idle = 0
 
@@ -62,15 +66,60 @@ class Activities:
         self.timings: dict[IntFlag, Timing] = {}
         self.details: dict[IntFlag, str] = {}
         self.lock = threading.Lock()
-        self.notification_client = ControllerApi("wis").client
-        if self.notification_client:
-            self.notification_client.timeout = 2
 
-    def notify_activity(self, data):
+        # Notification queue and worker thread
+        self.notification_queue = deque(maxlen=self.NOTIFICATION_QUEUE_SIZE)
+        self.notification_event = threading.Event()
+        self.stop_event = threading.Event()
+
+        self.notification_client = ControllerApi(site_name="wis").client
         if self.notification_client:
-            asyncio.run(
-                self.notification_client.put("activity_notification", data=data)
-            )
+            self.notification_client.timeout = self.NOTIFICATION_TIMEOUT
+
+        # Start worker thread
+        self.worker_thread = threading.Thread(
+            target=self._notification_worker,
+            name="ActivityNotificationWorker",
+            daemon=True
+        )
+        self.worker_thread.start()
+
+    def _notification_worker(self):
+        """Background worker that sends queued notifications"""
+        while not self.stop_event.is_set():
+            # Wait for signal or timeout
+            self.notification_event.wait(timeout=1.0)
+
+            # Process all queued notifications
+            while True:
+                with self.lock:
+                    if not self.notification_queue:
+                        self.notification_event.clear()
+                        break
+                    data = self.notification_queue[0]
+
+                # Try to send
+                try:
+                    if self.notification_client:
+                        asyncio.run(
+                            self.notification_client.put("activity_notification", data=data)
+                        )
+                    # Success - remove from queue
+                    with self.lock:
+                        if self.notification_queue and self.notification_queue[0] == data:
+                            self.notification_queue.popleft()
+                except Exception as e:
+                    logger.error(f"Failed to send activity notification: {e}")
+                    # Keep in queue for retry
+                    break
+
+    def _enqueue_notification(self, data: str):
+        """Add notification to queue and signal worker if needed"""
+        with self.lock:
+            was_empty = len(self.notification_queue) == 0
+            self.notification_queue.append(data)
+            if was_empty:
+                self.notification_event.set()
 
     def start_activity(
         self,
@@ -101,14 +150,13 @@ class Activities:
             info += f" details='{details}'"
         logger.info(info)
 
-        # data = ActivityNotification(
-        #     activity=activity, activity_verbal=activity.__repr__(), started=True
-        # ).model_dump_json()
-        # try:
-        #     loop = asyncio.get_event_loop()
-        #     loop.create_task(self.notify_activity(data))
-        # except RuntimeError:
-        #     asyncio.run(self.notify_activity(data))
+        data = ActivityNotification(
+            activity=int(activity),
+            activity_verbal=activity.__repr__(),
+            started=True,
+            details=details
+        ).model_dump_json()
+        self._enqueue_notification(data)
 
     def end_activity(self, activity: IntFlag, label: str | None = None):
         """
@@ -122,8 +170,11 @@ class Activities:
         with self.lock:
             self.activities &= ~activity
 
-        if activity in self.timings:
-            self.timings[activity].end()
+        if activity not in self.timings:
+            logger.warning(f"Cannot end activity {activity}: timing not found.")
+            return
+
+        self.timings[activity].end()
 
         duration = humanfriendly.format_timespan(
             self.timings[activity].duration.total_seconds()
@@ -137,16 +188,13 @@ class Activities:
         info += f", duration='{duration}'"
         logger.info(info)
 
-        # data = ActivityNotification(
-        #     activity=int(activity),
-        #     activity_verbal=activity.__repr__(),
-        #     started=False,
-        #     duration=duration,
-        # ).model_dump_json()
-
-        # threading.Thread(
-        #     name="ActivityNotifier", target=self.notify_activity, args=(data,)
-        # ).start()
+        data = ActivityNotification(
+            activity=int(activity),
+            activity_verbal=activity.__repr__(),
+            started=False,
+            duration=duration,
+        ).model_dump_json()
+        self._enqueue_notification(data)
 
     def is_active(self, activity):
         """
@@ -167,9 +215,25 @@ class Activities:
             idle = self.activities == 0
         return idle
 
-    def __repr__(self):
-        return verbalize(self.activities)
+    def shutdown(self):
+        """Gracefully shutdown the notification worker"""
+        self.stop_event.set()
+        self.notification_event.set()
+        self.worker_thread.join(timeout=5.0)
 
+
+    def activities_verbal(self) -> str:
+        """
+        Converts an activities IntFlag into a verbal string
+        :param activities:
+        :return:
+        """
+        if self.activities == 0:
+            verbal = "Idle"
+        else:
+            verbal = self.activities.__repr__().rpartition(".")[2]
+            verbal = verbal.partition(':')[0].replace('|', ', ')
+        return verbal
 
 class UnitActivities(IntFlag):
     Idle = 0
@@ -267,19 +331,6 @@ class AssignmentActivities(IntFlag):
 
 class PowerSwitchActivities(IntFlag):
     Idle = 0
-
-def verbalize(activities: IntFlag) -> str:
-    """
-    Converts an activities IntFlag into a verbal string
-    :param activities:
-    :return:
-    """
-    if activities == 0:
-        verbal = "Idle"
-    else:
-        verbal = activities.__repr__().rpartition(".")[2]
-        verbal = verbal.partition(':')[0].replace('|', ', ')
-    return verbal
 
 if __name__ == "__main__":
     a = Activities()
