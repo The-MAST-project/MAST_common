@@ -9,8 +9,10 @@ from threading import Lock
 import httpx
 from pydantic import BaseModel
 
+from common.activities import PowerSwitchActivities
 from common.config import Config
 from common.config.power import PowerSwitchConfig
+from common.config.unit import UnitConfig
 from common.const import Const
 from common.interfaces.components import Component
 from common.mast_logging import init_log
@@ -51,7 +53,7 @@ class DliPowerSwitch(Component):
     _instantiated: list[str] = []
 
     def __init__(self, hostname: str, ipaddr: str | None, conf: PowerSwitchConfig):
-        Component.__init__(self)
+        Component.__init__(self, PowerSwitchActivities)
         self.hostname = hostname
         self.ipaddr = ipaddr
         self.conf = conf
@@ -302,12 +304,16 @@ class PowerSwitchFactory:
         if name is None:
             unit_name = socket.gethostname()
             power_switch_name = unit_name.replace("mast", "mastps")
-            power_switch_config = Config().get_unit(unit_name).power_switch
+            unit_conf: UnitConfig | None = Config().get_unit(unit_name)
+            assert unit_conf is not None
+            power_switch_config = unit_conf.power_switch
         else:
             unit_name = canonic_unit_name(name)
             if unit_name is not None:
+                unit_conf: UnitConfig | None = Config().get_unit(unit_name)
+                assert unit_conf is not None
+                power_switch_config = unit_conf.power_switch
                 power_switch_name = unit_name.replace("mast", "mastps")
-                power_switch_config = Config().get_unit(unit_name).power_switch
             elif (
                 name.startswith("mast-spec-ps")
                 and name[len("mast-spec-ps") :].isdigit()
