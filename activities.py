@@ -24,6 +24,7 @@ class ActivityNotification(BaseModel):
     activity_verbal: str
     started: bool = False
     duration: str | None = None
+    details: str | None = None
 
 
 class Timing:
@@ -263,6 +264,9 @@ class AssignmentActivities(IntFlag):
     ExposingSpec = auto()
     Executing = auto()
     WaitingForSpecDone = auto()
+
+class PowerSwitchActivities(IntFlag):
+    Idle = 0
 
 def verbalize(activities: IntFlag) -> str:
     """
