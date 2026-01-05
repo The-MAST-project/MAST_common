@@ -320,9 +320,6 @@ class Config:
         if unit_name not in [unit["name"] for unit in units]:
             return None
 
-        if not unit_name:
-            unit_name = socket.gethostname()
-
         common_config = unit_config = None
         try:
             common_config = [unit for unit in units if unit["name"] == "common"][0]
