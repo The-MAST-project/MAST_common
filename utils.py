@@ -419,7 +419,7 @@ if __name__ == "__main__":
     try:
         x = 1 / 0
     except Exception as e:
-        response = CanonicalResponse.from_exception(exception=e)
+        response = CanonicalResponse(errors=[str(e)])
 
     response = CanonicalResponse(errors=["err 1", "err 2"])
     response = CanonicalResponse(value={"tf": True, "val": 17})
