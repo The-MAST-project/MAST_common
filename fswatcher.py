@@ -16,7 +16,7 @@ class FsWatcher:
         self.folder = folder
         self.observer = Observer()
         self.handlers: dict = handlers
-        logger.info(f"watching '{self.folder}'")
+        # logger.info(f"watching '{self.folder}'")
 
     def run(self):
         event_handler = Handler(self.handlers)
