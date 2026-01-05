@@ -93,15 +93,11 @@ class Filer:
             dst = Path(dst)
 
         try:
-            if src.is_file():
+            if src.is_file() or src.is_dir():
                 dst.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(src, dst)
-                os.unlink(src)
-            elif src.is_dir():
-                shutil.copytree(src, dst)
-                shutil.rmtree(src)
+                shutil.move(src, dst)
             else:
-                # self.error(f"{op}: not a file or folder, ignoring: '{src.as_posix()}'")
+                self.error(f"{op}: not a file or folder, ignoring: '{src.as_posix()}'")
                 return
 
             # self.info(f"moved '{src.as_posix()}' to '{dst.as_posix()}'")
