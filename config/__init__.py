@@ -312,6 +312,10 @@ class Config:
         Gets a unit's configuration.  By default, this is the ['config']['units']['common']
          entry. If a unit-specific entry exists it overrides the 'common' entry.
         """
+
+        if not unit_name:
+            unit_name = socket.gethostname()
+
         units = self.fetch_config_section("units")
         if unit_name not in [unit["name"] for unit in units]:
             return None
@@ -322,8 +326,8 @@ class Config:
         common_config = unit_config = None
         try:
             common_config = [unit for unit in units if unit["name"] == "common"][0]
-        except Exception:
-            raise ValueError("get_unit: 'common' unit configuration not found")
+        except Exception as ex:
+            raise ValueError("get_unit: 'common' unit configuration not found") from ex
 
         try:
             found = [unit for unit in units if unit["name"] == unit_name]
@@ -349,7 +353,14 @@ class Config:
                 except socket.gaierror:
                     logger.warning(f"could not resolve {switch_host_name=}")
 
-        return UnitConfig(**combined_dict)
+        try:
+            ret = UnitConfig(**combined_dict)
+        except Exception as ex:
+            logger.error(
+                f"get_unit: failed to parse unit configuration for {unit_name=}: {ex}"
+            )
+            raise ex
+        return ret
 
     def set_unit(self, unit_name: str, unit_conf: UnitConfig):
         unit_dict = unit_conf.model_dump()
@@ -587,7 +598,9 @@ def test_user(name: str):
 
 
 def test_unit_config(name: str | None = None):
-    print(json.dumps(Config().get_unit(name).model_dump(), indent=1))
+    unit_conf = Config().get_unit(name)
+    assert unit_conf is not None
+    print(json.dumps(unit_conf.model_dump(), indent=1))
 
 
 def main():
