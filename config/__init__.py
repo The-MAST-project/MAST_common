@@ -50,6 +50,7 @@ mongo_cache = TTLCache(maxsize=32, ttl=60)  # 60s TTL
 config_db_cache = TTLCache(maxsize=100, ttl=30)
 DataSource = Literal["file", "mongodb"] | None
 
+
 #
 # Cache management helpers, should be 'manually' called to clear the TTL caches when configuration is changed
 #
@@ -277,14 +278,15 @@ class Config:
             drop_object_id,
         )
 
-    def get_config(self, load_from: DataSource = None) -> dict[str, list[dict[str, Any]]]:
-
+    def get_config(
+        self, load_from: DataSource = None
+    ) -> dict[str, list[dict[str, Any]]]:
         if self.origin.local_config_file is not None:
             file_path = Path(self.origin.local_config_file)
             if file_path.exists():
                 return self.load_config_from_file(str(file_path))
 
-        if load_from == "file": # we were asked to load from local file, but failed
+        if load_from == "file":  # we were asked to load from local file, but failed
             return {}
 
         # fallback to Mongo
@@ -305,12 +307,14 @@ class Config:
             drop_object_id=True,
         )
 
-    def get_unit(self, unit_name: str | None = None) -> UnitConfig:
+    def get_unit(self, unit_name: str | None = None) -> UnitConfig | None:
         """
         Gets a unit's configuration.  By default, this is the ['config']['units']['common']
          entry. If a unit-specific entry exists it overrides the 'common' entry.
         """
         units = self.fetch_config_section("units")
+        if unit_name not in [unit["name"] for unit in units]:
+            return None
 
         if not unit_name:
             unit_name = socket.gethostname()
@@ -435,11 +439,11 @@ class Config:
         Get all sites from MongoDB configuration
         Returns list of Site objects
         """
-        
+
         sites = []
-        for site in self.db['sites']:
+        for site in self.db["sites"]:
             sites.append(Site(**site))
-        
+
         return sites
 
     def get_specs(self) -> "SpecsConfig":  # type: ignore # noqa: F821
@@ -534,22 +538,27 @@ class Config:
         if len(found) != 0:
             return found[0]
 
+
 def test_specs_config():
     print(json.dumps(Config().get_specs().model_dump(), indent=2))
+
 
 def test_sites_config():
     sites: list[Site] = Config().sites
     for site in sites:
         print(json.dumps(site.model_dump(), indent=2))
 
+
 def test_local_site():
     local_site = Config().local_site
     print(json.dumps(local_site.model_dump() if local_site else None, indent=2))
+
 
 def test_services_config():
     result = Config().get_services()
     assert result is not None
     [print(json.dumps(service.model_dump(), indent=2)) for service in result]
+
 
 def test_service_config(service_name: str | None):
     result = Config().get_services()
@@ -559,6 +568,7 @@ def test_service_config(service_name: str | None):
         for service in result
         if service.name == service_name
     ]
+
 
 def test_users():
     for conf in Config().get_users():
@@ -571,15 +581,16 @@ def test_users():
             print(f"no picture for user '{conf.name}'")
         print(json.dumps(conf.model_dump(), indent=2))
 
+
 def test_user(name: str):
     print(json.dumps(Config().get_user(name), indent=2))
+
 
 def test_unit_config(name: str | None = None):
     print(json.dumps(Config().get_unit(name).model_dump(), indent=1))
 
 
 def main():
-
     # test_specs_config()
     # test_users()
 
@@ -591,6 +602,7 @@ def main():
     # test_local_site()
     # test_unit_config(name="mastw")
     pass
+
 
 if __name__ == "__main__":
     main()

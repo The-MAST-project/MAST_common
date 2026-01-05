@@ -167,7 +167,7 @@ class Activities:
         return idle
 
     def __repr__(self):
-        return self.activities.__repr__()
+        return verbalize(self.activities)
 
 
 class UnitActivities(IntFlag):
@@ -183,6 +183,7 @@ class UnitActivities(IntFlag):
     Solving = auto()
     Correcting = auto()
     SequenceOfExposures = auto()
+    Dancing = auto()
 
 
 class ImagerActivities(IntFlag):
@@ -262,3 +263,24 @@ class AssignmentActivities(IntFlag):
     ExposingSpec = auto()
     Executing = auto()
     WaitingForSpecDone = auto()
+
+def verbalize(activities: IntFlag) -> str:
+    """
+    Converts an activities IntFlag into a verbal string
+    :param activities:
+    :return:
+    """
+    if activities == 0:
+        verbal = "Idle"
+    else:
+        verbal = activities.__repr__().rpartition(".")[2]
+        verbal = verbal.partition(':')[0].replace('|', ', ')
+    return verbal
+
+if __name__ == "__main__":
+    a = Activities()
+    a.start_activity(UnitActivities.Dancing, details="foxtrot")
+    import time
+
+    time.sleep(2)
+    a.end_activity(UnitActivities.Dancing)
