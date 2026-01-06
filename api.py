@@ -165,7 +165,7 @@ class ApiClient:
         self, method: str, params: dict | None = None, timeout: float | None = None
     ):
         url = f"{self.base_url}/{method}"
-        op = f"{self.__class__.__name__}({url=}, params={params})"
+        op = f"{self.__class__.__name__}.get(hostname='{self.hostname}', {url=}, params={params})"
         self.errors = []
         timeout = timeout or self.timeout
         logger.debug(op)
@@ -194,7 +194,7 @@ class ApiClient:
         timeout: float | None = None,
     ):
         url = f"{self.base_url}/{method}"
-        op = f"{self.__class__.__name__}.put({url=}, params={params}, data={data}, json={json})"
+        op = f"{self.__class__.__name__}.put(hostname='{self.hostname}', {url=}, params={params}, data={data}, json={json})"
         self.errors = []
         timeout = timeout or self.timeout
         logger.debug(op)
