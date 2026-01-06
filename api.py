@@ -141,6 +141,7 @@ class ApiClient:
             except socket.herror:
                 self.hostname = None
 
+        self.hostname = hostname
         self.base_url = f"http://{self.ipaddr}:{port}{domain_base}"
         if device:
             if self.domain is None:
