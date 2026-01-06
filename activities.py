@@ -82,7 +82,7 @@ class Activities:
         self.worker_thread = threading.Thread(
             target=self._notification_worker,
             name="ActivityNotificationWorker",
-            daemon=True
+            daemon=True,
         )
         self.worker_thread.start()
 
@@ -104,11 +104,16 @@ class Activities:
                 try:
                     if self.notification_client:
                         asyncio.run(
-                            self.notification_client.put("activity_notification", data=data)
+                            self.notification_client.put(
+                                "activity_notification", data=data
+                            )
                         )
                     # Success - remove from queue
                     with self.lock:
-                        if self.notification_queue and self.notification_queue[0] == data:
+                        if (
+                            self.notification_queue
+                            and self.notification_queue[0] == data
+                        ):
                             self.notification_queue.popleft()
                 except Exception as e:
                     logger.error(f"Failed to send activity notification: {e}")
@@ -158,7 +163,7 @@ class Activities:
             activities=int(self.activities),
             activities_verbal=self.activities_verbal,
             started=True,
-            details=details
+            details=details,
         ).model_dump_json()
         self._enqueue_notification(data)
 
@@ -195,6 +200,8 @@ class Activities:
         data = ActivityNotification(
             activity=int(activity),
             activity_verbal=activity.__repr__(),
+            activities=int(self.activities),
+            activities_verbal=self.activities_verbal,
             started=False,
             duration=duration,
         ).model_dump_json()
@@ -331,6 +338,7 @@ class AssignmentActivities(IntFlag):
     ExposingSpec = auto()
     Executing = auto()
     WaitingForSpecDone = auto()
+
 
 class PowerSwitchActivities(IntFlag):
     Idle = 0
