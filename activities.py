@@ -332,6 +332,19 @@ class AssignmentActivities(IntFlag):
 class PowerSwitchActivities(IntFlag):
     Idle = 0
 
+
+class ControllerActivities(IntFlag):
+    Idle = 0
+    Controlling = auto()
+    Executing = auto()
+    StartingUp = auto()
+    ShuttingDown = auto()
+
+
+class ControlledUnitActivities(IntFlag):
+    Idle = 0
+
+
 if __name__ == "__main__":
     a = Activities()
     a.start_activity(UnitActivities.Dancing, details="foxtrot")
