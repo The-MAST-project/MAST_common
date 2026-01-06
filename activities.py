@@ -21,6 +21,8 @@ class ActivityNotification(BaseModel):
     initiator: str = hostname
     activity: int
     activity_verbal: str
+    activities: int
+    activities_verbal: list[str] = []
     started: bool = False
     duration: str | None = None
     details: str | None = None
@@ -153,6 +155,8 @@ class Activities:
         data = ActivityNotification(
             activity=int(activity),
             activity_verbal=activity.__repr__(),
+            activities=int(self.activities),
+            activities_verbal=self.activities_verbal,
             started=True,
             details=details
         ).model_dump_json()
@@ -221,19 +225,18 @@ class Activities:
         self.notification_event.set()
         self.worker_thread.join(timeout=5.0)
 
-
-    def activities_verbal(self) -> str:
+    @property
+    def activities_verbal(self) -> list[str]:
         """
-        Converts an activities IntFlag into a verbal string
-        :param activities:
-        :return:
+        Converts the activities IntFlag into a list of strings
         """
         if self.activities == 0:
-            verbal = "Idle"
-        else:
-            verbal = self.activities.__repr__().rpartition(".")[2]
-            verbal = verbal.partition(':')[0].replace('|', ', ')
-        return verbal
+            return []
+
+        ret = self.activities.__repr__().rpartition(".")[2]
+        ret = ret.partition(":")[0].split("|")
+        return ret
+
 
 class UnitActivities(IntFlag):
     Idle = 0
