@@ -2,14 +2,14 @@ from abc import ABC, abstractmethod
 
 from pydantic import BaseModel
 
-from common.activities import Activities
+from common.activities import Activities, ActivitiesVerbal
 
 
 class ComponentStatus(BaseModel):
     detected: bool = False
     connected: bool = False
     activities: int = 0
-    activities_verbal: str | None = None
+    activities_verbal: ActivitiesVerbal = None
     operational: bool = False
     why_not_operational: list[str] = []
     was_shut_down: bool = False
@@ -105,7 +105,7 @@ class Component(ABC, Activities):
             detected=self.detected,
             connected=self.connected,
             activities=int(self.activities),
-            activities_verbal=self.activities_verbal(),
+            activities_verbal=self.activities_verbal,
             operational=self.operational,
             why_not_operational=self.why_not_operational,
             was_shut_down=self.was_shut_down,

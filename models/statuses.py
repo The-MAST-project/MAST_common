@@ -3,6 +3,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field
 
+from common.activities import ActivitiesVerbal
 from common.dlipowerswitch import PowerStatus, PowerSwitchStatus
 from common.interfaces.components import ComponentStatus
 from common.interfaces.imager import ImagerStatus
@@ -68,7 +69,7 @@ class PHD2GuiderStatus(BaseModel):
 
 class GuiderStatus(BaseModel):
     activities: int | None = None
-    activities_verbal: str | None = None
+    activities_verbal: ActivitiesVerbal = None
     backend: PHD2GuiderStatus | None = None
 
 
@@ -112,7 +113,7 @@ class PHD2ImagerStatus(BaseModel):
     identifier: str | None = None
     name: str = "phd2"
     activities: int = 0
-    activities_verbal: str | None = None
+    activities_verbal: ActivitiesVerbal = None
     operational: bool = False
     why_not_operational: list[str] = []
     connected: bool = False

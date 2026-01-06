@@ -16,13 +16,14 @@ init_log(logger)
 
 hostname = socket.gethostname()
 
+ActivitiesVerbal = list[str] | None
 
 class ActivityNotification(BaseModel):
     initiator: str = hostname
     activity: int
     activity_verbal: str
     activities: int
-    activities_verbal: list[str] = []
+    activities_verbal: ActivitiesVerbal = None
     started: bool = False
     duration: str | None = None
     details: str | None = None
@@ -233,12 +234,12 @@ class Activities:
         self.worker_thread.join(timeout=5.0)
 
     @property
-    def activities_verbal(self) -> list[str]:
+    def activities_verbal(self) -> ActivitiesVerbal:
         """
         Converts the activities IntFlag into a list of strings
         """
         if self.activities == 0:
-            return []
+            return None
 
         ret = self.activities.__repr__().rpartition(".")[2]
         ret = ret.partition(":")[0].split("|")
