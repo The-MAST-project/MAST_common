@@ -213,6 +213,29 @@ class HighSpecStatus(BaseModel):
 
 SpecStatus = Annotated[DeepSpecStatus | HighSpecStatus, Field(discriminator="type")]
 
+
+class ControllerStatus(BaseModel):
+    """Status of the controller."""
+
+    activities: int
+    activities_verbal: ActivitiesVerbal
+
+
+class SiteStatus(BaseModel):
+    """Status of a controlled site."""
+
+    controller: ControllerStatus | None = None
+    units: dict[str, UnitStatus] | None = None
+    spec: SpecStatus | None = None
+
+
+class SitesStatus(BaseModel):
+    """API response containing status of all controlled sites."""
+
+    timestamp: str
+    sites: dict[str, SiteStatus]
+
+
 # # Example usage:
 # if __name__ == "__main__":
 #     import json
