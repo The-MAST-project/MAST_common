@@ -99,15 +99,13 @@ class Activities:
         logger.info(info)
 
         Notifier().send(
-            notification={
-                "path": self.notification_path,
-                "value": self.activities_verbal,
-                "ui_element": "badge",
-                "card": {
-                    "type": "start",
-                    "message": f"{activity.__repr__()} started",
-                    "details": details.splitlines() if details else [""]
-                }
+            path=self.notification_path,
+            value=self.activities_verbal,
+            ui_element="badge",
+            card={
+                "type": "start",
+                "message": f"{activity.__repr__()} started",
+                "details": details.splitlines() if details else [""]
             }
         )
 
@@ -142,16 +140,14 @@ class Activities:
         logger.info(info)
 
         Notifier().send(
-            notification={
-                "path": self.notification_path,
-                "value": self.activities_verbal,
-                "ui_element": "badge",
-                "card": {
-                    "type": "end",
-                    "message": f"{activity.__repr__()} ended",
-                    "details": self.details.get(activity, "").splitlines() if self.details.get(activity) else [""],
-                    "duration": duration
-                }
+            path=self.notification_path,
+            value=self.activities_verbal,
+            ui_element="badge",
+            card={
+                "type": "end",
+                "message": f"{activity.__repr__()} ended",
+                "details": self.details.get(activity, "").splitlines() if self.details.get(activity) else [""],
+                "duration": duration
             }
         )
 

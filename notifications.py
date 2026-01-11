@@ -137,22 +137,22 @@ class Notifier:
             if was_empty:
                 self.notification_event.set()
 
-    def send(self, **notification_kwargs):
+    def send(self, **notification):
         """Sends a notification asynchronously via the background worker thread"""
 
-        path = notification_kwargs.get('path')
+        path = notification.get('path')
         if not path:
             logger.error("Notifier.send: 'path' is required in notification_kwargs")
             return
 
-        value = notification_kwargs.get('value')
+        value = notification.get('value')
         if not value:
             logger.error("Notifier.send: 'value' is required in notification_kwargs")
             return
 
-        ui_element = notification_kwargs.get('ui_element', 'text')
+        ui_element = notification.get('ui_element', 'text')
 
-        card = notification_kwargs.get('card')
+        card = notification.get('card')
         if card and 'type' not in card:
             card['type'] = 'info'
             if 'message' not in card:
