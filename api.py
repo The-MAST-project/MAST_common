@@ -168,7 +168,7 @@ class ApiClient:
         op = f"{self.__class__.__name__}.get(hostname='{self.hostname}', {url=}, params={params})"
         self.errors = []
         timeout = timeout or self.timeout
-        logger.debug(op)
+        # logger.debug(op)
         async with httpx.AsyncClient(trust_env=False) as client:
             try:
                 response = await client.get(url=url, params=params, timeout=timeout)
@@ -197,7 +197,7 @@ class ApiClient:
         op = f"{self.__class__.__name__}.put(hostname='{self.hostname}', {url=}, params={params}, data={data}, json={json})"
         self.errors = []
         timeout = timeout or self.timeout
-        logger.debug(op)
+        # logger.debug(op)
         async with httpx.AsyncClient(trust_env=False) as client:
             try:
                 response = await client.put(
