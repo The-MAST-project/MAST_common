@@ -10,6 +10,7 @@ import ulid
 from pydantic import BaseModel, Field
 
 import common.asi as asi
+from common.activities import ImagerActivities
 from common.dlipowerswitch import PowerStatus
 from common.interfaces.components import Component, ComponentStatus
 from common.mast_logging import init_log
@@ -291,21 +292,22 @@ class ImagerStatus(PowerStatus, ComponentStatus):
     backend: object | None = None
 
 
-class ImagerExposureSeries:
+class ImagerExposureSeries(BaseModel):
     """
     Represents a series of exposures taken by the imager.
     This is used to maintain context for a series of exposures, e.g. in PHD2.
     """
 
-    def __init__(self, purpose: str | None = None):
-        self.series_id: str = str(ulid.ULID())
-        self.purpose: str | None = purpose
-
+    series_id: str = Field(default_factory=lambda: str(ulid.ULID()))
+    purpose: str | None = None
 
 class ImagerInterface(Component, ABC):
     current_exposure_series: ImagerExposureSeries | None = None
     ccd_temp_at_mid_exposure: float | None = None
-    parent_imager = None
+    parent_imager: object | None = None
+
+    def __init__(self):
+        Component.__init__(self, ImagerActivities)
 
     @property
     @abstractmethod
