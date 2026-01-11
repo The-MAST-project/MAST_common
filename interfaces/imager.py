@@ -172,6 +172,7 @@ class ImagerSettings(BaseModel):
     folder: str | None = Field(default=None, exclude=True)
     dont_bump_sequence: bool = False
     format: asi.ValidOutputFormats = "raw16"
+    set_limit_frame: bool = True
 
     def model_post_init(self, context: dict[str, Any] | None):  # noqa: C901
         defaults: ImagerSettings | None = None
