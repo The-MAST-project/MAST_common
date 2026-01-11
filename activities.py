@@ -3,6 +3,7 @@ import logging
 import socket
 import threading
 from enum import IntFlag, auto
+from unittest import case
 
 import humanfriendly
 from pydantic import BaseModel
@@ -16,17 +17,6 @@ init_log(logger)
 hostname = socket.gethostname()
 
 ActivitiesVerbal = list[str] | None
-
-class ActivityNotification(BaseModel):
-    initiator: str = hostname
-    activity: int
-    activity_verbal: str
-    activities: int
-    activities_verbal: ActivitiesVerbal = None
-    started: bool = False
-    duration: str | None = None
-    details: str | None = None
-
 
 class Timing:
     start_time: datetime.datetime
@@ -68,7 +58,33 @@ class Activities:
                 "Activities initialized with unknown notification path!"
             )
         self.lock = threading.Lock()
-
+    
+    @property
+    def type_to_notification_path(self) -> list[str]:
+        """
+        Converts an activity type to a notification path
+        :param activity_type:
+        :return:
+        """
+        
+        match type(self).__name__:
+            case 'UnitActivities':
+                return ['activities_verbal']
+            case 'FocuserActivities':
+                return ['focuser', 'activities_verbal']
+            case 'ImagerActivities':
+                return ['imager', 'activities_verbal']
+            case 'CoverActivities':
+                return ['covers', 'activities_verbal']
+            case 'MountActivities':
+                return ['mount', 'activities_verbal']
+            case 'StageActivities':
+                return ['stage', 'activities_verbal']
+            case 'DeepspecActivities':
+                return ['deepspec', 'activities_verbal']
+            case 'HighspecActivities':
+                return ['highspec', 'activities_verbal']
+            
     def start_activity(
         self,
         activity: IntFlag,
@@ -98,11 +114,12 @@ class Activities:
             info += f" details='{details}'"
         logger.info(info)
 
-        Notifier().send(
+            
+            
+        Notifier().send_update(
             notification={
-                "path": self.notification_path,
+                "path": self.type_to_notification_path,
                 "value": self.activities_verbal,
-                "ui_element": "badge",
                 "card": {
                     "type": "start",
                     "message": f"{activity.__repr__()} started",
@@ -141,11 +158,10 @@ class Activities:
         info += f", duration='{duration}'"
         logger.info(info)
 
-        Notifier().send(
+        Notifier().send_update(
             notification={
-                "path": self.notification_path,
+                "path": self.type_to_notification_path,
                 "value": self.activities_verbal,
-                "ui_element": "badge",
                 "card": {
                     "type": "end",
                     "message": f"{activity.__repr__()} ended",
