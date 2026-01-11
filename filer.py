@@ -93,11 +93,14 @@ class Filer:
             dst = Path(dst)
 
         try:
-            if src.is_file() or src.is_dir():
+            if not src.exists():
+                self.error(f"{op}: path does not exist, ignoring: '{src.as_posix()}'")
+                return
+            if src.is_file() or src.is_dir() or src.is_symlink():
                 dst.parent.mkdir(parents=True, exist_ok=True)
                 shutil.move(src, dst)
             else:
-                self.error(f"{op}: not a file or folder, ignoring: '{src.as_posix()}'")
+                self.error(f"{op}: not a file, folder or symlink, ignoring: '{src.as_posix()}'")
                 return
 
             # self.info(f"moved '{src.as_posix()}' to '{dst.as_posix()}'")
