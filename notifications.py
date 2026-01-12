@@ -125,7 +125,7 @@ class Notifier:
                     if self.notification_client:
                         asyncio.run(
                             self.notification_client.put(
-                                "notification", data=data
+                                "notifications", data=data
                             )
                         )
                     # Success - remove from queue
