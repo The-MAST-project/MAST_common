@@ -5,7 +5,6 @@ import threading
 from enum import IntFlag, auto
 
 import humanfriendly
-from pydantic import BaseModel
 
 from common.mast_logging import init_log
 from common.notifications import Notifier
@@ -16,17 +15,6 @@ init_log(logger)
 hostname = socket.gethostname()
 
 ActivitiesVerbal = list[str] | None
-
-class ActivityNotification(BaseModel):
-    initiator: str = hostname
-    activity: int
-    activity_verbal: str
-    activities: int
-    activities_verbal: ActivitiesVerbal = None
-    started: bool = False
-    duration: str | None = None
-    details: str | None = None
-
 
 class Timing:
     start_time: datetime.datetime
@@ -55,19 +43,41 @@ class Activities:
     """
 
     Idle = 0
-    unknown_notification_path = ["unknown", "activities"]
 
-    def __init__(self, notification_path: list[str] = unknown_notification_path):
+    def __init__(self):
 
         self.activities: IntFlag = Activity.Idle
         self.timings: dict[IntFlag, Timing] = {}
         self.details: dict[IntFlag, str] = {}
-        self.notification_path = notification_path
-        if self.notification_path == self.unknown_notification_path:
-            logger.warning(
-                "Activities initialized with unknown notification path!"
-            )
         self.lock = threading.Lock()
+
+    @property
+    def activities_type_to_notification_path(self) -> list[str]:
+        """
+        Converts an activity type to a notification path
+        :param activity_type:
+        :return:
+        """
+
+        match type(self.activities).__name__:
+            case 'UnitActivities':
+                return ['activities_verbal']
+            case 'FocuserActivities':
+                return ['focuser', 'activities_verbal']
+            case 'ImagerActivities':
+                return ['imager', 'activities_verbal']
+            case 'CoverActivities':
+                return ['covers', 'activities_verbal']
+            case 'MountActivities':
+                return ['mount', 'activities_verbal']
+            case 'StageActivities':
+                return ['stage', 'activities_verbal']
+            case 'DeepspecActivities':
+                return ['deepspec', 'activities_verbal']
+            case 'HighspecActivities':
+                return ['highspec', 'activities_verbal']
+            case _:
+                raise Exception(f"Unknown activities type '{type(self.activities).__name__}'")
 
     def start_activity(
         self,
@@ -98,14 +108,16 @@ class Activities:
             info += f" details='{details}'"
         logger.info(info)
 
-        Notifier().send(
-            path=self.notification_path,
+        Notifier().send_update(
+            path=self.activities_type_to_notification_path,
             value=self.activities_verbal,
-            ui_element="badge",
-            card={
+            update_cache=True,
+            update_dom_as='badge',
+            update_card={
                 "type": "start",
-                "message": f"{activity.__repr__()} started",
-                "details": details.splitlines() if details else [""]
+                "component": type(activity).__name__.replace("Activities", "").lower(),
+                "message": f"{activity._name_} started",
+                "details": self.details.get(activity, []),
             }
         )
 
@@ -139,14 +151,16 @@ class Activities:
         info += f", duration='{duration}'"
         logger.info(info)
 
-        Notifier().send(
-            path=self.notification_path,
+        Notifier().send_update(
+            path=self.activities_type_to_notification_path,
             value=self.activities_verbal,
-            ui_element="badge",
-            card={
+            update_cache=True,
+            update_dom_as='badge',
+            update_card={
                 "type": "end",
-                "message": f"{activity.__repr__()} ended",
-                "details": self.details.get(activity, "").splitlines() if self.details.get(activity) else [""],
+                "component": type(activity).__name__.replace("Activities", "").lower(),
+                "message": f"{activity._name_} ended",
+                "details": self.details.get(activity, []),
                 "duration": duration
             }
         )

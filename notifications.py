@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from common.config import Config
 from common.mast_logging import init_log
+from common.utils import function_name
 
 logger = logging.getLogger("mast." + __name__)
 init_log(logger)
@@ -16,44 +17,53 @@ init_log(logger)
 NotificationUIElement = Literal['badge', 'text']
 NotificationCardType = Literal['info', 'warning', 'error', 'start', 'end']
 
-class NotificationCard(BaseModel):
-    type: NotificationCardType = 'info'
-    message: str | None = None
-    details: list[str] | None = None
-    duration: str | None
-
 class NotificationInitiator(BaseModel):
     site: str = "unknown site"
-    machine: str = "unknown machine"
+    machine_type: str = "unknown-machine-type"  # e.g., 'unit', 'controller', 'spec'
+    machine_name: str | None = None  # e.g., unit name, controller name, spec name
+    project: str | None = None  # e.g., 'mast', 'past'
 
 initiator: NotificationInitiator | None = None
 if not initiator:
     local_site = Config().local_site
     local_site_name = local_site.name if local_site and local_site.name else 'unknown site'
+    local_project = local_site.project if local_site and local_site.project else 'unknown project'
 
+    local_machine_type = None
     local_machine_name = socket.gethostname().split('.')[0]
-    if local_machine_name.endswith('-spec'):
-        local_machine_name = 'spec'
-    elif local_machine_name.endswith('-control'):
-        local_machine_name = 'controller'
-    initiator = NotificationInitiator(site=local_site_name, machine=local_machine_name)
+    if local_machine_name.startswith(local_project + '-') and local_machine_name.endswith('-spec'):
+        local_machine_type = 'spec'
+    elif local_machine_name.startswith(local_project + '-') and local_machine_name.endswith('-control'):
+        local_machine_type = 'controller'
+    elif local_machine_name.startswith(local_project):
+        local_machine_type = 'unit'
+    if not local_machine_type:
+        raise Exception(f"{function_name()}: could not determine local machine type from hostname '{local_machine_name}'")
 
-class Notification(BaseModel):
-    """
-    The GUI maintains a cached status of all the sites and machines controlled by the controller machine
+    initiator = NotificationInitiator(
+        site=local_site_name,
+        machine_type=local_machine_type,
+        machine_name=local_machine_name,
+        project=local_project,
+    )
 
-    A Notification is used for:
-    - Updating a cached status entry
-    - Updating a GUI element with either one or more badges or some text:
-      - Badges are mainly used for in-progress activities (e.g. "Focusing", "Slewing", etc)
-      - Text may be used for updating a position value
-    - If the card field is set, a notification card is displayed in the GUI with the specified type (infers icon) and details
+    del local_site_name
+    del local_machine_name
+    del local_machine_type
+    del local_project
+
+NotificationTypes = Literal["status_update"]  # more to come
+
+class NotificationUpdateData(BaseModel):
     """
-    initiator: NotificationInitiator = initiator
-    path: list[str] | None = None
-    value: list[str] | str | None = None
-    ui_element: NotificationUIElement = 'text'
-    card: NotificationCard | None = None
+    A status update notification used to update the cached status of a component at the specified path
+    """
+    initiator: NotificationInitiator = initiator  # The originator of the notification
+    type: Literal["status_update"] = "status_update"
+    value: list[str] | str | int | float | bool | None = None  # The value being updated
+    cache: dict = {}  # Optional cache update information
+    dom: dict = {}  # Optional DOM update information
+    card: dict = {}  # Optional UI card
 
 class Notifier:
     _instance = None
@@ -82,6 +92,7 @@ class Notifier:
         self.stop_event = threading.Event()
 
         assert initiator is not None
+        self.initiator = initiator
         self.notification_client = ControllerApi(site_name=initiator.site).client
         if self.notification_client:
             self.notification_client.timeout = self.NOTIFICATION_TIMEOUT
@@ -137,28 +148,60 @@ class Notifier:
             if was_empty:
                 self.notification_event.set()
 
-    def send(self, **notification):
-        """Sends a notification asynchronously via the background worker thread"""
+    def send_update(self, **notification):
+        """
+        Sends a notification_update asynchronously via the background worker thread
+        Notification kwargs:
+        - value: list[str] | str | number | bool - The value for the notification, used for updating cache/dom
+        - path: list[str] - Component-relative path (e.g. ['focuser', 'position'])
+        - update_cache: bool | None - Optional cache update information
+        - update_dom_as: 'badge' | 'text' = 'text' - How to render the value(s)
+        - update_card: dict | None - Optional card information for the notification
+          - type: 'info' | 'warning' | 'error' | 'start' | 'end'
+          - message: str - The main message for the card
+          - details: list[str] - Optional detailed messages
+          - duration: str - Optional duration string (for 'end' type cards)
+        """
+        op = function_name()
 
         path = notification.get('path')
-        if not path:
-            logger.error("Notifier.send: 'path' is required in notification_kwargs")
-            return
-
         value = notification.get('value')
-        if not value:
-            logger.error("Notifier.send: 'value' is required in notification_kwargs")
-            return
+        update_cache = notification.get('update_cache')
+        update_dom_as = notification.get('update_dom_as')
 
-        ui_element = notification.get('ui_element', 'text')
+        data: NotificationUpdateData = NotificationUpdateData(
+            type="status_update",
+            initiator=self.initiator)
 
-        card = notification.get('card')
-        if card and 'type' not in card:
-            card['type'] = 'info'
-            if 'message' not in card:
-                card['message'] = 'Notification'
-            if 'details' not in card:
-                card['details'] = []
+        # Add value if provided
+        if value is not None:
+            data.value = value
 
-        notification = Notification(path=path, value=value, ui_element=ui_element, card=card)
-        self._enqueue_notification(notification.model_dump_json())
+        if update_cache and value is not None and path is not None:
+
+            assert self.initiator is not None
+            match self.initiator.machine_type:
+                case 'unit':
+                    data.cache["path"] = [self.initiator.site, 'unit', self.initiator.machine_name] + path
+                case 'controller':
+                    data.cache["path"] = [self.initiator.site, 'controller'] + path
+                case 'spec':
+                    data.cache["path"] = [self.initiator.site, 'spec'] + path
+                case _:
+                    raise Exception(f"{op}: Unknown initiator machine_type '{self.initiator.machine_type}'")
+
+        if update_dom_as is not None and value is not None and path is not None:
+            data.dom = {}
+            data.dom['id'] = "-".join(['id'] + path)
+            data.dom["render_as"] = update_dom_as
+
+        update_card = notification.get('update_card')
+        if update_card:
+
+            data.card['type'] = update_card.get('type', 'info')
+            if update_card.get('type') == 'end':
+                data.card['duration'] = update_card.get('duration', '')
+            data.card['message'] = update_card.get('message', 'Notification')
+            data.card['details'] = update_card.get('details', [])
+
+        self._enqueue_notification(data.model_dump_json())
