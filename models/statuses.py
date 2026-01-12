@@ -211,9 +211,6 @@ class HighSpecStatus(BaseModel):
     type: Literal["highspec"] = "highspec"
 
 
-SpecStatus = Annotated[DeepSpecStatus | HighSpecStatus, Field(discriminator="type")]
-
-
 class ControllerStatus(BaseModel):
     """Status of the controller."""
 
@@ -226,7 +223,8 @@ class SiteStatus(BaseModel):
 
     controller: ControllerStatus | None = None
     units: dict[str, UnitStatus] | None = None
-    spec: SpecStatus | None = None
+    deepspec: DeepSpecStatus | None = None
+    highspec: HighSpecStatus | None = None
 
 
 class SitesStatus(BaseModel):
