@@ -233,6 +233,63 @@ class SitesStatus(BaseModel):
     timestamp: str
     sites: dict[str, SiteStatus]
 
+class GreateyesStatus(BaseModel):
+    band: str | None = None
+    ipaddr: str | None = None
+    detected: bool = False
+    operational: bool = False
+    why_not_operational: list[str] = []
+    enabled: bool = False
+    activities: int | None = None
+    activities_verbal: ActivitiesVerbal | None = None
+    powered: bool = False
+    connected: bool = False
+    addr: int | None = None
+    min_temp: float | None = None
+    max_temp: float | None = None
+    front_temperature: float | None = None
+    back_temperature: float | None = None
+    errors: list[str] | None = None
+    latest_exposure: Any = None
+    latest_settings: Any = None
+
+class DeepspecSattus(BaseModel):
+    powered: bool = False
+    detected: bool = False
+    activities: int | None = None
+    activities_verbal: ActivitiesVerbal | None = None
+    operational: bool = False
+    why_not_operational: list[str] = []
+    cameras: dict[str, GreateyesStatus] = {}
+
+class NewtonStatus(BaseModel):
+    band: str | None = None
+    ipaddr: str | None = None
+    detected: bool = False
+    operational: bool = False
+    why_not_operational: list[str] = []
+    enabled: bool = False
+    activities: int | None = None
+    activities_verbal: ActivitiesVerbal | None = None
+    powered: bool = False
+    connected: bool = False
+    addr: int | None = None
+    min_temp: float | None = None
+    max_temp: float | None = None
+    front_temperature: float | None = None
+    back_temperature: float | None = None
+    errors: list[str] | None = None
+    latest_exposure: Any = None
+    latest_settings: Any = None
+
+class HighspecStatus(BaseModel):
+    activities: int | None = None
+    activities_verbal: ActivitiesVerbal | None = None
+    operational: bool = False
+    why_not_operational: list[str] = []
+    powered: bool = False
+    connected: bool = False
+    camera: NewtonStatus | None = None
 
 # # Example usage:
 # if __name__ == "__main__":
