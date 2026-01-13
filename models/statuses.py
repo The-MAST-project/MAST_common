@@ -208,6 +208,10 @@ class ControllerStatus(BaseModel):
 
     activities: int
     activities_verbal: ActivitiesVerbal
+    powered: bool = True
+    detected: bool = True
+    operational: bool = True
+    why_not_operational: list[str] = []
 
 
 class GreateyesStatus(BaseModel):
@@ -268,7 +272,7 @@ class HighspecStatus(BaseModel):
     operational: bool = False
     why_not_operational: list[str] = []
     powered: bool = False
-    connected: bool = False
+    detected: bool = False
     camera: NewtonStatus | None = None
 
 
