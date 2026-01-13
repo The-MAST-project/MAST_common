@@ -1,3 +1,4 @@
+import os
 from typing import Literal
 
 
@@ -15,3 +16,7 @@ class Const:
     CorrectionPhase = SolvingPhase  # acquisition phases that use corrections
 
     PlanFileNamePattern = "PLAN_*.toml"
+
+    # Django server configuration
+    DJANGO_HOST = os.getenv("DJANGO_HOST", "localhost")
+    DJANGO_PORT = int(os.getenv("DJANGO_PORT", "8010"))
