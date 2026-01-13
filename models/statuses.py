@@ -203,35 +203,12 @@ class UnitStatusResponse(BaseModel):
     status: UnitStatus  # This is the discriminated union
 
 
-class DeepSpecStatus(BaseModel):
-    type: Literal["deepspec"] = "deepspec"
-
-
-class HighSpecStatus(BaseModel):
-    type: Literal["highspec"] = "highspec"
-
-
 class ControllerStatus(BaseModel):
     """Status of the controller."""
 
     activities: int
     activities_verbal: ActivitiesVerbal
 
-
-class SiteStatus(BaseModel):
-    """Status of a controlled site."""
-
-    controller: ControllerStatus | None = None
-    units: dict[str, UnitStatus] | None = None
-    deepspec: DeepSpecStatus | None = None
-    highspec: HighSpecStatus | None = None
-
-
-class SitesStatus(BaseModel):
-    """API response containing status of all controlled sites."""
-
-    timestamp: str
-    sites: dict[str, SiteStatus]
 
 class GreateyesStatus(BaseModel):
     band: str | None = None
@@ -253,7 +230,8 @@ class GreateyesStatus(BaseModel):
     latest_exposure: Any = None
     latest_settings: Any = None
 
-class DeepspecSattus(BaseModel):
+
+class DeepspecStatus(BaseModel):
     powered: bool = False
     detected: bool = False
     activities: int | None = None
@@ -261,6 +239,7 @@ class DeepspecSattus(BaseModel):
     operational: bool = False
     why_not_operational: list[str] = []
     cameras: dict[str, GreateyesStatus] = {}
+
 
 class NewtonStatus(BaseModel):
     band: str | None = None
@@ -282,6 +261,7 @@ class NewtonStatus(BaseModel):
     latest_exposure: Any = None
     latest_settings: Any = None
 
+
 class HighspecStatus(BaseModel):
     activities: int | None = None
     activities_verbal: ActivitiesVerbal | None = None
@@ -290,6 +270,23 @@ class HighspecStatus(BaseModel):
     powered: bool = False
     connected: bool = False
     camera: NewtonStatus | None = None
+
+
+class SiteStatus(BaseModel):
+    """Status of a controlled site."""
+
+    controller: ControllerStatus | None = None
+    units: dict[str, UnitStatus] | None = None
+    deepspec: DeepspecStatus | None = None
+    highspec: HighspecStatus | None = None
+
+
+class SitesStatus(BaseModel):
+    """API response containing status of all controlled sites."""
+
+    timestamp: str
+    sites: dict[str, SiteStatus]
+
 
 # # Example usage:
 # if __name__ == "__main__":
