@@ -406,7 +406,7 @@ class Timeout(AbstractContextManager):
         except FuturesTimeout as exc:
             future.cancel()
             raise TimeoutError(
-                f"Function call exceeded timeout of {self.timeout:.2f} seconds"
+                f"Function call '{func.__name__}' exceeded timeout of {self.timeout:.2f} seconds"
             ) from exc
 
     def __exit__(self, exc_type, exc_val, exc_tb):
