@@ -14,13 +14,14 @@ from common.utils import function_name
 logger = logging.getLogger("mast." + __name__)
 init_log(logger)
 
-NotificationUIElement = Literal['badge', 'text']
 NotificationCardType = Literal['info', 'warning', 'error', 'start', 'end']
+NotificationTypes = Literal["update"]  # more to come
+DomUpdateSpec = Literal['badge', 'text'] | None
 
 class NotificationInitiator(BaseModel):
     site: str = "unknown site"
-    machine_type: str = "unknown-machine-type"  # e.g., 'unit', 'controller', 'spec'
-    machine_name: str | None = None  # e.g., unit name, controller name, spec name
+    type: str = "unknown-machine-type"  # e.g., 'unit', 'controller', 'spec'
+    hostname: str | None = None  # e.g., unit name, controller name, spec name
     project: str | None = None  # e.g., 'mast', 'past'
     component: str | None = None  # e.g., 'focuser', 'filter_wheel'
 
@@ -43,8 +44,8 @@ if not initiator:
 
     initiator = NotificationInitiator(
         site=local_site_name,
-        machine_type=local_machine_type,
-        machine_name=local_machine_name,
+        type=local_machine_type,
+        hostname=local_machine_name,
         project=local_project,
         component=None,
     )
@@ -54,18 +55,73 @@ if not initiator:
     del local_machine_type
     del local_project
 
-NotificationTypes = Literal["status_update"]  # more to come
+#
+# Specifications: allow sepcifying notification message contents
+#
 
-class NotificationUpdateData(BaseModel):
+class CardUpdateSpec(BaseModel):
     """
-    A status update notification used to update the cached status of a component at the specified path
+    Allows initiator to request a card notification be displayed in the UI
     """
-    initiator: NotificationInitiator = initiator  # The originator of the notification
-    type: Literal["status_update"] = "status_update"
+    type: NotificationCardType = 'info'  # 'info'|'error'|'warning'|'start'|'end'
+    message: str | None = None
+    details: list[str] = []
+    duration: str | None = None  # For 'end' type cards
+
+class UpdateSpec(BaseModel):
+    """
+    Specification for updating cache and/or DOM element
+    """
+    path: list[str]
     value: list[str] | str | int | float | bool | None = None  # The value being updated
-    cache: dict = {}  # Optional cache update information
-    dom: dict = {}  # Optional DOM update information
-    card: dict = {}  # Optional UI card
+    dom: DomUpdateSpec = None  # How to render the value(s) in the DOM element
+    card: CardUpdateSpec | None = None  # Card notification specification
+
+#
+# Messages: actual notification messages sent to Django server
+#
+class DomMessage(BaseModel):
+    """
+    Dom information passed to the Django server for updating the UI
+    """
+    id: str  # DOM element ID
+    render_as: DomUpdateSpec = 'text'  # How to render the value(s)
+
+class CardMessage(BaseModel):
+    """
+    Allows initiator to request a card notification be displayed in the UI
+    """
+    type: NotificationCardType = 'info'  # 'info'|'error'|'warning'|'start'|'end'
+    message: str | None = None
+    details: list[str] = []
+    duration: str | None = None  # For 'end' type cards
+
+class CacheMessage(BaseModel):
+    """
+    Cache information passed to the Django server for display in the UI
+    """
+    path: str | None = None
+    value: list[str] | str | int | float | bool | None = None  # The value being updated
+
+    def model_post_init(self, context):
+        return super().model_post_init(context)
+
+class UpdateMessage(BaseModel):
+    cache: CacheMessage | None = None  # Whether to update cache
+    dom: DomMessage | None = None  # DOM update information
+    card: CardMessage | None = None  # UI card information
+
+class Update(BaseModel):
+    """
+    A status update notification request
+    - produced when a notification is initiated, in units, controller or spec
+    - sent to the controller fastapi notifications endpoint which relays it to the Django server
+    - consumed by the Django server to update its cache
+    - broadcasted to attached browsers to update DOM elements, and display notification cards
+    """
+    type: Literal["update"] = "update" # Type of notification
+    initiator: NotificationInitiator = initiator  # The originator of the notification
+    messages: list[UpdateMessage] = []  # List of individual notification items
 
 class Notifier:
     _instance = None
@@ -150,60 +206,45 @@ class Notifier:
             if was_empty:
                 self.notification_event.set()
 
-    def send_update(self, **notification):
+    def update(self, specs: list[UpdateSpec] | UpdateSpec):
         """
-        Sends a notification_update asynchronously via the background worker thread
-        Notification kwargs:
-        - value: list[str] | str | number | bool - The value for the notification, used for updating cache/dom
-        - path: list[str] - Component-relative path (e.g. ['focuser', 'position'])
-        - update_cache: bool | None - Optional cache update information
-        - update_dom_as: 'badge' | 'text' = 'text' - How to render the value(s)
-        - update_card: dict | None - Optional card information for the notification
-          - type: 'info' | 'warning' | 'error' | 'start' | 'end'
-          - message: str - The main message for the card
-          - details: list[str] - Optional detailed messages
-          - duration: str - Optional duration string (for 'end' type cards)
+        Asks for a notification to be sent to the Django server.
+        - always updates the cache at 'path' with 'value'
+        - optionally updates the DOM element with id derived from 'path' using 'dom' renderer
+        - optionally displays a notification card using 'card' specification
         """
-        op = function_name()
+        if isinstance(specs, UpdateSpec):
+            specs = [specs]
 
-        path = notification.get('path')
-        value = notification.get('value')
-        update_cache = notification.get('update_cache')
-        update_dom_as = notification.get('update_dom_as')
-
-        data: NotificationUpdateData = NotificationUpdateData(
-            type="status_update",
+        update: Update = Update(
+            type="update",
             initiator=self.initiator)
 
-        # Add value if provided
-        if value is not None:
-            data.value = value
+        for spec in specs:
+            message = UpdateMessage()
+            path = spec.path
+            value = spec.value
 
-        if update_cache and value is not None and path is not None:
+            # cache update
+            cache_path = [self.initiator.site]
+            if self.initiator.type == 'unit':
+                cache_path += ['unit']
+            cache_path += [self.initiator.hostname] + path
+            message.cache = CacheMessage(path=cache_path, value=value)
 
-            assert self.initiator is not None
-            match self.initiator.machine_type:
-                case 'unit':
-                    data.cache["path"] = [self.initiator.site, 'unit', self.initiator.machine_name] + path
-                case 'controller':
-                    data.cache["path"] = [self.initiator.site, 'controller'] + path
-                case 'spec':
-                    data.cache["path"] = [self.initiator.site, 'spec'] + path
-                case _:
-                    raise Exception(f"{op}: Unknown initiator machine_type '{self.initiator.machine_type}'")
+            # DOM update
+            if spec.dom is not None:
+                dom_id = "-".join(['id'] + path)
+                message.dom = DomMessage(id=dom_id, render_as=spec.dom)
 
-        if update_dom_as is not None and value is not None and path is not None:
-            data.dom = {}
-            data.dom['id'] = "-".join(['id'] + path)
-            data.dom["render_as"] = update_dom_as
+            # Card notification
+            if spec.card is not None:
+                message.card = CardMessage(
+                    type=spec.card.type,
+                    message=spec.card.message,
+                    details=spec.card.details,
+                    duration=spec.card.duration,
+                )
+            update.messages.append(message)
 
-        update_card = notification.get('update_card')
-        if update_card:
-
-            data.card['type'] = update_card.get('type', 'info')
-            if update_card.get('type') == 'end':
-                data.card['duration'] = update_card.get('duration', '')
-            data.card['message'] = update_card.get('message', 'Notification')
-            data.card['details'] = update_card.get('details', [])
-
-        self._enqueue_notification(data.model_dump_json())
+        self._enqueue_notification(update.model_dump_json())

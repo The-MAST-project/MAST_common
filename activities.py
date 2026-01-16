@@ -7,7 +7,7 @@ from enum import IntFlag, auto
 import humanfriendly
 
 from common.mast_logging import init_log
-from common.notifications import Notifier
+from common.notifications import Notifier, CardUpdateSpec, DomUpdateSpec, UpdateSpec
 
 logger = logging.getLogger("mast." + __name__)
 init_log(logger)
@@ -108,17 +108,18 @@ class Activities:
             info += f" details='{details}'"
         logger.info(info)
 
-        Notifier().send_update(
-            path=self.activities_type_to_notification_path,
-            value=self.activities_verbal,
-            update_cache=True,
-            update_dom_as='badge',
-            update_card={
-                "type": "start",
-                "component": type(activity).__name__.replace("Activities", "").lower(),
-                "message": f"{activity._name_} started",
-                "details": self.details.get(activity, []),
-            }
+        Notifier().update(
+            UpdateSpec(
+                path=self.activities_type_to_notification_path,
+                value=self.activities_verbal,
+                dom='badge',
+                card=CardUpdateSpec(
+                    type="start",
+                    component=type(activity).__name__.replace("Activities", "").lower(),
+                    message=f"{activity._name_} started",
+                    details=self.details.get(activity, []),
+                )
+            )
         )
 
     def end_activity(self, activity: IntFlag, label: str | None = None):
@@ -151,18 +152,19 @@ class Activities:
         info += f", duration='{duration}'"
         logger.info(info)
 
-        Notifier().send_update(
-            path=self.activities_type_to_notification_path,
-            value=self.activities_verbal,
-            update_cache=True,
-            update_dom_as='badge',
-            update_card={
-                "type": "end",
-                "component": type(activity).__name__.replace("Activities", "").lower(),
-                "message": f"{activity._name_} ended",
-                "details": self.details.get(activity, []),
-                "duration": duration
-            }
+        Notifier().update(
+            UpdateSpec(
+                path=self.activities_type_to_notification_path,
+                value=self.activities_verbal,
+                dom='badge',
+                card=CardUpdateSpec(
+                    type="end",
+                    component=type(activity).__name__.replace("Activities", "").lower(),
+                    message=f"{activity._name_} ended",
+                    details=self.details.get(activity, []),
+                    duration=duration
+                )
+            )
         )
 
     def is_active(self, activity):
