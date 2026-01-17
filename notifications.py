@@ -120,8 +120,7 @@ class UiCacheMessage(BaseModel):
     Cache information passed to the Django server for display in the UI
     """
 
-    path: str | None = None
-    path: list[str] = []  # Path in the cache to update
+    path: list[str] | None = None
     value: list[str] | str | int | float | bool | None = None  # The value being updated
 
     def model_post_init(self, context):
