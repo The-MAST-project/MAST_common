@@ -14,9 +14,10 @@ from common.utils import function_name
 logger = logging.getLogger("mast." + __name__)
 init_log(logger)
 
-NotificationCardType = Literal['info', 'warning', 'error', 'start', 'end']
+NotificationCardType = Literal["info", "warning", "error", "start", "end"]
 NotificationTypes = Literal["update"]  # more to come
-DomUpdateSpec = Literal['badge', 'text'] | None
+DomUpdateSpec = Literal["badge", "text"] | None
+
 
 class NotificationInitiator(BaseModel):
     site: str = "unknown site"
@@ -24,22 +25,33 @@ class NotificationInitiator(BaseModel):
     hostname: str | None = None  # e.g., unit name, controller name, spec name
     project: str | None = None  # e.g., 'mast', 'past'
 
+
 initiator: NotificationInitiator | None = None
 if not initiator:
     local_site = Config().local_site
-    local_site_name = local_site.name if local_site and local_site.name else 'unknown site'
-    local_project = local_site.project if local_site and local_site.project else 'unknown project'
+    local_site_name = (
+        local_site.name if local_site and local_site.name else "unknown site"
+    )
+    local_project = (
+        local_site.project if local_site and local_site.project else "unknown project"
+    )
 
     local_machine_type = None
-    local_machine_name = socket.gethostname().split('.')[0]
-    if local_machine_name.startswith(local_project + '-') and local_machine_name.endswith('-spec'):
-        local_machine_type = 'spec'
-    elif local_machine_name.startswith(local_project + '-') and local_machine_name.endswith('-control'):
-        local_machine_type = 'controller'
+    local_machine_name = socket.gethostname().split(".")[0]
+    if local_machine_name.startswith(
+        local_project + "-"
+    ) and local_machine_name.endswith("-spec"):
+        local_machine_type = "spec"
+    elif local_machine_name.startswith(
+        local_project + "-"
+    ) and local_machine_name.endswith("-control"):
+        local_machine_type = "controller"
     elif local_machine_name.startswith(local_project):
-        local_machine_type = 'unit'
+        local_machine_type = "unit"
     if not local_machine_type:
-        raise Exception(f"{function_name()}: could not determine local machine type from hostname '{local_machine_name}'")
+        raise Exception(
+            f"{function_name()}: could not determine local machine type from hostname '{local_machine_name}'"
+        )
 
     initiator = NotificationInitiator(
         site=local_site_name,
@@ -57,23 +69,28 @@ if not initiator:
 # Specifications: allow sepcifying notification message contents
 #
 
+
 class CardUpdateSpec(BaseModel):
     """
     Allows initiator to request a card notification be displayed in the UI
     """
-    type: NotificationCardType = 'info'  # 'info'|'error'|'warning'|'start'|'end'
+
+    type: NotificationCardType = "info"  # 'info'|'error'|'warning'|'start'|'end'
     message: str | None = None
     details: list[str] | None = None
     duration: str | None = None  # For 'end' type cards
+
 
 class UiUpdateSpec(BaseModel):
     """
     Specification for updating cache and/or DOM element
     """
+
     path: list[str]
     value: list[str] | str | int | float | bool | None = None  # The value being updated
     dom: DomUpdateSpec = None  # How to render the value(s) in the DOM element
     card: CardUpdateSpec | None = None  # Card notification specification
+
 
 #
 # Messages: actual notification messages sent to Django server
@@ -82,32 +99,40 @@ class UiDomMessage(BaseModel):
     """
     Dom information passed to the Django server for updating the UI
     """
+
     id: str  # DOM element ID
-    render_as: DomUpdateSpec = 'text'  # How to render the value(s)
+    render_as: DomUpdateSpec = "text"  # How to render the value(s)
+
 
 class UiCardMessage(BaseModel):
     """
     Allows initiator to request a card notification be displayed in the UI
     """
-    type: NotificationCardType = 'info'  # 'info'|'error'|'warning'|'start'|'end'
+
+    type: NotificationCardType = "info"  # 'info'|'error'|'warning'|'start'|'end'
     message: str | None = None
     details: list[str] | None = None
     duration: str | None = None  # For 'end' type cards
+
 
 class UiCacheMessage(BaseModel):
     """
     Cache information passed to the Django server for display in the UI
     """
+
+    path: str | None = None
     path: list[str] = []  # Path in the cache to update
     value: list[str] | str | int | float | bool | None = None  # The value being updated
 
     def model_post_init(self, context):
         return super().model_post_init(context)
 
+
 class UiUpdateMessage(BaseModel):
     cache: UiCacheMessage | None = None  # Whether to update cache
     dom: UiDomMessage | None = None  # DOM update information
     card: UiCardMessage | None = None  # UI card information
+
 
 class UiUpdateRequest(BaseModel):
     """
@@ -117,9 +142,11 @@ class UiUpdateRequest(BaseModel):
     - consumed by the Django server to update its cache
     - broadcasted to attached browsers to update DOM elements, and display notification cards
     """
-    type: Literal["update"] = "update" # Type of notification
+
+    type: Literal["update"] = "update"  # Type of notification
     initiator: NotificationInitiator = initiator  # The originator of the notification
     messages: list[UiUpdateMessage] = []  # List of individual notification items
+
 
 class Notifier:
     _instance = None
@@ -176,13 +203,14 @@ class Notifier:
                         break
                     data = self.notification_queue[0]
 
+                # Log what we're sending
+                logger.debug(f"Attempting to send notification: {data[:200]}...")
+
                 # Try to send
                 try:
                     if self.notification_client:
                         asyncio.run(
-                            self.notification_client.put(
-                                "notifications", data=data
-                            )
+                            self.notification_client.put("notifications", data=data)
                         )
                     # Success - remove from queue
                     with self.lock:
@@ -191,8 +219,12 @@ class Notifier:
                             and self.notification_queue[0] == data
                         ):
                             self.notification_queue.popleft()
+                            logger.debug("Notification sent successfully")
                 except Exception as e:
                     logger.error(f"Failed to send notification: {e}")
+                    logger.error(
+                        f"Data type: {type(data)}, length: {len(data) if isinstance(data, str) else 'N/A'}"
+                    )
                     # Keep in queue for retry
                     break
 
@@ -215,8 +247,8 @@ class Notifier:
             ui_specs = [ui_specs]
 
         ui_update_request: UiUpdateRequest = UiUpdateRequest(
-            type="update",
-            initiator=self.initiator)
+            type="update", initiator=self.initiator
+        )
 
         for ui_spec in ui_specs:
             message = UiUpdateMessage()
@@ -224,16 +256,19 @@ class Notifier:
             value = ui_spec.value
 
             # cache update
+            cache_path = [self.initiator.site]
+            if self.initiator.type == "unit":
+                cache_path += ["unit"]
             cache_path: list[str] = [self.initiator.site]
-            if self.initiator.type == 'unit':
-                cache_path += ['unit']
+            if self.initiator.type == "unit":
+                cache_path += ["unit"]
             assert self.initiator.hostname is not None
             cache_path += [self.initiator.hostname] + path
             message.cache = UiCacheMessage(path=cache_path, value=value)
 
             # DOM update
             if ui_spec.dom is not None:
-                dom_id = "-".join(['id'] + path)
+                dom_id = "-".join(["id"] + path)
                 message.dom = UiDomMessage(id=dom_id, render_as=ui_spec.dom)
 
             # Card notification

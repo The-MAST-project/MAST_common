@@ -16,6 +16,7 @@ hostname = socket.gethostname()
 
 ActivitiesVerbal = list[str] | None
 
+
 class Timing:
     start_time: datetime.datetime
     end_time: datetime.datetime
@@ -45,7 +46,6 @@ class Activities:
     Idle = 0
 
     def __init__(self):
-
         self.activities: IntFlag = Activity.Idle
         self.timings: dict[IntFlag, Timing] = {}
         self.details: dict[IntFlag, str | None] = {}
@@ -59,25 +59,29 @@ class Activities:
         :return:
         """
 
+        component = None
         match type(self.activities).__name__:
-            case 'UnitActivities':
-                return ['activities']
-            case 'FocuserActivities':
-                return ['focuser', 'activities']
-            case 'ImagerActivities':
-                return ['imager', 'activities']
-            case 'CoverActivities':
-                return ['covers', 'activities']
-            case 'MountActivities':
-                return ['mount', 'activities']
-            case 'StageActivities':
-                return ['stage', 'activities']
-            case 'DeepspecActivities':
-                return ['deepspec', 'activities']
-            case 'HighspecActivities':
-                return ['highspec', 'activities']
+            case "UnitActivities":
+                return ["activities_verbal"]
+            case "FocuserActivities":
+                return ["focuser", "activities_verbal"]
+            case "ImagerActivities":
+                return ["imager", "activities_verbal"]
+            case "CoverActivities":
+                return ["covers", "activities_verbal"]
+            case "MountActivities":
+                return ["mount", "activities_verbal"]
+            case "StageActivities":
+                return ["stage", "activities_verbal"]
+            case "DeepspecActivities":
+                return ["deepspec", "activities_verbal"]
+            case "HighspecActivities":
+                return ["highspec", "activities_verbal"]
             case _:
-                raise Exception(f"Unknown activities type '{type(self.activities).__name__}'")
+                raise Exception(
+                    f"Unknown activities type '{type(self.activities).__name__}'"
+                )
+        return [component] + ["activities"] if component else ["activities"]
 
     def start_activity(
         self,
@@ -112,12 +116,12 @@ class Activities:
             UiUpdateSpec(
                 path=self.activities_type_to_notification_path,
                 value=self.activities_verbal,
-                dom='badge',
+                dom="badge",
                 card=CardUpdateSpec(
                     type="start",
                     message=f"{activity._name_} started",
-                    details=[details] if details else None,
-                )
+                    details=self.details.get(activity, []),
+                ),
             )
         )
 
@@ -156,13 +160,13 @@ class Activities:
             UiUpdateSpec(
                 path=self.activities_type_to_notification_path,
                 value=self.activities_verbal,
-                dom='badge',
+                dom="badge",
                 card=CardUpdateSpec(
                     type="end",
                     message=f"{activity._name_} ended",
-                    details=[details] if details else None,
-                    duration=duration
-                )
+                    details=self.details.get(activity, []),
+                    duration=duration,
+                ),
             )
         )
 
