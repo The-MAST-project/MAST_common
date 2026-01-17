@@ -23,7 +23,6 @@ class NotificationInitiator(BaseModel):
     type: str = "unknown-machine-type"  # e.g., 'unit', 'controller', 'spec'
     hostname: str | None = None  # e.g., unit name, controller name, spec name
     project: str | None = None  # e.g., 'mast', 'past'
-    component: str | None = None  # e.g., 'focuser', 'filter_wheel'
 
 initiator: NotificationInitiator | None = None
 if not initiator:
@@ -47,7 +46,6 @@ if not initiator:
         type=local_machine_type,
         hostname=local_machine_name,
         project=local_project,
-        component=None,
     )
 
     del local_site_name
