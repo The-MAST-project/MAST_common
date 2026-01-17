@@ -68,7 +68,7 @@ class CardUpdateSpec(BaseModel):
     details: list[str] = []
     duration: str | None = None  # For 'end' type cards
 
-class UpdateSpec(BaseModel):
+class UiUpdateSpec(BaseModel):
     """
     Specification for updating cache and/or DOM element
     """
@@ -80,14 +80,14 @@ class UpdateSpec(BaseModel):
 #
 # Messages: actual notification messages sent to Django server
 #
-class DomMessage(BaseModel):
+class UiDomMessage(BaseModel):
     """
     Dom information passed to the Django server for updating the UI
     """
     id: str  # DOM element ID
     render_as: DomUpdateSpec = 'text'  # How to render the value(s)
 
-class CardMessage(BaseModel):
+class UiCardMessage(BaseModel):
     """
     Allows initiator to request a card notification be displayed in the UI
     """
@@ -96,7 +96,7 @@ class CardMessage(BaseModel):
     details: list[str] = []
     duration: str | None = None  # For 'end' type cards
 
-class CacheMessage(BaseModel):
+class UiCacheMessage(BaseModel):
     """
     Cache information passed to the Django server for display in the UI
     """
@@ -106,12 +106,12 @@ class CacheMessage(BaseModel):
     def model_post_init(self, context):
         return super().model_post_init(context)
 
-class UpdateMessage(BaseModel):
-    cache: CacheMessage | None = None  # Whether to update cache
-    dom: DomMessage | None = None  # DOM update information
-    card: CardMessage | None = None  # UI card information
+class UiUpdateMessage(BaseModel):
+    cache: UiCacheMessage | None = None  # Whether to update cache
+    dom: UiDomMessage | None = None  # DOM update information
+    card: UiCardMessage | None = None  # UI card information
 
-class Update(BaseModel):
+class UiUpdateRequest(BaseModel):
     """
     A status update notification request
     - produced when a notification is initiated, in units, controller or spec
@@ -121,7 +121,7 @@ class Update(BaseModel):
     """
     type: Literal["update"] = "update" # Type of notification
     initiator: NotificationInitiator = initiator  # The originator of the notification
-    messages: list[UpdateMessage] = []  # List of individual notification items
+    messages: list[UiUpdateMessage] = []  # List of individual notification items
 
 class Notifier:
     _instance = None
@@ -206,45 +206,45 @@ class Notifier:
             if was_empty:
                 self.notification_event.set()
 
-    def update(self, specs: list[UpdateSpec] | UpdateSpec):
+    def ui_update(self, ui_specs: list[UiUpdateSpec] | UiUpdateSpec):
         """
         Asks for a notification to be sent to the Django server.
         - always updates the cache at 'path' with 'value'
         - optionally updates the DOM element with id derived from 'path' using 'dom' renderer
         - optionally displays a notification card using 'card' specification
         """
-        if isinstance(specs, UpdateSpec):
-            specs = [specs]
+        if isinstance(ui_specs, UiUpdateSpec):
+            ui_specs = [ui_specs]
 
-        update: Update = Update(
+        ui_update_request: UiUpdateRequest = UiUpdateRequest(
             type="update",
             initiator=self.initiator)
 
-        for spec in specs:
-            message = UpdateMessage()
-            path = spec.path
-            value = spec.value
+        for ui_spec in ui_specs:
+            message = UiUpdateMessage()
+            path = ui_spec.path
+            value = ui_spec.value
 
             # cache update
             cache_path = [self.initiator.site]
             if self.initiator.type == 'unit':
                 cache_path += ['unit']
             cache_path += [self.initiator.hostname] + path
-            message.cache = CacheMessage(path=cache_path, value=value)
+            message.cache = UiCacheMessage(path=cache_path, value=value)
 
             # DOM update
-            if spec.dom is not None:
+            if ui_spec.dom is not None:
                 dom_id = "-".join(['id'] + path)
-                message.dom = DomMessage(id=dom_id, render_as=spec.dom)
+                message.dom = UiDomMessage(id=dom_id, render_as=ui_spec.dom)
 
             # Card notification
-            if spec.card is not None:
-                message.card = CardMessage(
-                    type=spec.card.type,
-                    message=spec.card.message,
-                    details=spec.card.details,
-                    duration=spec.card.duration,
+            if ui_spec.card is not None:
+                message.card = UiCardMessage(
+                    type=ui_spec.card.type,
+                    message=ui_spec.card.message,
+                    details=ui_spec.card.details,
+                    duration=ui_spec.card.duration,
                 )
-            update.messages.append(message)
+            ui_update_request.messages.append(message)
 
-        self._enqueue_notification(update.model_dump_json())
+        self._enqueue_notification(ui_update_request.model_dump_json())

@@ -7,7 +7,7 @@ from enum import IntFlag, auto
 import humanfriendly
 
 from common.mast_logging import init_log
-from common.notifications import Notifier, CardUpdateSpec, DomUpdateSpec, UpdateSpec
+from common.notifications import Notifier, CardUpdateSpec, UiUpdateSpec
 
 logger = logging.getLogger("mast." + __name__)
 init_log(logger)
@@ -108,8 +108,8 @@ class Activities:
             info += f" details='{details}'"
         logger.info(info)
 
-        Notifier().update(
-            UpdateSpec(
+        Notifier().ui_update(
+            UiUpdateSpec(
                 path=self.activities_type_to_notification_path,
                 value=self.activities_verbal,
                 dom='badge',
@@ -152,8 +152,8 @@ class Activities:
         info += f", duration='{duration}'"
         logger.info(info)
 
-        Notifier().update(
-            UpdateSpec(
+        Notifier().ui_update(
+            UiUpdateSpec(
                 path=self.activities_type_to_notification_path,
                 value=self.activities_verbal,
                 dom='badge',
