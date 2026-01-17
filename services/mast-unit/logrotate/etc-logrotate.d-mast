@@ -1,0 +1,37 @@
+#
+# Keep last 10 folders containing mast-unit-log.txt files
+#
+/cygdrive/c/MAST/20*/*.txt {
+    daily
+    rotate 0
+    missingok
+    # notifempty
+    nocompress
+    create 644 root root
+    postrotate
+        # Keep only the 10 newest directories
+        find /cygdrive/c/MAST -maxdepth 1 -type d -name "20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]" \
+            | sort -r \
+            | tail -n +11 \
+            | xargs -r rm -rf --
+    endscript
+}
+
+#
+# Keep last 10 folders containing PWI4 Focus images
+#
+"/cygdrive/c/Users/mast/Documents/PlaneWave Instruments/PWI4Focus/*/*fits" {
+    daily
+    rotate 0
+    missingok
+    # notifempty
+    nocompress
+    create 644 root root
+    postrotate
+        # Keep only the 10 newest directories
+        find "/cygdrive/c/Users/mast/Documents/PlaneWave Instruments/PWI4Focus" -maxdepth 1 -type d -name "20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]" \
+            | sort -r \
+            | tail -n +11 \
+            | xargs -r rm -rf --
+    endscript
+}

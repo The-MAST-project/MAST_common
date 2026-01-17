@@ -7,7 +7,7 @@ from enum import IntFlag, auto
 import humanfriendly
 
 from common.mast_logging import init_log
-from common.notifications import Notifier, CardUpdateSpec, UiUpdateSpec
+from common.notifications import CardUpdateSpec, Notifier, UiUpdateSpec
 
 logger = logging.getLogger("mast." + __name__)
 init_log(logger)
@@ -48,7 +48,7 @@ class Activities:
 
         self.activities: IntFlag = Activity.Idle
         self.timings: dict[IntFlag, Timing] = {}
-        self.details: dict[IntFlag, str] = {}
+        self.details: dict[IntFlag, str | None] = {}
         self.lock = threading.Lock()
 
     @property
@@ -61,21 +61,21 @@ class Activities:
 
         match type(self.activities).__name__:
             case 'UnitActivities':
-                return ['activities_verbal']
+                return ['activities']
             case 'FocuserActivities':
-                return ['focuser', 'activities_verbal']
+                return ['focuser', 'activities']
             case 'ImagerActivities':
-                return ['imager', 'activities_verbal']
+                return ['imager', 'activities']
             case 'CoverActivities':
-                return ['covers', 'activities_verbal']
+                return ['covers', 'activities']
             case 'MountActivities':
-                return ['mount', 'activities_verbal']
+                return ['mount', 'activities']
             case 'StageActivities':
-                return ['stage', 'activities_verbal']
+                return ['stage', 'activities']
             case 'DeepspecActivities':
-                return ['deepspec', 'activities_verbal']
+                return ['deepspec', 'activities']
             case 'HighspecActivities':
-                return ['highspec', 'activities_verbal']
+                return ['highspec', 'activities']
             case _:
                 raise Exception(f"Unknown activities type '{type(self.activities).__name__}'")
 
@@ -115,9 +115,8 @@ class Activities:
                 dom='badge',
                 card=CardUpdateSpec(
                     type="start",
-                    component=type(activity).__name__.replace("Activities", "").lower(),
                     message=f"{activity._name_} started",
-                    details=self.details.get(activity, []),
+                    details=[details] if details else None,
                 )
             )
         )
@@ -152,6 +151,7 @@ class Activities:
         info += f", duration='{duration}'"
         logger.info(info)
 
+        details = self.details.get(activity)
         Notifier().ui_update(
             UiUpdateSpec(
                 path=self.activities_type_to_notification_path,
@@ -159,9 +159,8 @@ class Activities:
                 dom='badge',
                 card=CardUpdateSpec(
                     type="end",
-                    component=type(activity).__name__.replace("Activities", "").lower(),
                     message=f"{activity._name_} ended",
-                    details=self.details.get(activity, []),
+                    details=[details] if details else None,
                     duration=duration
                 )
             )

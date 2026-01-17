@@ -65,7 +65,7 @@ class CardUpdateSpec(BaseModel):
     """
     type: NotificationCardType = 'info'  # 'info'|'error'|'warning'|'start'|'end'
     message: str | None = None
-    details: list[str] = []
+    details: list[str] | None = None
     duration: str | None = None  # For 'end' type cards
 
 class UiUpdateSpec(BaseModel):
@@ -93,14 +93,14 @@ class UiCardMessage(BaseModel):
     """
     type: NotificationCardType = 'info'  # 'info'|'error'|'warning'|'start'|'end'
     message: str | None = None
-    details: list[str] = []
+    details: list[str] | None = None
     duration: str | None = None  # For 'end' type cards
 
 class UiCacheMessage(BaseModel):
     """
     Cache information passed to the Django server for display in the UI
     """
-    path: str | None = None
+    path: list[str] = []  # Path in the cache to update
     value: list[str] | str | int | float | bool | None = None  # The value being updated
 
     def model_post_init(self, context):
@@ -226,9 +226,10 @@ class Notifier:
             value = ui_spec.value
 
             # cache update
-            cache_path = [self.initiator.site]
+            cache_path: list[str] = [self.initiator.site]
             if self.initiator.type == 'unit':
                 cache_path += ['unit']
+            assert self.initiator.hostname is not None
             cache_path += [self.initiator.hostname] + path
             message.cache = UiCacheMessage(path=cache_path, value=value)
 
@@ -245,6 +246,7 @@ class Notifier:
                     details=ui_spec.card.details,
                     duration=ui_spec.card.duration,
                 )
+            logger.debug(f"Notifier.ui_update: message={message.model_dump_json()}")
             ui_update_request.messages.append(message)
 
         self._enqueue_notification(ui_update_request.model_dump_json())
