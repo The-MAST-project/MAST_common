@@ -75,6 +75,7 @@ class CardUpdateSpec(BaseModel):
     Allows initiator to request a card notification be displayed in the UI
     """
 
+    component: str | None = None
     type: NotificationCardType = "info"  # 'info'|'error'|'warning'|'start'|'end'
     message: str | None = None
     details: list[str] | None = None
@@ -113,6 +114,7 @@ class UiCardMessage(BaseModel):
     message: str | None = None
     details: list[str] | None = None
     duration: str | None = None  # For 'end' type cards
+    component: str | None = None
 
 
 class UiCacheMessage(BaseModel):
@@ -277,6 +279,7 @@ class Notifier:
                     message=ui_spec.card.message,
                     details=ui_spec.card.details,
                     duration=ui_spec.card.duration,
+                    component=ui_spec.card.component,
                 )
             logger.debug(f"Notifier.ui_update: message={message.model_dump_json()}")
             ui_update_request.messages.append(message)
