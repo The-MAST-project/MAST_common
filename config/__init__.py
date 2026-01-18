@@ -150,8 +150,7 @@ class Config:
                     hostname[4:].isdigit()
                     and 1 <= int(hostname[4:]) <= Config.NUMBER_OF_UNITS
                 ):
-                    # site = "ns"
-                    site = "wis"  # until we have a mast-ns-control machine
+                    site = "ns"
                 else:
                     pat = re.compile(r"^mast-([^-]+)-(?:control|spec)$")
                     m = pat.match(hostname)
@@ -175,9 +174,10 @@ class Config:
         )
         assert local_config_file is not None
 
+        # for the time being we have only one origin configuration, from mast-wis-control
         self.origin = ConfigOrigin(
             local_config_file,
-            mongo_uri=f"mongodb://mast-{site}-control:27017",
+            mongo_uri="mongodb://mast-wis-control:27017",
             database_name="mast",
             collections=("groups", "services", "sites", "specs", "units", "users"),
         )
@@ -542,7 +542,8 @@ class Config:
 
     @property
     def local_site(self) -> Site | None:
-        found = [s for s in self.sites if s.local]
+        hostname = socket.gethostname().split(".")[0]
+        found = [s for s in self.sites if hostname in s.unit_ids]
         if len(found) != 0:
             return found[0]
 
