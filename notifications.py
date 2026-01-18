@@ -36,22 +36,25 @@ if not initiator:
         local_site.project if local_site and local_site.project else "unknown project"
     )
 
-    local_machine_type = None
     local_machine_name = socket.gethostname().split(".")[0]
-    if local_machine_name.startswith(
-        local_project + "-"
-    ) and local_machine_name.endswith("-spec"):
-        local_machine_type = "spec"
-    elif local_machine_name.startswith(
-        local_project + "-"
-    ) and local_machine_name.endswith("-control"):
-        local_machine_type = "controller"
-    elif local_machine_name.startswith(local_project):
-        local_machine_type = "unit"
-    if not local_machine_type:
-        raise Exception(
-            f"{function_name()}: could not determine local machine type from hostname '{local_machine_name}'"
-        )
+    parts = local_machine_name.split('-')
+    if len(parts) == 3:
+        local_project = parts[0]
+        local_machine_type = 'spec' if parts[2] == 'spec' else 'controller' if parts[2] == 'control' else 'unit'
+    # if local_machine_name.startswith(
+    #     local_project + "-"
+    # ) and local_machine_name.endswith("-spec"):
+    #     local_machine_type = "spec"
+    # elif local_machine_name.startswith(
+    #     local_project + "-"
+    # ) and local_machine_name.endswith("-control"):
+    #     local_machine_type = "controller"
+    # elif local_machine_name.startswith(local_project):
+    #     local_machine_type = "unit"
+    # if not local_machine_type:
+    #     raise Exception(
+    #         f"{function_name()}: could not determine local machine type from hostname '{local_machine_name}'"
+    #     )
 
     initiator = NotificationInitiator(
         site=local_site_name,
