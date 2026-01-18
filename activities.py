@@ -52,6 +52,35 @@ class Activities:
         self.lock = threading.Lock()
 
     @property
+    def activities_type_to_component(self) -> str | None:
+        """
+        Converts an activity type to a component name
+        :param activity_type:
+        :return:
+        """
+
+        match type(self.activities).__name__:
+            case "UnitActivities":
+                return None
+            case "FocuserActivities":
+                return "focuser"
+            case "ImagerActivities":
+                return "imager"
+            case "CoverActivities":
+                return "covers"
+            case "MountActivities":
+                return "mount"
+            case "StageActivities":
+                return "stage"
+            case "DeepspecActivities":
+                return "deepspec"
+            case "HighspecActivities":
+                return "highspec"
+            case _:
+                raise Exception(
+                    f"Unknown activities type '{type(self.activities).__name__}'"
+                )
+    @property
     def activities_type_to_notification_path(self) -> list[str]:
         """
         Converts an activity type to a notification path
@@ -118,9 +147,10 @@ class Activities:
                 value=self.activities_verbal,
                 dom="badge",
                 card=CardUpdateSpec(
+                    component=self.activities_type_to_component,
                     type="start",
-                    message=f"{activity._name_} started",
-                    details=self.details.get(activity, []),
+                    message=f"Started {activity._name_}",
+                    details=[self.details[activity]] if activity in self.details else [],
                 ),
             )
         )
@@ -155,16 +185,16 @@ class Activities:
         info += f", duration='{duration}'"
         logger.info(info)
 
-        details = self.details.get(activity)
         Notifier().ui_update(
             UiUpdateSpec(
                 path=self.activities_type_to_notification_path,
                 value=self.activities_verbal,
                 dom="badge",
                 card=CardUpdateSpec(
+                    component=self.activities_type_to_component,
                     type="end",
-                    message=f"{activity._name_} ended",
-                    details=self.details.get(activity, []),
+                    message=f"Ended {activity._name_}",
+                    details=[self.details[activity]] if activity in self.details else [],
                     duration=duration,
                 ),
             )
