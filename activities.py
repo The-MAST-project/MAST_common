@@ -76,10 +76,15 @@ class Activities:
                 return "deepspec"
             case "HighspecActivities":
                 return "highspec"
+            case "GreatEyesActivities":
+                return "greateyes"
+            case "CalibrationLampActivities":
+                return "calibration-lamp"
             case _:
                 raise Exception(
                     f"Unknown activities type '{type(self.activities).__name__}'"
                 )
+
     @property
     def activities_type_to_notification_path(self) -> list[str]:
         """
@@ -106,6 +111,8 @@ class Activities:
                 return ["deepspec", "activities_verbal"]
             case "HighspecActivities":
                 return ["highspec", "activities_verbal"]
+            case "GreatEyesActivities":
+                return ["deepspec", "greateyes", "activities_verbal"]
             case _:
                 raise Exception(
                     f"Unknown activities type '{type(self.activities).__name__}'"
@@ -150,7 +157,9 @@ class Activities:
                     component=self.activities_type_to_component,
                     type="start",
                     message=f"Started {activity._name_}",
-                    details=[self.details[activity]] if activity in self.details else [],
+                    details=[self.details[activity]]
+                    if activity in self.details
+                    else [],
                 ),
             )
         )
@@ -194,7 +203,9 @@ class Activities:
                     component=self.activities_type_to_component,
                     type="end",
                     message=f"Ended {activity._name_}",
-                    details=[self.details[activity]] if activity in self.details else [],
+                    details=[self.details[activity]]
+                    if activity in self.details
+                    else [],
                     duration=duration,
                 ),
             )
@@ -343,6 +354,23 @@ class ControllerActivities(IntFlag):
 
 
 class ControlledUnitActivities(IntFlag):
+    Idle = 0
+
+
+class GreatEyesActivities(IntFlag):
+    CoolingDown = auto()
+    WarmingUp = auto()
+    Acquiring = auto()
+    Exposing = auto()
+    ReadingOut = auto()
+    Saving = auto()
+    StartingUp = auto()
+    ShuttingDown = auto()
+    SettingParameters = auto()
+    Probing = auto()
+
+
+class CalibrationLampActivities(IntFlag):
     Idle = 0
 
 
