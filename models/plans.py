@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any, Literal
 import tomlkit
 import tomlkit.exceptions
 import ulid
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, computed_field
 from pydantic.config import ConfigDict
 
 from common.activities import Activities, AssignmentActivities, UnitActivities
@@ -24,6 +24,7 @@ from common.models.constraints import ConstraintsModel
 from common.models.events import EventModel
 from common.models.spectrographs import SpectrographModel
 from common.models.targets import Target
+from common.models.transmited_assignments import AssignmentEnvelope
 from common.utils import OperatingMode, function_name
 
 if TYPE_CHECKING:
@@ -82,32 +83,32 @@ class Plan(BaseModel, Activities):
         default=None, description="API client for spectrograph communication"
     )
 
-    # @computed_field
-    # @property
-    # def remote_unit_assignments(self) -> list["AssignmentEnvelope"]:
-    #     from common.models.assignments import (
-    #         Initiator,
-    #         UnitAssignmentModel,
-    #     )
-    #     from common.models.transmited_assignments import AssignmentEnvelope
+    @computed_field
+    @property
+    def remote_unit_assignments(self) -> list["AssignmentEnvelope"]:
+        from common.models.assignments import (
+            Initiator,
+            UnitAssignmentModel,
+        )
+        from common.models.transmited_assignments import AssignmentEnvelope
 
-    #     ret: list[AssignmentEnvelope] = []
-    #     initiator = Initiator.local_machine()
-    #     for key in list(self.unit.keys()):
-    #         unit_assignment: UnitAssignmentModel = UnitAssignmentModel(
-    #             initiator=initiator,
-    #             target=Target(ra=self.unit[key].ra, dec=self.unit[key].dec),
-    #             plan=self,
-    #         )
+        ret: list[AssignmentEnvelope] = []
+        initiator = Initiator.local_machine()
+        for key in list(self.unit.keys()):
+            unit_assignment: UnitAssignmentModel = UnitAssignmentModel(
+                initiator=initiator,
+                target=Target(ra=self.unit[key].ra, dec=self.unit[key].dec),
+                plan=self,
+            )
 
-    #         units_specifier = parse_units(key)
-    #         if units_specifier:
-    #             units = AssignmentEnvelope.from_units_specifier(
-    #                 units_specifier, unit_assignment
-    #             )
-    #             if units:
-    #                 ret += units
-    #     return ret
+            units_specifier = parse_units(key)
+            if units_specifier:
+                units = AssignmentEnvelope.from_units_specifier(
+                    units_specifier, unit_assignment
+                )
+                if units:
+                    ret += units
+        return ret
 
     # @computed_field
     # @property
