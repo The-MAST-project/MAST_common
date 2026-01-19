@@ -67,9 +67,12 @@ class PHD2GuiderStatus(BaseModel):
     sky_quality: SkyQualityStatus | None = None
 
 
-class GuiderStatus(BaseModel):
+class ActivitiesStatus(BaseModel):
     activities: int | None = None
-    activities_verbal: ActivitiesVerbal = None
+    activities_verbal: ActivitiesVerbal
+
+
+class GuiderStatus(ActivitiesStatus):
     backend: PHD2GuiderStatus | None = None
 
 
@@ -109,11 +112,9 @@ class MountStatus(PowerStatus, AscomStatus, ComponentStatus):
 
 
 # PHD2 Imager status
-class PHD2ImagerStatus(BaseModel):
+class PHD2ImagerStatus(ActivitiesStatus):
     identifier: str | None = None
     name: str = "phd2"
-    activities: int = 0
-    activities_verbal: ActivitiesVerbal = None
     operational: bool = False
     why_not_operational: list[str] = []
     connected: bool = False
@@ -203,27 +204,13 @@ class UnitStatusResponse(BaseModel):
     status: UnitStatus  # This is the discriminated union
 
 
-class ControllerStatus(BaseModel):
-    """Status of the controller."""
-
-    activities: int
-    activities_verbal: ActivitiesVerbal
-    powered: bool = True
-    detected: bool = True
-    operational: bool = True
-    why_not_operational: list[str] = []
+ControllerStatus = BaseStatus
 
 
-class GreateyesStatus(BaseModel):
+class GreateyesStatus(ComponentStatus):
     band: str | None = None
     ipaddr: str | None = None
-    detected: bool = False
-    operational: bool = False
-    why_not_operational: list[str] = []
     enabled: bool = False
-    activities: int | None = None
-    activities_verbal: ActivitiesVerbal | None = None
-    powered: bool = False
     connected: bool = False
     addr: int | None = None
     min_temp: float | None = None
@@ -235,27 +222,14 @@ class GreateyesStatus(BaseModel):
     latest_settings: Any = None
 
 
-class DeepspecStatus(BaseModel):
-    powered: bool = False
-    detected: bool = False
-    activities: int | None = None
-    activities_verbal: ActivitiesVerbal | None = None
-    operational: bool = False
-    why_not_operational: list[str] = []
+class DeepspecStatus(ComponentStatus):
     cameras: dict[str, GreateyesStatus] = {}
 
 
-class NewtonStatus(BaseModel):
+class NewtonStatus(ComponentStatus):
     band: str | None = None
     ipaddr: str | None = None
-    detected: bool = False
-    operational: bool = False
-    why_not_operational: list[str] = []
     enabled: bool = False
-    activities: int | None = None
-    activities_verbal: ActivitiesVerbal | None = None
-    powered: bool = False
-    connected: bool = False
     addr: int | None = None
     min_temp: float | None = None
     max_temp: float | None = None
@@ -266,14 +240,38 @@ class NewtonStatus(BaseModel):
     latest_settings: Any = None
 
 
-class HighspecStatus(BaseModel):
-    activities: int | None = None
-    activities_verbal: ActivitiesVerbal | None = None
-    operational: bool = False
-    why_not_operational: list[str] = []
-    powered: bool = False
-    detected: bool = False
+class HighspecStatus(ComponentStatus):
     camera: NewtonStatus | None = None
+
+
+CalibrationLampStatus = BaseStatus
+ChillerStatus = BaseStatus
+
+FilterPositions = Literal["1", "2", "3", "4", "5", "6", "default"]
+WheelNames = Literal["ThAr", "qTh"]
+SpecStageNames = Literal["focusing", "disperser", "fiber"]
+SpecNames = Literal["deepspec", "highspec"]
+GratingNames = Literal["Ca", "Halpha", "Mg", "Future"]
+
+
+class WheelStatus(BaseStatus):
+    filters: dict[FilterPositions, str]
+
+
+SpecStagePresets = dict[GratingNames | SpecNames, int]
+
+
+class SpecStageStatus(ComponentStatus):
+    presets: SpecStagePresets
+
+
+class SpecStatus(BaseModel):
+    deepspec: DeepspecStatus
+    highspec: HighspecStatus
+    stages: dict[SpecStageNames, SpecStageStatus]
+    chiller: ChillerStatus
+    lamps: dict[WheelNames, CalibrationLampStatus]
+    wheels: dict[WheelNames, WheelStatus]
 
 
 class SiteStatus(BaseModel):
@@ -281,8 +279,7 @@ class SiteStatus(BaseModel):
 
     controller: ControllerStatus | None = None
     units: dict[str, UnitStatus] | None = None
-    deepspec: DeepspecStatus | None = None
-    highspec: HighspecStatus | None = None
+    spec: SpecStatus | None = None
 
 
 class SitesStatus(BaseModel):
