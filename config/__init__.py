@@ -543,7 +543,7 @@ class Config:
     @property
     def local_site(self) -> Site | None:
         hostname = socket.gethostname().split(".")[0]
-        found = [s for s in self.sites if hostname in s.unit_ids]
+        found = [s for s in self.sites if (hostname in s.unit_ids) or (hostname == s.controller_host) or (hostname == s.spec_host)]
         if len(found) != 0:
             return found[0]
 

@@ -91,5 +91,5 @@ class SpectrographAssignmentModel(BaseModel):
 
     instrument: Literal["deepspec", "highspec"]
     initiator: Initiator
-    # plan: PlanSettingsModel
+    plan: Plan
     spec: SpectrographModel
