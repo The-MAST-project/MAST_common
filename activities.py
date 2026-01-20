@@ -48,7 +48,7 @@ class Activities:
     def __init__(self):
         self.activities: IntFlag = Activity.Idle
         self.timings: dict[IntFlag, Timing] = {}
-        self.details: dict[IntFlag, str | None] = {}
+        self.details: dict[IntFlag, list[str] | None] = {}
         self.lock = threading.Lock()
 
     @property
@@ -124,7 +124,7 @@ class Activities:
         activity: IntFlag,
         existing_ok: bool = False,
         label: str | None = None,
-        details: str | None = None,
+        details: list[str] | None = None,
     ):
         """
         Marks the start of an activity.
@@ -157,9 +157,7 @@ class Activities:
                     component=self.activities_type_to_component,
                     type="start",
                     message=f"Started {activity._name_}",
-                    details=[self.details[activity]]
-                    if activity in self.details
-                    else [],
+                    details=self.details[activity] if activity in self.details else [],
                 ),
             )
         )
@@ -203,9 +201,7 @@ class Activities:
                     component=self.activities_type_to_component,
                     type="end",
                     message=f"Ended {activity._name_}",
-                    details=[self.details[activity]]
-                    if activity in self.details
-                    else [],
+                    details=self.details[activity] if activity in self.details else [],
                     duration=duration,
                 ),
             )
@@ -300,11 +296,11 @@ class MountActivities(IntFlag):
 
 
 class StageActivities(IntFlag):
-    Idle = 0
+    Homing = auto()
+    Moving = auto()
     StartingUp = auto()
     ShuttingDown = auto()
-    Moving = auto()
-    Homing = auto()
+    Aborting = auto()
 
 
 class SpecActivities(IntFlag):
@@ -376,7 +372,7 @@ class CalibrationLampActivities(IntFlag):
 
 if __name__ == "__main__":
     a = Activities()
-    a.start_activity(UnitActivities.Dancing, details="foxtrot")
+    a.start_activity(UnitActivities.Dancing, details=["foxtrot"])
     import time
 
     time.sleep(2)
