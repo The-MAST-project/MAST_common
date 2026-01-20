@@ -242,7 +242,7 @@ class HighspecStatus(ComponentStatus):
 CalibrationLampStatus = BaseStatus
 ChillerStatus = BaseStatus
 
-FilterPositions = Literal[1, 2, 3, 4, 5, 6, "default"]
+FilterPositions = Literal["1", "2", "3", "4", "5", "6", "default"]
 WheelNames = Literal["ThAr", "qTh"]
 SpecStageNames = Literal["focusing", "disperser", "fiber"]
 SpecNames = Literal["deepspec", "highspec"]
