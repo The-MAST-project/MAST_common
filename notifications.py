@@ -9,7 +9,6 @@ from pydantic import BaseModel
 
 from common.config import Config
 from common.mast_logging import init_log
-from common.utils import function_name
 
 logger = logging.getLogger("mast." + __name__)
 init_log(logger)
@@ -40,7 +39,9 @@ if not initiator:
     parts = local_machine_name.split('-')
     if len(parts) == 3:
         local_project = parts[0]
-        local_machine_type = 'spec' if parts[2] == 'spec' else 'controller' if parts[2] == 'control' else 'unit'
+        local_machine_type = 'spec' if parts[2] == 'spec' else 'controller'
+    else:
+        local_machine_type = 'unit'
     # if local_machine_name.startswith(
     #     local_project + "-"
     # ) and local_machine_name.endswith("-spec"):
