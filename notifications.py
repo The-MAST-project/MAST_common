@@ -15,7 +15,7 @@ logger = logging.getLogger("mast." + __name__)
 init_log(logger)
 
 NotificationCardType = Literal["info", "warning", "error", "start", "end"]
-NotificationTypes = Literal["update"]  # more to come
+NotificationTypes = Literal["ui_update"]  # more to come
 DomUpdateSpec = Literal["badge", "text"] | None
 
 
@@ -37,10 +37,16 @@ if not initiator:
     )
 
     local_machine_name = socket.gethostname().split(".")[0]
-    parts = local_machine_name.split('-')
+    parts = local_machine_name.split("-")
     if len(parts) == 3:
         local_project = parts[0]
-        local_machine_type = 'spec' if parts[2] == 'spec' else 'controller' if parts[2] == 'control' else 'unit'
+        local_machine_type = (
+            "spec"
+            if parts[2] == "spec"
+            else "controller"
+            if parts[2] == "control"
+            else "unit"
+        )
     # if local_machine_name.startswith(
     #     local_project + "-"
     # ) and local_machine_name.endswith("-spec"):
@@ -147,7 +153,7 @@ class UiUpdateRequest(BaseModel):
     - broadcasted to attached browsers to update DOM elements, and display notification cards
     """
 
-    type: Literal["update"] = "update"  # Type of notification
+    type: NotificationTypes = "ui_update"  # Type of notification
     initiator: NotificationInitiator = initiator  # The originator of the notification
     messages: list[UiUpdateMessage] = []  # List of individual notification items
 
@@ -251,7 +257,7 @@ class Notifier:
             ui_specs = [ui_specs]
 
         ui_update_request: UiUpdateRequest = UiUpdateRequest(
-            type="update", initiator=self.initiator
+            type="ui_update", initiator=self.initiator
         )
 
         for ui_spec in ui_specs:
