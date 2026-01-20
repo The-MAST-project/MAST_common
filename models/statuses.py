@@ -208,6 +208,7 @@ ControllerStatus = BaseStatus
 
 
 class GreateyesStatus(ComponentStatus):
+    powered: bool = False
     band: str | None = None
     ipaddr: str | None = None
     enabled: bool = False
@@ -227,14 +228,8 @@ class DeepspecStatus(ComponentStatus):
 
 
 class NewtonStatus(ComponentStatus):
-    band: str | None = None
-    ipaddr: str | None = None
-    enabled: bool = False
-    addr: int | None = None
-    min_temp: float | None = None
-    max_temp: float | None = None
-    front_temperature: float | None = None
-    back_temperature: float | None = None
+    powered: bool = False
+    temperature: float | None = None
     errors: list[str] | None = None
     latest_exposure: Any = None
     latest_settings: Any = None
@@ -247,31 +242,39 @@ class HighspecStatus(ComponentStatus):
 CalibrationLampStatus = BaseStatus
 ChillerStatus = BaseStatus
 
-FilterPositions = Literal["1", "2", "3", "4", "5", "6", "default"]
+FilterPositions = Literal[1, 2, 3, 4, 5, 6, "default"]
 WheelNames = Literal["ThAr", "qTh"]
 SpecStageNames = Literal["focusing", "disperser", "fiber"]
 SpecNames = Literal["deepspec", "highspec"]
 GratingNames = Literal["Ca", "Halpha", "Mg", "Future"]
 
 
-class WheelStatus(BaseStatus):
-    filters: dict[FilterPositions, str]
+class WheelStatus(ComponentStatus):
+    filters: dict[FilterPositions, str] = {}
+    serial_number: str | None = None
+    id: str | None = None
+    position: int | None = None
+    speed_mode: str | None = None
+    sensor_mode: str | None = None
+    current_filter: str | None = None
 
 
 SpecStagePresets = dict[GratingNames | SpecNames, int]
 
 
 class SpecStageStatus(ComponentStatus):
-    presets: SpecStagePresets
+    presets: SpecStagePresets = {}
+    position: float | None = None
+    at_preset: str | None = None
 
 
 class SpecStatus(BaseModel):
-    deepspec: DeepspecStatus
-    highspec: HighspecStatus
-    stages: dict[SpecStageNames, SpecStageStatus]
-    chiller: ChillerStatus
-    lamps: dict[WheelNames, CalibrationLampStatus]
-    wheels: dict[WheelNames, WheelStatus]
+    deepspec: DeepspecStatus | None = None
+    highspec: HighspecStatus | None = None
+    stages: dict[SpecStageNames, SpecStageStatus] | None = None
+    chiller: ChillerStatus | None = None
+    lamps: dict[WheelNames, CalibrationLampStatus] | None = None
+    wheels: dict[WheelNames, WheelStatus] | None = None
 
 
 class SiteStatus(BaseModel):
