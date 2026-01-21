@@ -28,33 +28,25 @@ class NotificationInitiator(BaseModel):
 
 initiator: NotificationInitiator | None = None
 if not initiator:
-    local_site = Config().local_site
-    local_site_name = (
-        local_site.name if local_site and local_site.name else "unknown site"
-    )
-    local_project = (
-        local_site.project if local_site and local_site.project else "unknown project"
-    )
+    sites = Config().get_sites()
 
     local_machine_name = socket.gethostname().split(".")[0]
     parts = local_machine_name.split('-')
     if len(parts) == 3:
+        # mast-wis-spec, mast-ns-control, etc.
         local_project = parts[0]
-        local_machine_type = 'spec' if parts[2] == 'spec' else 'controller' if parts[2] == 'control' else 'unit'
-    # if local_machine_name.startswith(
-    #     local_project + "-"
-    # ) and local_machine_name.endswith("-spec"):
-    #     local_machine_type = "spec"
-    # elif local_machine_name.startswith(
-    #     local_project + "-"
-    # ) and local_machine_name.endswith("-control"):
-    #     local_machine_type = "controller"
-    # elif local_machine_name.startswith(local_project):
-    #     local_machine_type = "unit"
-    # if not local_machine_type:
-    #     raise Exception(
-    #         f"{function_name()}: could not determine local machine type from hostname '{local_machine_name}'"
-    #     )
+        local_machine_type = 'spec' if parts[2] == 'spec' else 'controller' if parts[2] == 'control' else 'unknown-machine-type'
+    elif len(parts) == 1:
+        # mastw, mast00, mast12, etc.
+        local_machine_type = 'unit'
+        local_site = [s for s in sites if local_machine_name in s.unit_ids]
+        if local_site:
+            local_site_name = local_site[0].name
+            local_project = local_site[0].project
+        else:
+            raise Exception(
+                f"{function_name()}: could not determine local site from hostname '{local_machine_name}'"
+            )
 
     initiator = NotificationInitiator(
         site=local_site_name,
@@ -67,6 +59,7 @@ if not initiator:
     del local_machine_name
     del local_machine_type
     del local_project
+    del sites
 
 #
 # Specifications: allow sepcifying notification message contents
