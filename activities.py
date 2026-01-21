@@ -9,6 +9,8 @@ import humanfriendly
 from common.mast_logging import init_log
 from common.notifications import CardUpdateSpec, Notifier, UiUpdateSpec
 
+# from src.common.utils import function_name
+
 logger = logging.getLogger("mast." + __name__)
 init_log(logger)
 
@@ -76,10 +78,11 @@ class Activities:
                 return "deepspec"
             case "HighspecActivities":
                 return "highspec"
+            case "PHD2Activities":
+                return "phd2"
             case _:
-                raise Exception(
-                    f"Unknown activities type '{type(self.activities).__name__}'"
-                )
+                logger.error(f"Unknown activities type '{type(self.activities).__name__}'")
+                return 'unknown-component'
     @property
     def activities_type_to_notification_path(self) -> list[str]:
         """
@@ -106,10 +109,12 @@ class Activities:
                 return ["deepspec", "activities_verbal"]
             case "HighspecActivities":
                 return ["highspec", "activities_verbal"]
+            case "PHD2Activities":
+                return ["imager", "activities_verbal"]
             case _:
-                raise Exception(
-                    f"Unknown activities type '{type(self.activities).__name__}'"
-                )
+                component = 'unknown-component'
+                # logger.error(f"{function_name()}: Unknown activities type '{type(self.activities).__name__}'")
+
         return [component] + ["activities"] if component else ["activities"]
 
     def start_activity(
