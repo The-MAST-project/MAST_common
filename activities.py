@@ -61,7 +61,7 @@ class Activities:
 
         match type(self.activities).__name__:
             case "UnitActivities":
-                return 'unit'
+                return "unit"
             case "FocuserActivities":
                 return "focuser"
             case "ImagerActivities":
