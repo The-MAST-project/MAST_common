@@ -49,8 +49,8 @@ class Activities:
 
     def __init__(self):
         self.activities: IntFlag = Activity.Idle
-        self.timings: dict[IntFlag, Timing] = {}
-        self.details: dict[IntFlag, str | None] = {}
+        self.timings: dict[IntFlag, Timing] = {} # keyed on activity
+        self.details: dict[IntFlag, list[str] | None] = {} # keyed on activity
         self.lock = threading.Lock()
 
     @property
@@ -63,7 +63,7 @@ class Activities:
 
         match type(self.activities).__name__:
             case "UnitActivities":
-                return None
+                return "unit"
             case "FocuserActivities":
                 return "focuser"
             case "ImagerActivities":
@@ -80,6 +80,10 @@ class Activities:
                 return "highspec"
             case "PHD2Activities":
                 return "phd2"
+            case "GreatEyesActivities":
+                return "greateyes"
+            case "CalibrationLampActivities":
+                return "calibration-lamp"
             case _:
                 logger.error(f"Unknown activities type '{type(self.activities).__name__}'")
                 return 'unknown-component'
@@ -111,6 +115,8 @@ class Activities:
                 return ["highspec", "activities_verbal"]
             case "PHD2Activities":
                 return ["imager", "activities_verbal"]
+            case "GreatEyesActivities":
+                return ["deepspec", "greateyes", "activities_verbal"]
             case _:
                 component = 'unknown-component'
                 # logger.error(f"{function_name()}: Unknown activities type '{type(self.activities).__name__}'")
@@ -122,7 +128,7 @@ class Activities:
         activity: IntFlag,
         existing_ok: bool = False,
         label: str | None = None,
-        details: str | None = None,
+        details: list[str] | None = None,
     ):
         """
         Marks the start of an activity.
@@ -155,7 +161,7 @@ class Activities:
                     component=self.activities_type_to_component,
                     type="start",
                     message=f"Started {activity._name_}",
-                    details=[self.details[activity]] if activity in self.details else [],
+                    details=self.details.get(activity, None),
                 ),
             )
         )
@@ -199,7 +205,7 @@ class Activities:
                     component=self.activities_type_to_component,
                     type="end",
                     message=f"Ended {activity._name_}",
-                    details=[self.details[activity]] if activity in self.details else [],
+                    details=self.details[activity] if activity in self.details else [],
                     duration=duration,
                 ),
             )
@@ -294,11 +300,11 @@ class MountActivities(IntFlag):
 
 
 class StageActivities(IntFlag):
-    Idle = 0
+    Homing = auto()
+    Moving = auto()
     StartingUp = auto()
     ShuttingDown = auto()
-    Moving = auto()
-    Homing = auto()
+    Aborting = auto()
 
 
 class SpecActivities(IntFlag):
@@ -351,9 +357,26 @@ class ControlledUnitActivities(IntFlag):
     Idle = 0
 
 
+class GreatEyesActivities(IntFlag):
+    CoolingDown = auto()
+    WarmingUp = auto()
+    Acquiring = auto()
+    Exposing = auto()
+    ReadingOut = auto()
+    Saving = auto()
+    StartingUp = auto()
+    ShuttingDown = auto()
+    SettingParameters = auto()
+    Probing = auto()
+
+
+class CalibrationLampActivities(IntFlag):
+    Idle = 0
+
+
 if __name__ == "__main__":
     a = Activities()
-    a.start_activity(UnitActivities.Dancing, details="foxtrot")
+    a.start_activity(UnitActivities.Dancing, details=["foxtrot"])
     import time
 
     time.sleep(2)
