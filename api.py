@@ -325,7 +325,7 @@ class SpecApi(ApiClient):
         super().__init__(hostname=site.spec_host, port=port, domain=ApiDomain.Spec)
 
 
-class ControllerApi:
+class ControllerApi(ApiClient):
     def __init__(self, site_name: str | None = None):
         self.client = None
 
