@@ -264,7 +264,7 @@ SpecStagePresets = dict[GratingNames | SpecNames, int]
 
 class SpecStageStatus(ComponentStatus):
     presets: SpecStagePresets = {}
-    position: float | None = None
+    position: int | None = None
     at_preset: str | None = None
 
 
