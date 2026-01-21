@@ -242,7 +242,7 @@ class HighspecStatus(ComponentStatus):
 CalibrationLampStatus = BaseStatus
 ChillerStatus = BaseStatus
 
-FilterPositions = Literal[1, 2, 3, 4, 5, 6, "default"]
+FilterPositions = Literal["1", "2", "3", "4", "5", "6", "default"]
 WheelNames = Literal["ThAr", "qTh"]
 SpecStageNames = Literal["focusing", "disperser", "fiber"]
 SpecNames = Literal["deepspec", "highspec"]
@@ -264,7 +264,7 @@ SpecStagePresets = dict[GratingNames | SpecNames, int]
 
 class SpecStageStatus(ComponentStatus):
     presets: SpecStagePresets = {}
-    position: float | None = None
+    position: int | None = None
     at_preset: str | None = None
 
 
