@@ -99,6 +99,34 @@ class Component(ABC, Activities):
     def was_shut_down(self) -> bool:
         pass
 
+    @property
+    def notification_path(self) -> list[str] | None:
+        """
+        The master status structure (common.models.statuses.SitesStatus) is hierarchical, e.g.:
+            site[0]:
+                ['units'][unit_name]: ... path to unit field ...
+                ['spec']: ... path to site spec field ...
+                ['controller']: ... path to site controller field ...
+            site[1]:
+                ...
+
+        The GUI server caches a copy of this master status structure and serves it to clients on request.
+        Notifications of field changes are sent to the GUI server with:
+        - an initiator object that indicates which component is sending the notification (e.g. site: 'wis', 'units', 'mastw'), and
+        - a 'notification_path' that indicates where in the master status structure the change occurred.
+
+        Examples:
+        - if the spec's 'G' camera's 'activities_verbal' property changed, the notification_path would be:
+            ['deepspec', 'camera', 'G', 'activities_verbal']
+        - if a unit's stage wants to notify about the current position and whether it is at a preset position,
+            it will end two notifications with paths:
+            ['stage', 'position']
+            ['stage', 'at_preset']
+
+        This property produces the list of keys into the master status dictionary where this notification is targeted.
+        """
+        return None
+
     def component_status(self) -> ComponentStatus:
 
         return ComponentStatus(
