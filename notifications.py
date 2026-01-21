@@ -208,7 +208,7 @@ class Notifier:
                     data = self.notification_queue[0]
 
                 # Log what we're sending
-                logger.debug(f"Attempting to send notification: {data[:200]}...")
+                # logger.debug(f"Attempting to send notification: {data[:200]}...")
 
                 # Try to send
                 try:
@@ -223,12 +223,12 @@ class Notifier:
                             and self.notification_queue[0] == data
                         ):
                             self.notification_queue.popleft()
-                            logger.debug("Notification sent successfully")
-                except Exception as e:
-                    logger.error(f"Failed to send notification: {e}")
-                    logger.error(
-                        f"Data type: {type(data)}, length: {len(data) if isinstance(data, str) else 'N/A'}"
-                    )
+                            # logger.debug("Notification sent successfully")
+                except Exception:
+                    # logger.error(f"Failed to send notification: {e}")
+                    # logger.error(
+                    #     f"Data type: {type(data)}, length: {len(data) if isinstance(data, str) else 'N/A'}"
+                    # )
                     # Keep in queue for retry
                     break
 
@@ -284,7 +284,7 @@ class Notifier:
                     duration=ui_spec.card.duration,
                     component=ui_spec.card.component,
                 )
-            logger.debug(f"Notifier.ui_update: message={message.model_dump_json()}")
+            # logger.debug(f"Notifier.ui_update: message={message.model_dump_json()}")
             ui_update_request.messages.append(message)
 
         self._enqueue_notification(ui_update_request.model_dump_json())
