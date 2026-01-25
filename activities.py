@@ -152,6 +152,9 @@ class Activities:
             info += f" details='{details}'"
         logger.info(info)
 
+        details = self.details.get(activity, None)
+        if details is not None and not isinstance(details, list):
+            details = [str(details)]
         Notifier().ui_update(
             UiUpdateSpec(
                 path=self.activities_type_to_notification_path,
@@ -161,7 +164,7 @@ class Activities:
                     component=self.activities_type_to_component,
                     type="start",
                     message=f"Started {activity._name_}",
-                    details=self.details.get(activity, None),
+                    details=details,
                 ),
             )
         )
