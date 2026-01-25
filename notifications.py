@@ -34,10 +34,17 @@ if not initiator:
     if len(parts) == 3:
         # mast-wis-spec, mast-ns-control, etc.
         local_project = parts[0]
-        local_machine_type = 'spec' if parts[2] == 'spec' else 'controller' if parts[2] == 'control' else 'unknown-machine-type'
+        local_machine_type = (
+            "spec"
+            if parts[2] == "spec"
+            else "controller"
+            if parts[2] == "control"
+            else "unknown-machine-type"
+        )
+        local_site_name = parts[1]
     elif len(parts) == 1:
         # mastw, mast00, mast12, etc.
-        local_machine_type = 'unit'
+        local_machine_type = "unit"
         local_site = [s for s in sites if local_machine_name in s.unit_ids]
         if local_site:
             local_site_name = local_site[0].name
