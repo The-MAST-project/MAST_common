@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from common.config import Config
 from common.mast_logging import init_log
+from common.utils import function_name
 
 logger = logging.getLogger("mast." + __name__)
 init_log(logger)
