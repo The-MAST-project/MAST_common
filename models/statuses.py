@@ -280,9 +280,9 @@ class SpecStatus(BaseModel):
 class SiteStatus(BaseModel):
     """Status of a controlled site."""
 
-    controller: ControllerStatus | None = None
+    controller: ControllerStatus | ShortStatus | None = None
     units: dict[str, UnitStatus] | None = None
-    spec: SpecStatus | None = None
+    spec: SpecStatus | ShortStatus | None = None
 
 
 class SitesStatus(BaseModel):

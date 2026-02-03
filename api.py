@@ -330,21 +330,19 @@ class ControllerApi(ApiClient):
         self.client = None
 
         if site_name:
-            site = [s for s in Config().sites if s.name == site_name][0]
+            site = [s for s in Config().get_sites() if s.name == site_name][0]
         else:
             site: Site | None = Config().local_site
+
         service_conf = Config().get_service(service_name="control")
         if service_conf is None:
             logger.error("Control service configuration not found")
             return
         port = service_conf.port
-        try:
-            assert site is not None
-            self.client = ApiClient(
-                site.controller_host, port=port, domain=ApiDomain.Control
-            )
-        except ValueError as e:
-            logger.error(f"{e}")
+        assert site is not None
+        super().__init__(
+            hostname=site.controller_host, port=port, domain=ApiDomain.Control
+        )
 
 
 class SafetyApi(ApiClient):
