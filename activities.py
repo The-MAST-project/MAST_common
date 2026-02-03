@@ -254,6 +254,7 @@ class UnitActivities(IntFlag):
     AutofocusingPWI4 = auto()
     Autofocusing = auto()
     AutofocusAnalysis = auto()
+    PreGuiding = auto() # getting ready for guiding
     Guiding = auto()
     StartingUp = auto()
     ShuttingDown = auto()
