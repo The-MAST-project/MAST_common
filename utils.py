@@ -344,6 +344,15 @@ def boxed_log(logger: logging.Logger, lines: str | list[str], center: bool = Fal
     for line in boxed_lines(lines, center):
         logger.log(level, line)
 
+def boxed_debug(logger: logging.Logger, lines: str | list[str], center: bool = False):
+    boxed_log(logger, lines, center, level=logging.DEBUG)
+
+def boxed_info(logger: logging.Logger, lines: str | list[str], center: bool = False):
+    boxed_log(logger, lines, center, level=logging.INFO)
+
+def boxed_warning(logger: logging.Logger, lines: str | list[str], center: bool = False):
+    boxed_log(logger, lines, center, level=logging.WARNING)
+
 def canonic_unit_name(name: str) -> str | None:
     """
     Tries to make a canonic MAST unit name, accepting
