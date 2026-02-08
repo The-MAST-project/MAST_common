@@ -577,9 +577,9 @@ class SwitchedOutlet:
         )
 
     def power_on_or_off(self, new_state: bool):
-        from common.utils import function_name
+        from common.utils import caller_name
 
-        op = function_name()
+        op = caller_name()
 
         if self.power_switch is None or not self.power_switch.detected:
             logger.error(
