@@ -329,7 +329,7 @@ class HighspecActivities(IntFlag):
     CoolingDown = auto()
     WarmingUp = auto()
     Exposing = auto()
-    Focusing = auto()
+    AutoFocusing = auto()
     Positioning = auto()
     Acquiring = auto()
 
