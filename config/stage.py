@@ -32,6 +32,7 @@ class SpecStageConfig(BaseModel):
     presets: dict[str, int]
     startup_preset: str | None = None
     shutdown_preset: str | None = None
+    max_position: int | None = None
 
     @model_validator(mode="after")
     def validate_spec_stage_config(self):
@@ -57,6 +58,7 @@ class FiberStageConfig(BaseModel):
     presets: dict[str, int]
     startup_preset: str | None = None
     shutdown_preset: str | None = None
+    max_position: int | None = None
 
     @model_validator(mode="after")
     def validate_spec_stage_config(self):
