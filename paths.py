@@ -155,6 +155,22 @@ class PathMaker:
         os.makedirs(folder, exist_ok=True)
         return folder
 
+    @staticmethod
+    def make_spec_exposures_folder(
+        spec_name: Literal["highspec", "deepspec"], band: str | None = None
+    ):
+        if spec_name not in ["highspec", "deepspec"]:
+            raise Exception(
+                f"bad {spec_name=}, should be one of ['highspec', 'deepspec']"
+            )
+        folder = PathMaker().make_daily_folder_name(os.path.join(Filer().shared.root))
+        folder = os.path.join(folder, spec_name, "Exposures")
+        folder = os.path.join(folder, "seq=" + PathMaker().make_seq(folder, None))
+        if band:
+            folder = os.path.join(folder, band)
+        os.makedirs(folder, exist_ok=True)
+        return folder
+
 
 if __name__ == "__main__":
     print(PathMaker().make_spec_acquisitions_folder(spec_name="highspec"))
