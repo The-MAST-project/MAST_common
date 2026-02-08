@@ -98,6 +98,12 @@ class SpecAcquisitionSettings:
 FiberStageLiteral = Literal["Deepspec", "Highspec"]
 StageLiteral = Disperser | FiberStageLiteral
 BinningLiteral = Literal[1, 2, 4]
+BinningLiteralStr = Literal["1", "2", "4"]
 
-StageNames = Literal["fiber", "camera", "gratings"]
 DeepspecBands = Literal["I", "G", "R", "U"]
+
+FilterPositions = Literal["1", "2", "3", "4", "5", "6", "default"]
+WheelNames = Literal["ThAr", "qTh"]
+SpecStageNames = Literal["focusing", "disperser", "fiber"]
+SpecNames = Literal["deepspec", "highspec"]
+GratingNames = Literal["Ca", "Halpha", "Mg", "Future"]
