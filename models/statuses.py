@@ -7,6 +7,13 @@ from common.activities import ActivitiesVerbal
 from common.dlipowerswitch import PowerStatus, PowerSwitchStatus
 from common.interfaces.components import ComponentStatus
 from common.interfaces.imager import ImagerStatus
+from common.spec import (
+    FilterPositions,
+    GratingNames,
+    SpecNames,
+    SpecStageNames,
+    WheelNames,
+)
 
 
 # ASCOM stuff
@@ -241,12 +248,6 @@ class HighspecStatus(ComponentStatus):
 
 CalibrationLampStatus = BaseStatus
 ChillerStatus = BaseStatus
-
-FilterPositions = Literal["1", "2", "3", "4", "5", "6", "default"]
-WheelNames = Literal["ThAr", "qTh"]
-SpecStageNames = Literal["focusing", "disperser", "fiber"]
-SpecNames = Literal["deepspec", "highspec"]
-GratingNames = Literal["Ca", "Halpha", "Mg", "Future"]
 
 
 class WheelStatus(ComponentStatus):
