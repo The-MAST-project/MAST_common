@@ -49,8 +49,8 @@ class Activities:
 
     def __init__(self):
         self.activities: IntFlag = Activity.Idle
-        self.timings: dict[IntFlag, Timing] = {} # keyed on activity
-        self.details: dict[IntFlag, list[str] | None] = {} # keyed on activity
+        self.timings: dict[IntFlag, Timing] = {}  # keyed on activity
+        self.details: dict[IntFlag, list[str] | None] = {}  # keyed on activity
         self.lock = threading.Lock()
 
     @property
@@ -85,8 +85,11 @@ class Activities:
             case "CalibrationLampActivities":
                 return "calibration-lamp"
             case _:
-                logger.error(f"Unknown activities type '{type(self.activities).__name__}'")
-                return 'unknown-component'
+                logger.error(
+                    f"Unknown activities type '{type(self.activities).__name__}'"
+                )
+                return "unknown-component"
+
     @property
     def activities_type_to_notification_path(self) -> list[str]:
         """
@@ -118,7 +121,7 @@ class Activities:
             case "GreatEyesActivities":
                 return ["deepspec", "greateyes", "activities_verbal"]
             case _:
-                component = 'unknown-component'
+                component = "unknown-component"
                 # logger.error(f"{function_name()}: Unknown activities type '{type(self.activities).__name__}'")
 
         return [component] + ["activities"] if component else ["activities"]
@@ -149,7 +152,7 @@ class Activities:
         info += f"started activity {activity.__repr__()}"
         if details:
             self.details[activity] = details
-            info += f" details='{details}'"
+            info += f" details={details}"
         logger.info(info)
 
         details = self.details.get(activity, None)
@@ -194,7 +197,7 @@ class Activities:
         label = label + ": " if label else ""
         info = f"{label}ended   activity {activity.__repr__()}"
         if self.details.get(activity):
-            info += f" details='{self.details[activity]}'"
+            info += f" details={self.details[activity]}"
             del self.details[activity]
         info += f", duration='{duration}'"
         logger.info(info)
