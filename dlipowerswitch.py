@@ -631,6 +631,9 @@ class SwitchedOutlet:
     def power_status(self) -> PowerStatus:
         return PowerStatus(powered=self.is_on())
 
+    def powerdown(self):
+        self.power_off()
+
     def transfer_attributes(self, target: object):
         """
         Populates the target object with our attributes and methods
