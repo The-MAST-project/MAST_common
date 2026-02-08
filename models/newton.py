@@ -1,5 +1,8 @@
+from typing import Literal, Optional
+
 from pydantic import BaseModel
-from typing import Optional, Literal
+
+from common.config.power import PowerSwitchConfig
 
 
 class NewtonRoiModel(BaseModel):
@@ -34,3 +37,11 @@ class NewtonCameraSettingsModel(BaseModel):
     pre_amp_gain: Optional[Literal[0, 1, 2]]
     exposure_duration: Optional[float]
     number_of_exposures: Optional[int] = 1
+
+
+class HighspecConfig(BaseModel):
+    power: PowerSwitchConfig
+    settings: NewtonCameraSettingsModel
+    camera: Literal["qhy600", "newton"]
+    valid_cameras: list[str]
+    known_as_good_focus_position: int
