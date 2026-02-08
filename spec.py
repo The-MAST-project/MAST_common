@@ -13,6 +13,8 @@ class SpecActivities(IntFlag):
     Positioning = auto()
     Acquiring = auto()
     Exposing = auto()
+    StartingUp = auto()
+    ShuttingDown = auto()
 
 
 class SpecId(IntFlag):
