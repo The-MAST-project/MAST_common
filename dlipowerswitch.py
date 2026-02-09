@@ -222,6 +222,13 @@ class DliPowerSwitch(Component):
     def shutdown(self):
         pass
 
+    @property
+    def is_shutting_down(self) -> bool:
+        return False  # power switch does not have a shutdown procedure, so never report as shutting down
+
+    def powerdown(self):
+        pass
+
     def abort(self):
         pass
 

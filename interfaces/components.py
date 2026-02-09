@@ -17,7 +17,6 @@ class ComponentStatus(BaseModel):
 
 
 class Component(ABC, Activities):
-
     def __init__(self, activities_type):
         Activities.__init__(self)
         self.activities = activities_type(0)
@@ -36,6 +35,20 @@ class Component(ABC, Activities):
         Called whenever an observing session is terminated (at sun-up or when becoming unsafe)
         :return:
         """
+        pass
+
+    @property
+    @abstractmethod
+    def is_shutting_down(self) -> bool:
+        """
+        Indicates whether the component is currently in the process of shutting down.
+        This can be used by the controller to determine whether it needs to wait for shutdown to complete before starting up again.
+        :return:
+        """
+        pass
+
+    @abstractmethod
+    def powerdown(self):
         pass
 
     @abstractmethod
@@ -128,7 +141,6 @@ class Component(ABC, Activities):
         return None
 
     def component_status(self) -> ComponentStatus:
-
         return ComponentStatus(
             detected=self.detected,
             connected=self.connected,
