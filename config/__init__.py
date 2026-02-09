@@ -23,6 +23,7 @@ from pymongo.errors import PyMongoError
 from common.const import Const
 from common.deep import deep_dict_difference, deep_dict_is_empty, deep_dict_update
 from common.mast_logging import init_log
+from common.utils import function_name
 
 from .identification import GroupConfig, UserConfig
 from .site import Site
@@ -307,14 +308,43 @@ class Config:
             drop_object_id=True,
         )
 
-    def get_unit(self, unit_name: str | None = None) -> UnitConfig | None:
+    def _verify_unit_site_membership(self, site_name: str, unit_name: str) -> bool:
+        sites = self.get_sites()
+        site = [s for s in sites if s.name == site_name]
+        if not site:
+            logger.error(f"{function_name()}: no site named '{site_name}'")
+            return False
+        if unit_name not in site[0].unit_ids:
+            logger.error(
+                f"{function_name()}: site '{site_name}' has no unit named '{unit_name}'"
+            )
+            return False
+        return True
+
+    def site_name_from_unit_name(self, unit_name: str) -> str | None:
+        sites = self.get_sites()
+        for site in sites:
+            if unit_name in site.unit_ids:
+                return site.name
+        return None
+
+    def get_unit(
+        self, site_name: str, unit_name: str | None = None
+    ) -> UnitConfig | None:
         """
         Gets a unit's configuration.  By default, this is the ['config']['units']['common']
          entry. If a unit-specific entry exists it overrides the 'common' entry.
+
+        Note: The current database layout has all the units in a single 'units' collection.
+         In the future we may want to separate them by site.  For sanity we lookup the unit name
+            within the specified site.
         """
 
-        if not unit_name:
-            unit_name = socket.gethostname()
+        if unit_name is None:
+            unit_name = socket.gethostname().split(".")[0]
+
+        if not self._verify_unit_site_membership(site_name, unit_name or ""):
+            return None
 
         units = self.fetch_config_section("units")
         if unit_name not in [unit["name"] for unit in units]:
@@ -359,8 +389,13 @@ class Config:
             raise ex
         return ret
 
-    def set_unit(self, unit_name: str, unit_conf: UnitConfig):
+    def set_unit(self, site_name: str, unit_name: str, unit_conf: UnitConfig):
         unit_dict = unit_conf.model_dump()
+
+        if not self._verify_unit_site_membership(site_name, unit_name):
+            raise ValueError(
+                f"{function_name()}: cannot set unit config, invalid site/unit membership"
+            )
 
         # Find the 'common' unit config for diffing
         try:
@@ -368,8 +403,10 @@ class Config:
                 unit for unit in self.db["units"] if unit["name"] == "common"
             ][0]
         except Exception:
-            logger.error("save_unit_config: 'common' unit configuration not found")
-            raise ValueError("save_unit_config: 'common' unit configuration not found")
+            logger.error(f"{function_name()}: 'common' unit configuration not found")
+            raise ValueError(
+                f"{function_name()}: 'common' unit configuration not found"
+            )
 
         # Only store the delta from 'common'
         delta = deep_dict_difference(common_conf_dict, unit_dict) or {}
@@ -396,7 +433,7 @@ class Config:
                     )
                 except PyMongoError:
                     logger.error(
-                        f"save_unit_config: failed to update unit config for {unit_name=} with {delta=}"
+                        f"{function_name()}: failed to update unit config for {unit_name=} with {delta=}"
                     )
                 clear_mongo_ttl_cache()
 
@@ -543,7 +580,13 @@ class Config:
     @property
     def local_site(self) -> Site | None:
         hostname = socket.gethostname().split(".")[0]
-        found = [s for s in self.sites if (hostname in s.unit_ids) or (hostname == s.controller_host) or (hostname == s.spec_host)]
+        found = [
+            s
+            for s in self.sites
+            if (hostname in s.unit_ids)
+            or (hostname == s.controller_host)
+            or (hostname == s.spec_host)
+        ]
         if len(found) != 0:
             return found[0]
 
