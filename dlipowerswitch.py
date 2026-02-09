@@ -309,15 +309,26 @@ class PowerSwitchFactory:
         power_switch_config: PowerSwitchConfig | None = None
         power_switch_name = None
         if name is None:
-            unit_name = socket.gethostname()
+            unit_name = socket.gethostname().split(".")[0]
+
+            site_name = Config().site_name_from_unit_name(unit_name)
+            assert site_name is not None
+
             power_switch_name = unit_name.replace("mast", "mastps")
-            unit_conf: UnitConfig | None = Config().get_unit(unit_name)
+            unit_conf: UnitConfig | None = Config().get_unit(
+                site_name=site_name, unit_name=unit_name
+            )
             assert unit_conf is not None
             power_switch_config = unit_conf.power_switch
         else:
             unit_name = canonic_unit_name(name)
             if unit_name is not None:
-                unit_conf: UnitConfig | None = Config().get_unit(unit_name)
+                site_name = Config().site_name_from_unit_name(unit_name)
+                assert site_name is not None
+
+                unit_conf: UnitConfig | None = Config().get_unit(
+                    site_name=site_name, unit_name=unit_name
+                )
                 assert unit_conf is not None
                 power_switch_config = unit_conf.power_switch
                 power_switch_name = unit_name.replace("mast", "mastps")
