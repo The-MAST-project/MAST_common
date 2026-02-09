@@ -130,9 +130,9 @@ class PHD2ImagerStatus(ActivitiesStatus):
 class BaseStatus(BaseModel):
     """Base class for unit status."""
 
-    powered: bool
-    detected: bool
-    operational: bool
+    powered: bool | None = None
+    detected: bool | None = None
+    operational: bool | None = None
     why_not_operational: list[str] | None = None
 
 
