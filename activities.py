@@ -211,7 +211,7 @@ class Activities:
                     component=self.activities_type_to_component,
                     type="end",
                     message=f"Ended {activity._name_}",
-                    details=self.details[activity] if activity in self.details else [],
+                    details=self.details.get(activity, []),
                     duration=duration,
                 ),
             )
