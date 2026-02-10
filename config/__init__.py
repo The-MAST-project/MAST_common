@@ -656,8 +656,8 @@ def test_user(name: str):
     print(json.dumps(Config().get_user(name), indent=2))
 
 
-def test_unit_config(name: str | None = None):
-    unit_conf = Config().get_unit(name)
+def test_unit_config(site_name: str | None = None, unit_name: str | None = None):
+    unit_conf = Config().get_unit(site_name=site_name, unit_name=unit_name)
     assert unit_conf is not None
     print(json.dumps(unit_conf.model_dump(), indent=1))
 
@@ -672,7 +672,7 @@ def main():
 
     # test_sites_config()
     # test_local_site()
-    # test_unit_config(name="mastw")
+    # test_unit_config(site_name="wis", unit_name="mastw")
     pass
 
 

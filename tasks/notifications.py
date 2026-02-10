@@ -3,22 +3,30 @@ import pathlib
 from pathlib import Path
 
 from common.api import ControllerApi
-from common.tasks.models import Initiator, TaskAcquisitionPathNotification
+from common.tasks.models import (
+    AcquisitionSubpath,
+    Initiator,
+    TaskAcquisitionPathNotification,
+)
 
 
 def notify_controller_about_task_acquisition_path(
-    task_id: str, src: str | Path, link: str
+    task_id: str, path_on_share: str | Path, subpath: AcquisitionSubpath
 ):
-    if isinstance(src, pathlib.WindowsPath):
-        src = str(src.as_posix()).replace("Z:/MAST", "/Storage/mast-share/MAST")
-    elif isinstance(src, str):
-        src = str(Path(src).as_posix()).replace("Z:/MAST", "/Storage/mast-share/MAST")
+    if isinstance(path_on_share, pathlib.WindowsPath):
+        path_on_share = str(path_on_share.as_posix()).replace(
+            "Z:/MAST", "/Storage/mast-share/MAST"
+        )
+    elif isinstance(path_on_share, str):
+        path_on_share = str(Path(path_on_share).as_posix()).replace(
+            "Z:/MAST", "/Storage/mast-share/MAST"
+        )
 
     notification: TaskAcquisitionPathNotification = TaskAcquisitionPathNotification(
         initiator=Initiator.local_machine(),
         task_id=task_id,
-        src=str(src),
-        link="spec",
+        src=str(path_on_share),
+        subpath=subpath,
     )
 
     controller_api = ControllerApi()
@@ -33,8 +41,8 @@ def notify_controller_about_task_acquisition_path(
 async def main():
     notify_controller_about_task_acquisition_path(
         task_id="01jknm5pywgsh9f3v61w4ybffy",
-        src="Z:/MAST/mast-wis-spec/2025-02-25/deepspec/acquisition-0007",
-        link="spec",
+        path_on_share="Z:/MAST/mast-wis-spec/2025-02-25/deepspec/acquisition-0007",
+        subpath="spec",
     )
 
 

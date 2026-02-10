@@ -140,6 +140,9 @@ def make_spec_model(spec_doc: dict) -> SpectrographModel | None:
     return spectrograph_model
 
 
+AcquisitionSubpath = Literal["autofocus", "acquisition", "deepspec", "highspec", "spec"]
+
+
 class TaskAcquisitionPathNotification(BaseModel):
     """
     Sent to the controller by:
@@ -150,7 +153,7 @@ class TaskAcquisitionPathNotification(BaseModel):
     initiator: Initiator
     task_id: str
     src: str
-    link: Literal["autofocus", "acquisition", "deepspec", "highspec", "spec"]
+    subpath: AcquisitionSubpath
 
 
 async def main():
@@ -165,32 +168,28 @@ async def main():
             logger.error(err)
         raise
 
-    remote_assignment = assigned_plan.remote_spec_assignment
+    remote_assignment = assigned_plan.spec
     if not remote_assignment:
         raise Exception(
-            f"task '{assigned_plan.ulid}' has no spec assignment, cannot continue"
+            f"plan '{assigned_plan.ulid}' has no spec assignment, cannot continue"
         )
 
     # Type assertion to help Pylance understand the spec type
-    assert isinstance(remote_assignment.assignment, SpectrographAssignmentModel)
+    assert isinstance(remote_assignment, SpectrographAssignmentModel)
     logger.info("remote assignment: " + remote_assignment.model_dump_json(indent=2))
 
     spec_api = SpecApi()
     logger.info(
-        f"sending task '{remote_assignment.assignment.ulid}' "
-        + f"({remote_assignment.assignment.spec.instrument}) to '{spec_api.hostname}' ({spec_api.ipaddr})"
+        f"sending plan '{assigned_plan.ulid}' "
+        + f"({remote_assignment.spec.instrument}) to '{spec_api.hostname}' ({spec_api.ipaddr})"
     )
     canonical_response = await spec_api.put(
         method="execute_assignment", json=remote_assignment.model_dump()
     )
     if canonical_response.succeeded:
-        logger.info(
-            f"[{spec_api.ipaddr}] ACCEPTED task '{remote_assignment.assignment.plan.ulid}'"
-        )
+        logger.info(f"[{spec_api.ipaddr}] ACCEPTED plan '{assigned_plan.ulid}'")
     else:
-        logger.error(
-            f"[{spec_api.ipaddr}] REJECTED task '{remote_assignment.assignment.plan.ulid}'"
-        )
+        logger.error(f"[{spec_api.ipaddr}] REJECTED plan '{assigned_plan.ulid}'")
         if canonical_response.errors:
             for err in canonical_response.errors:
                 logger.error(f"[{spec_api.ipaddr}] {err}")
