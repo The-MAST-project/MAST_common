@@ -15,7 +15,7 @@ logger = logging.getLogger("mast." + __name__)
 init_log(logger)
 
 NotificationCardType = Literal["info", "warning", "error", "start", "end"]
-NotificationTypes = Literal["ui_update"]  # more to come
+NotificationTypes = Literal["ui_update", "assignment"]  # more to come
 DomUpdateSpec = Literal["badge", "text"] | None
 
 
