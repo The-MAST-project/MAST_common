@@ -127,24 +127,22 @@ class PHD2ImagerStatus(ActivitiesStatus):
     connected: bool = False
 
 
-class BaseStatus(BaseModel):
+StatusType = Literal["basic", "full"]
+
+
+class BasicStatus(BaseModel):
     """Base class for unit status."""
 
+    type: StatusType = "basic"
     powered: bool | None = None
     detected: bool | None = None
     operational: bool | None = None
     why_not_operational: list[str] | None = None
 
 
-class ShortStatus(BaseStatus):
-    """Unit status returned by the controller when it cannot communicate with the unit"""
-
-    type: Literal["short"] = "short"
-
-
-class NotPoweredStatus(ShortStatus):
-    def model_post_init(self, __context: Any) -> ShortStatus:
-        return ShortStatus(
+class NotPoweredStatus(BasicStatus):
+    def model_post_init(self, __context: Any) -> BasicStatus:
+        return BasicStatus(
             powered=False,
             detected=False,
             operational=False,
@@ -152,9 +150,9 @@ class NotPoweredStatus(ShortStatus):
         )
 
 
-class NotDetectedStatus(ShortStatus):
-    def model_post_init(self, __context: Any) -> ShortStatus:
-        return ShortStatus(
+class NotDetectedStatus(BasicStatus):
+    def model_post_init(self, __context: Any) -> BasicStatus:
+        return BasicStatus(
             powered=True,
             detected=False,
             operational=False,
@@ -162,14 +160,14 @@ class NotDetectedStatus(ShortStatus):
         )
 
 
-class NotOperationalStatus(ShortStatus):
-    def model_post_init(self, __context: Any) -> ShortStatus:
+class NotOperationalStatus(BasicStatus):
+    def model_post_init(self, __context: Any) -> BasicStatus:
         if "reasons" in __context:
             reasons = __context["reasons"]
         else:
             reasons = ["Not operational"]
 
-        return ShortStatus(
+        return BasicStatus(
             powered=True,
             detected=True,
             operational=False,
@@ -177,10 +175,10 @@ class NotOperationalStatus(ShortStatus):
         )
 
 
-class FullUnitStatus(BaseStatus, ComponentStatus, PowerStatus):
+class FullUnitStatus(BasicStatus, ComponentStatus, PowerStatus):
     """Full unit status with all components, returned from the unit itself."""
 
-    type: Literal["full"] = "full"
+    type: StatusType = "full"
     id: int
     guiding: bool = False
     autofocusing: bool = False
@@ -196,10 +194,11 @@ class FullUnitStatus(BaseStatus, ComponentStatus, PowerStatus):
     corrections: list | None = None
     date: str | None = None
     powered: bool = True
+    detected: bool = True
 
 
 # Using Annotated with Discriminator (Pydantic v2 recommended approach)
-UnitStatus = Annotated[ShortStatus | FullUnitStatus, Field(discriminator="type")]
+UnitStatus = Annotated[BasicStatus | FullUnitStatus, Field(discriminator="type")]
 
 
 # Example usage in an API response model:
@@ -211,7 +210,7 @@ class UnitStatusResponse(BaseModel):
     status: UnitStatus  # This is the discriminated union
 
 
-ControllerStatus = BaseStatus
+ControllerStatus = BasicStatus
 
 
 class GreateyesStatus(ComponentStatus):
@@ -246,8 +245,8 @@ class HighspecStatus(ComponentStatus):
     camera: NewtonStatus | None = None
 
 
-CalibrationLampStatus = BaseStatus
-ChillerStatus = BaseStatus
+CalibrationLampStatus = BasicStatus
+ChillerStatus = BasicStatus
 
 
 class WheelStatus(ComponentStatus):
@@ -269,7 +268,7 @@ class SpecStageStatus(ComponentStatus):
     at_preset: str | None = None
 
 
-class SpecStatus(BaseModel):
+class SpecStatus(BasicStatus):
     deepspec: DeepspecStatus | None = None
     highspec: HighspecStatus | None = None
     stages: dict[SpecStageNames, SpecStageStatus] | None = None
@@ -281,9 +280,9 @@ class SpecStatus(BaseModel):
 class SiteStatus(BaseModel):
     """Status of a controlled site."""
 
-    controller: ControllerStatus | ShortStatus | None = None
+    controller: ControllerStatus | None = None
     units: dict[str, UnitStatus] | None = None
-    spec: SpecStatus | ShortStatus | None = None
+    spec: SpecStatus | None = None
 
 
 class SitesStatus(BaseModel):
@@ -298,8 +297,8 @@ class SitesStatus(BaseModel):
 #     import json
 
 #     # Short status
-#     short = ShortUnitStatus(powered=True, detected=True, operational=True)
-#     print(json.dumps(short.model_dump(), indent=2))
+#     basic = ShortUnitStatus(powered=True, detected=True, operational=True)
+#     print(json.dumps(basic.model_dump(), indent=2))
 
 #     # Full status
 #     full = FullUnitStatus(
@@ -313,11 +312,11 @@ class SitesStatus(BaseModel):
 #     )
 #     print(json.dumps(full.model_dump(), indent=2))
 
-#     # Response with short status
+#     # Response with basic status
 #     response1 = UnitStatusResponse(
 #         unit_name="mastw",
 #         timestamp="2024-12-03T18:00:00Z",
-#         status=short
+#         status=basic
 #     )
 #     print(json.dumps(response1.model_dump(), indent=2))
 
