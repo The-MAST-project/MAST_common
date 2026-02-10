@@ -329,7 +329,7 @@ class Config:
         return None
 
     def get_unit(
-        self, site_name: str, unit_name: str | None = None
+        self, site_name: str | None = None, unit_name: str | None = None
     ) -> UnitConfig | None:
         """
         Gets a unit's configuration.  By default, this is the ['config']['units']['common']
@@ -342,6 +342,14 @@ class Config:
 
         if unit_name is None:
             unit_name = socket.gethostname().split(".")[0]
+
+        if site_name is None:
+            site_name = self.site_name_from_unit_name(unit_name)
+            if site_name is None:
+                logger.error(
+                    f"{function_name()}: cannot determine site for unit '{unit_name}'"
+                )
+                return None
 
         if not self._verify_unit_site_membership(site_name, unit_name or ""):
             return None
@@ -389,9 +397,19 @@ class Config:
             raise ex
         return ret
 
-    def set_unit(self, site_name: str, unit_name: str, unit_conf: UnitConfig):
+    def set_unit(self, site_name: str | None = None, unit_name: str | None = None, unit_conf: UnitConfig | None = None):
+        if unit_conf is None:
+            raise ValueError(f"{function_name()}: unit_conf cannot be None")
         unit_dict = unit_conf.model_dump()
 
+        if unit_name is None:
+            unit_name = socket.gethostname().split(".")[0]
+        if site_name is None:
+            site_name = self.site_name_from_unit_name(unit_name)
+            if site_name is None:
+                raise ValueError(
+                    f"{function_name()}: cannot determine site for unit '{unit_name}'"
+                )
         if not self._verify_unit_site_membership(site_name, unit_name):
             raise ValueError(
                 f"{function_name()}: cannot set unit config, invalid site/unit membership"
