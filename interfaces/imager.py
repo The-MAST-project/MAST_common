@@ -305,10 +305,10 @@ class ImagerExposureSeries(BaseModel):
 class ImagerInterface(Component, ABC):
     current_exposure_series: ImagerExposureSeries | None = None
     ccd_temp_at_mid_exposure: float | None = None
-    parent_imager: object | None = None
 
     def __init__(self):
         Component.__init__(self, ImagerActivities)
+        self.parent_imager = None
 
     @property
     @abstractmethod
