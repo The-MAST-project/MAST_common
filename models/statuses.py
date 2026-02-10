@@ -1,19 +1,13 @@
 from enum import Enum
-from typing import Annotated, Any, Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from common.activities import ActivitiesVerbal
 from common.dlipowerswitch import PowerStatus, PowerSwitchStatus
 from common.interfaces.components import ComponentStatus
 from common.interfaces.imager import ImagerStatus
-from common.spec import (
-    FilterPositions,
-    GratingNames,
-    SpecNames,
-    SpecStageNames,
-    WheelNames,
-)
+from common.spec import FilterPositions, GratingNames, SpecNames, SpecStageNames, WheelNames
 
 
 # ASCOM stuff
@@ -198,7 +192,7 @@ class FullUnitStatus(BasicStatus, ComponentStatus, PowerStatus):
 
 
 # Using Annotated with Discriminator (Pydantic v2 recommended approach)
-UnitStatus = Annotated[BasicStatus | FullUnitStatus, Field(discriminator="type")]
+UnitStatus = BasicStatus | FullUnitStatus
 
 
 # Example usage in an API response model:
