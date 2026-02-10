@@ -68,6 +68,7 @@ class SolverInterface(ABC):
     def solve_and_correct(self):
         pass
 
+    @property
     @abstractmethod
     def name(self) -> str:
         pass
