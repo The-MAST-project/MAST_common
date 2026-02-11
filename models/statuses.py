@@ -190,10 +190,7 @@ class FullUnitStatus(BasicStatus, ComponentStatus, PowerStatus):
     powered: bool = True
     detected: bool = True
 
-
-# Using Annotated with Discriminator (Pydantic v2 recommended approach)
 UnitStatus = BasicStatus | FullUnitStatus
-
 
 # Example usage in an API response model:
 class UnitStatusResponse(BaseModel):
