@@ -7,7 +7,13 @@ from common.activities import ActivitiesVerbal
 from common.dlipowerswitch import PowerStatus, PowerSwitchStatus
 from common.interfaces.components import ComponentStatus
 from common.interfaces.imager import ImagerStatus
-from common.spec import FilterPositions, GratingNames, SpecNames, SpecStageNames, WheelNames
+from common.spec import (
+    FilterPositions,
+    GratingNames,
+    SpecNames,
+    SpecStageNames,
+    WheelNames,
+)
 
 
 # ASCOM stuff
@@ -134,24 +140,24 @@ class BasicStatus(BaseModel):
     why_not_operational: list[str] | None = None
 
 
-class NotPoweredStatus(BasicStatus):
-    def model_post_init(self, __context: Any) -> BasicStatus:
-        return BasicStatus(
-            powered=False,
-            detected=False,
-            operational=False,
-            why_not_operational=["Not powered"],
-        )
+# class NotPoweredStatus(BasicStatus):
+#     def model_post_init(self, __context: Any) -> BasicStatus:
+#         return BasicStatus(
+#             powered=False,
+#             detected=False,
+#             operational=False,
+#             why_not_operational=["Not powered"],
+#         )
 
 
-class NotDetectedStatus(BasicStatus):
-    def model_post_init(self, __context: Any) -> BasicStatus:
-        return BasicStatus(
-            powered=True,
-            detected=False,
-            operational=False,
-            why_not_operational=["Not detected"],
-        )
+# class NotDetectedStatus(BasicStatus):
+#     def model_post_init(self, __context: Any) -> BasicStatus:
+#         return BasicStatus(
+#             powered=True,
+#             detected=False,
+#             operational=False,
+#             why_not_operational=["Not detected"],
+#         )
 
 
 class NotOperationalStatus(BasicStatus):
@@ -190,7 +196,9 @@ class FullUnitStatus(BasicStatus, ComponentStatus, PowerStatus):
     powered: bool = True
     detected: bool = True
 
+
 UnitStatus = BasicStatus | FullUnitStatus
+
 
 # Example usage in an API response model:
 class UnitStatusResponse(BaseModel):
@@ -213,6 +221,7 @@ class GreateyesStatus(ComponentStatus):
     addr: int | None = None
     min_temp: float | None = None
     max_temp: float | None = None
+    temperature_adjustment_target: float | None = None
     front_temperature: float | None = None
     back_temperature: float | None = None
     errors: list[str] | None = None
@@ -237,7 +246,6 @@ class HighspecStatus(ComponentStatus):
 
 
 CalibrationLampStatus = BasicStatus
-ChillerStatus = BasicStatus
 
 
 class WheelStatus(ComponentStatus):
@@ -263,7 +271,7 @@ class SpecStatus(BasicStatus):
     deepspec: DeepspecStatus | None = None
     highspec: HighspecStatus | None = None
     stages: dict[SpecStageNames, SpecStageStatus] | None = None
-    chiller: ChillerStatus | None = None
+    chiller: BasicStatus | None = None
     lamps: dict[WheelNames, CalibrationLampStatus] | None = None
     wheels: dict[WheelNames, WheelStatus] | None = None
 
