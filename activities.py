@@ -257,7 +257,7 @@ class UnitActivities(IntFlag):
     AutofocusingPWI4 = auto()
     Autofocusing = auto()
     AutofocusAnalysis = auto()
-    PreGuiding = auto() # getting ready for guiding
+    PreGuiding = auto()  # getting ready for guiding
     Guiding = auto()
     StartingUp = auto()
     ShuttingDown = auto()
@@ -367,6 +367,7 @@ class ControlledUnitActivities(IntFlag):
 class GreatEyesActivities(IntFlag):
     CoolingDown = auto()
     WarmingUp = auto()
+    AdjustingTemperature = auto()
     Acquiring = auto()
     Exposing = auto()
     ReadingOut = auto()
