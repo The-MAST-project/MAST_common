@@ -35,6 +35,7 @@ class SpecExposureSettings:
         y_binning: int | None = 1,
         folder: str | None = None,
         image_path: str | None = None,
+        gain: int | None = None,
     ):
         # TODO: get rid of this class, basically we only use the image_file field
 
@@ -44,6 +45,7 @@ class SpecExposureSettings:
         self.y_binning = y_binning
         self.output_folder = folder  # A folder path underneath the Filer().root
         self._number_in_sequence: int | None = None
+        self.gain = gain
 
         if image_path is not None:
             path = Path(image_path)
