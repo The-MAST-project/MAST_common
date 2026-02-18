@@ -50,7 +50,10 @@ class PathMaker:
         return str(folder)
 
     def make_autofocus_folder(self, root: str | None = None) -> str:
-        autofocus_folder = Path(self.make_daily_folder_name(root=root)) / "Autofocus"
+        autofocus_folder = (
+            Path(self.make_daily_folder_name(root=root or Filer().shared.root))
+            / "Autofocus"
+        )
         folder = autofocus_folder / self.make_seq(str(autofocus_folder))
         folder.mkdir(parents=True, exist_ok=True)
         return str(folder)
