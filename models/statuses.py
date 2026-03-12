@@ -10,7 +10,7 @@ from common.interfaces.imager import ImagerStatus
 from common.spec import (
     FilterPositions,
     GratingNames,
-    SpecNames,
+    SpecInstruments,
     SpecStageNames,
     WheelNames,
 )
@@ -258,7 +258,7 @@ class WheelStatus(ComponentStatus):
     current_filter: str | None = None
 
 
-SpecStagePresets = dict[GratingNames | SpecNames, int]
+SpecStagePresets = dict[GratingNames | SpecInstruments, int]
 
 
 class SpecStageStatus(ComponentStatus):
@@ -285,7 +285,7 @@ class SiteStatus(BaseModel):
 
     controller: ControllerStatus | None = None
     units: dict[str, UnitStatus] | None = None
-    spec: SpecStatus | None = None
+    spec: SpecStatus | BasicStatus | None = None
 
 
 class SitesStatus(BaseModel):
