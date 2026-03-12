@@ -1,15 +1,14 @@
 import socket
-from typing import Literal
 
 from pydantic import BaseModel, computed_field, model_validator
 
 from common.const import Const
-from common.models.deepspec import DeepspecModel
-from common.models.highspec import HighspecModel
+from common.models.deepspec import DeepspecSettings
+from common.models.highspec import HighspecSettings
+from common.models.batches import Batch
 from common.models.plans import Plan
 from common.models.spectrographs import SpectrographModel
-from common.models.targets import Target
-from common.spec import Disperser
+from common.spec import SpecInstruments
 
 
 class Initiator(BaseModel):
@@ -57,13 +56,9 @@ class Initiator(BaseModel):
         return cls(hostname=hostname, fqdn=fqdn, ipaddr=ipaddr)
 
 
-class AssignmentModel(BaseModel):
+class UnitAssignment(BaseModel):
     initiator: Initiator
     plan: Plan
-
-
-class UnitAssignmentModel(AssignmentModel):
-    target: Target
 
     @computed_field
     def autofocus(self) -> bool:
@@ -71,17 +66,16 @@ class UnitAssignmentModel(AssignmentModel):
 
 
 class DeepSpecAssignment(BaseModel):
-    instrument: Literal["deepspec"]
-    settings: DeepspecModel | None
+    instrument: SpecInstruments = "deepspec"
+    settings: DeepspecSettings | None
 
 
 class HighSpecAssignment(BaseModel):
-    instrument: Literal["highspec"]
-    disperser: Disperser
-    settings: HighspecModel
+    instrument: SpecInstruments = "highspec"
+    settings: HighspecSettings
 
 
-class SpectrographAssignmentModel(BaseModel):
+class SpectrographAssignment(BaseModel):
     """
     The spectrograph-related part of a FullAssignment, containing:
     - The initiator machine (usually the control machine)
@@ -89,7 +83,7 @@ class SpectrographAssignmentModel(BaseModel):
     - A spectrograph part, either for deepspec or highspec (discriminated by the instrument field)
     """
 
-    instrument: Literal["deepspec", "highspec"]
+    instrument: SpecInstruments
     initiator: Initiator
-    plan: Plan
+    batch: Batch
     spec: SpectrographModel

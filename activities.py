@@ -84,6 +84,8 @@ class Activities:
                 return "greateyes"
             case "CalibrationLampActivities":
                 return "calibration-lamp"
+            case "QHYActivities":
+                return "highspec"
             case _:
                 logger.error(
                     f"Unknown activities type '{type(self.activities).__name__}'"
@@ -257,7 +259,7 @@ class UnitActivities(IntFlag):
     AutofocusingPWI4 = auto()
     Autofocusing = auto()
     AutofocusAnalysis = auto()
-    PreGuiding = auto() # getting ready for guiding
+    PreGuiding = auto()  # getting ready for guiding
     Guiding = auto()
     StartingUp = auto()
     ShuttingDown = auto()
@@ -368,6 +370,7 @@ class ControlledUnitActivities(IntFlag):
 class GreatEyesActivities(IntFlag):
     CoolingDown = auto()
     WarmingUp = auto()
+    AdjustingTemperature = auto()
     Acquiring = auto()
     Exposing = auto()
     ReadingOut = auto()

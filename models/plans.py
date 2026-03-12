@@ -4,18 +4,18 @@ import json
 import logging
 import os
 import shutil
+import socket
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import tomlkit
-import tomlkit.exceptions
 import ulid
 from pydantic import BaseModel, Field, ValidationError, computed_field
 from pydantic.config import ConfigDict
 
 from common.activities import Activities, AssignmentActivities, UnitActivities
-from common.api import ApiDomain, SpecApi, UnitApi
+from common.api import SpecApi, UnitApi
 from common.canonical import CanonicalResponse
 from common.config import Config
 from common.interfaces.components import ComponentStatus
@@ -23,8 +23,10 @@ from common.mast_logging import init_log
 from common.models.constraints import ConstraintsModel
 from common.models.events import EventModel
 from common.models.spectrographs import SpectrographModel
+from common.models.statuses import UnitStatus
 from common.models.targets import Target
 from common.models.transmited_assignments import AssignmentEnvelope
+from common.parsers import parse_units
 from common.utils import OperatingMode, function_name
 
 if TYPE_CHECKING:
@@ -42,16 +44,17 @@ class Plan(BaseModel, Activities):
     )
 
     ulid: str | None = Field(default=None, description="Unique ID")
-    file: str | None = None
+    full_path: Path | None = None
     owner: str | None = None
     merit: int | None = 1
-    quorum: int | None = Field(default=1, description="Least number of units")
     timeout_to_guiding: int | None = Field(
         default=600, description="How long to wait for all units to achieve 'guiding'"
     )
     autofocus: bool | None = Field(
         default=False, description="Should the units start with 'autofocus'"
     )
+    too: bool = False
+    approved: bool = False
     spec: SpectrographModel
     run_folder: str | None = None
     production: bool | None = Field(
@@ -61,14 +64,16 @@ class Plan(BaseModel, Activities):
     constraints: ConstraintsModel | None = None
     commited_unit_apis: list[UnitApi] = []  # the units that committed to this task
 
-    # File and runtime fields
-    toml_file: str | None = Field(
-        default=None, description="Path to the TOML file containing the plan definition"
-    )
-    activities: int = Field(default=0, description="Current activities bitmask")
     timings: dict = Field(
         default_factory=dict, description="Timing information for task execution"
     )
+
+    requested_units: list[str] | None = None  # requested by planner
+    allocated_units: list[str] | None = None  # allocated by the scheduler
+    quorum: int = (
+        1  # least number of units that must be allocated for the plan to proceed
+    )
+
     # unit_assignments: list["AssignmentEnvelope"] = Field(
     #     default_factory=list,
     #     description="List of unit assignments",
@@ -83,25 +88,24 @@ class Plan(BaseModel, Activities):
         default=None, description="API client for spectrograph communication"
     )
 
-    @computed_field
     @property
+    @computed_field
     def remote_unit_assignments(self) -> list["AssignmentEnvelope"]:
         from common.models.assignments import (
             Initiator,
-            UnitAssignmentModel,
+            UnitAssignment,
         )
         from common.models.transmited_assignments import AssignmentEnvelope
 
         ret: list[AssignmentEnvelope] = []
         initiator = Initiator.local_machine()
-        for key in list(self.unit.keys()):
-            unit_assignment: UnitAssignmentModel = UnitAssignmentModel(
+        for unit_name in self.allocated_units or []:
+            unit_assignment: UnitAssignment = UnitAssignment(
                 initiator=initiator,
-                target=Target(ra=self.unit[key].ra, dec=self.unit[key].dec),
                 plan=self,
             )
 
-            units_specifier = parse_units(key)
+            units_specifier = parse_units(unit_name)
             if units_specifier:
                 units = AssignmentEnvelope.from_units_specifier(
                     units_specifier, unit_assignment
@@ -110,46 +114,47 @@ class Plan(BaseModel, Activities):
                     ret += units
         return ret
 
-    # @computed_field
-    # @property
-    # def remote_spec_assignment(self) -> Any | None:  # AssignmentEnvelope | None
-    #     from common.models.assignments import Initiator, SpectrographAssignmentModel
+    @computed_field
+    @property
+    def remote_spec_assignment(self) -> Any | None:  # AssignmentEnvelope | None
+        from common.models.assignments import Initiator, SpectrographAssignment
 
-    #     local_site = Config().local_site
-    #     assert local_site is not None
-    #     spec_hostname = local_site.spec_host
-    #     if spec_hostname is None:
-    #         return
-    #     fqdn = f"{spec_hostname}.{local_site.domain}"
-    #     try:
-    #         ipaddr = socket.gethostbyname(spec_hostname)
-    #     except socket.gaierror:
-    #         ipaddr = None
+        local_site = Config().local_site
+        assert local_site is not None
+        spec_hostname = local_site.spec_host
+        if spec_hostname is None:
+            return
+        fqdn = f"{spec_hostname}.{local_site.domain}"
+        try:
+            ipaddr = socket.gethostbyname(spec_hostname)
+        except socket.gaierror:
+            ipaddr = None
 
-    #     spec_model = make_spec_model(self.model_extra.get("spec"))  # type: ignore
-    #     if not spec_model:
-    #         logger.error("cannot create a spectrograph model, aborting!")
-    #         return None
-    #     if not spec_model.instrument:
-    #         logger.error("spectrograph model has no instrument, aborting!")
-    #         return None
+        if not self.spec:
+            logger.error("cannot create a spectrograph model, aborting!")
+            return None
+        if not self.spec.instrument:
+            logger.error("spectrograph model has no instrument, aborting!")
+            return None
 
-    #     initiator = Initiator.local_machine()
-    #     try:
-    #         spec_assignment = SpectrographAssignmentModel(
-    #             instrument=spec_model.instrument,
-    #             initiator=initiator,
-    #             # plan=self,
-    #             spec=spec_model,
-    #         )
-    #     except ValidationError as e:
-    #         for err in e.errors():
-    #             logger.error(f"ERR:\n  {err}")
-    #         raise
+        from control.scheduling import make_batch
 
-    #     return AssignmentEnvelope(
-    #         hostname=spec_hostname, fqdn=fqdn, ipaddr=ipaddr, assignment=spec_assignment
-    #     )
+        initiator = Initiator.local_machine()
+        try:
+            spec_assignment = SpectrographAssignment(
+                instrument=self.spec.instrument,
+                initiator=initiator,
+                batch=make_batch([self]),
+                spec=self.spec,
+            )
+        except ValidationError as e:
+            for err in e.errors():
+                logger.error(f"ERR:\n  {err}")
+            raise
+
+        return AssignmentEnvelope(
+            hostname=spec_hostname, fqdn=fqdn, ipaddr=ipaddr, assignment=spec_assignment
+        )
 
     @classmethod
     def from_toml_file(cls, toml_file: str):
@@ -384,7 +389,7 @@ class Plan(BaseModel, Activities):
         unit_apis: list[UnitApi] = []
 
         for assignment in self.remote_unit_assignments:
-            unit_apis.append(UnitApi(ipaddr=assignment.ipaddr, domain=ApiDomain.Unit))
+            unit_apis.append(UnitApi(ipaddr=assignment.ipaddr))
 
         self.start_activity(AssignmentActivities.Executing)
 
@@ -444,14 +449,14 @@ class Plan(BaseModel, Activities):
             if isinstance(response, CanonicalResponse):
                 if response.failed:
                     continue
-                unit_status = response.value
+                unit_status = cast(UnitStatus, response.value)
                 if unit_status is None:
                     logger.error(
                         f"unit '{unit_api.hostname}' ({unit_api.ipaddr}) returned None, ignoring"
                     )
                     continue
 
-                if unit_status["operational"]:
+                if unit_status.operational:
                     operational_unit_apis.append(unit_apis[i])
                     logger.info(
                         f"unit '{unit_api.hostname}' ({unit_api.ipaddr}), operational"
@@ -460,7 +465,7 @@ class Plan(BaseModel, Activities):
                     if OperatingMode.production_mode:
                         logger.info(
                             f"unit '{unit_api.hostname}' ({unit_api.ipaddr}), "
-                            + f"not operational: {unit_status['why_not_operational']}"
+                            + f"not operational: {unit_status.why_not_operational}"
                         )
                     else:
                         operational_unit_apis.append(unit_apis[i])
@@ -510,6 +515,7 @@ class Plan(BaseModel, Activities):
                 )
                 return
 
+            assert spec_response is not None
             spec_status = spec_response.value
             if spec_status and not spec_status.operational:
                 if OperatingMode.production_mode:
@@ -550,6 +556,11 @@ class Plan(BaseModel, Activities):
         assignment_tasks = []
         for operational_unit_api in operational_unit_apis:
             for unit_assignment in self.remote_unit_assignments:
+                if unit_assignment.assignment is None:
+                    logger.error(
+                        f"unit_assignment.assignment is None for unit '{unit_assignment.hostname}'"
+                    )
+                    continue
                 if operational_unit_api.ipaddr == unit_assignment.ipaddr:
                     assignment_tasks.append(
                         self.api_coroutine(

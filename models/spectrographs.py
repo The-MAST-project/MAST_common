@@ -1,17 +1,17 @@
-from typing import Literal
+from pydantic import BaseModel
 
-from pydantic import BaseModel, Field
-
-from common.models.calibration import CalibrationModel
-from common.models.deepspec import DeepspecModel
-from common.models.highspec import HighspecModel
+from common.models.calibration import CalibrationSettings
+from common.models.deepspec import DeepspecSettings
+from common.models.highspec import HighspecSettings
+from common.spec import SpecInstruments
 
 
 class SpectrographModel(BaseModel):
-    instrument: Literal["highspec", "deepspec"]
-    exposure_duration: float
-    number_of_exposures: int | None = 1
-    calibration: CalibrationModel | None
-    setings: HighspecModel | DeepspecModel | None = Field(
-        discriminator="instrument", default=None
+    instrument: SpecInstruments
+    exposure_duration: float  # required exposure duration
+    max_exposure_duration: float | None = (
+        None  #  Cannot be batched together with plans having longer exposure durations
     )
+    number_of_exposures: int | None = 1
+    calibration: CalibrationSettings | None
+    settings: HighspecSettings | DeepspecSettings | None = None

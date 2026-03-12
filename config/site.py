@@ -1,4 +1,12 @@
+from datetime import date, datetime, timezone
+
+import astropy.units as u
+from astroplan import Observer
+from astropy.coordinates import EarthLocation
+from astropy.time import Time
 from pydantic import BaseModel, ConfigDict, model_validator
+
+from common.models.constraints import TimeWindow
 
 
 class Building(BaseModel):
@@ -13,6 +21,19 @@ class Building(BaseModel):
         return self
 
 
+class SunLimits(BaseModel):
+    dusk: float = -18
+    dawn: float = -18
+
+
+class Location(BaseModel):
+    name: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+    elevation: float | None = None
+    sun_limits: SunLimits = SunLimits()
+
+
 class Site(BaseModel):
     name: str
     project: str
@@ -23,7 +44,7 @@ class Site(BaseModel):
     spec_host: str
     domain: str
     local: bool = False
-    location: str = "Unknown"
+    location: Location = Location()
     buildings: list[Building] = []
     unit_ids: str | list[str]
 
@@ -78,4 +99,35 @@ class Site(BaseModel):
         # "highspec": doc["highspec"],
         # "lamps": doc["lamps"],
 
+    def observing_window(self, day: date | None = None) -> TimeWindow | None:
+        if self.location.latitude is None or self.location.longitude is None:
+            return None
 
+        if day is None:
+            day = date.today()
+
+        observer = Observer(
+            location=EarthLocation(
+                lat=self.location.latitude * u.deg,
+                lon=self.location.longitude * u.deg,
+                height=(self.location.elevation or 0) * u.m,
+            )
+        )
+
+        noon = Time(
+            datetime(day.year, day.month, day.day, 12, 0, 0, tzinfo=timezone.utc)
+        )
+
+        dusk = observer.sun_set_time(
+            noon, which="next", horizon=self.location.sun_limits.dusk * u.deg
+        )
+        dawn = observer.sun_rise_time(
+            dusk, which="next", horizon=self.location.sun_limits.dawn * u.deg
+        )
+
+        assert isinstance(dusk, Time) and isinstance(dawn, Time)
+        window_start = dusk.to_datetime(timezone=timezone.utc)
+        window_end = dawn.to_datetime(timezone=timezone.utc)
+
+        assert isinstance(window_start, datetime) and isinstance(window_end, datetime)
+        return TimeWindow(start=window_start, end=window_end)

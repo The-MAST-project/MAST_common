@@ -13,7 +13,7 @@ from common.deep import deep_dict_update
 from common.mast_logging import init_log
 from common.models.assignments import (
     Initiator,
-    SpectrographAssignmentModel,
+    SpectrographAssignment,
 )
 from common.models.plans import Plan
 from common.models.spectrographs import SpectrographModel
@@ -175,7 +175,7 @@ async def main():
         )
 
     # Type assertion to help Pylance understand the spec type
-    assert isinstance(remote_assignment, SpectrographAssignmentModel)
+    assert isinstance(remote_assignment, SpectrographAssignment)
     logger.info("remote assignment: " + remote_assignment.model_dump_json(indent=2))
 
     spec_api = SpecApi()
