@@ -312,6 +312,7 @@ class StageActivities(IntFlag):
     StartingUp = auto()
     ShuttingDown = auto()
     Aborting = auto()
+    Overheating = auto()
 
 
 class SpecActivities(IntFlag):
