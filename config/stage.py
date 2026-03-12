@@ -23,6 +23,7 @@ class StageConfig(BaseModel):
 
     presets: StagePresets
     close_enough: int
+    model: str
 
 
 class SpecStageConfig(BaseModel):
