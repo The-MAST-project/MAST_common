@@ -15,7 +15,9 @@ logger = logging.getLogger("mast." + __name__)
 init_log(logger)
 
 NotificationCardType = Literal["info", "warning", "error", "start", "end"]
-NotificationTypes = Literal["ui_update", "assignment"]  # more to come
+NotificationTypes = Literal[
+    "ui_notification", "assignment_notification"
+]  # more to come
 DomUpdateSpec = Literal["badge", "text"] | None
 
 
@@ -82,7 +84,7 @@ class CardUpdateSpec(BaseModel):
     type: NotificationCardType = "info"  # 'info'|'error'|'warning'|'start'|'end'
     message: str | None = None
     details: list[str] | None = None
-    duration: str | None = None  # For 'end' type cards
+    duration: str | None = None  # Human-readable duration for 'end' type cards
 
 
 class UiUpdateSpec(BaseModel):
@@ -99,7 +101,7 @@ class UiUpdateSpec(BaseModel):
 #
 # Messages: actual notification messages sent to Django server
 #
-class UiDomMessage(BaseModel):
+class UiDomNotification(BaseModel):
     """
     Dom information passed to the Django server for updating the UI
     """
@@ -108,7 +110,7 @@ class UiDomMessage(BaseModel):
     render_as: DomUpdateSpec = "text"  # How to render the value(s)
 
 
-class UiCardMessage(BaseModel):
+class UiCardNotification(BaseModel):
     """
     Allows initiator to request a card notification be displayed in the UI
     """
@@ -120,7 +122,7 @@ class UiCardMessage(BaseModel):
     component: str | None = None
 
 
-class UiCacheMessage(BaseModel):
+class UiCacheNotification(BaseModel):
     """
     Cache information passed to the Django server for display in the UI
     """
@@ -132,13 +134,13 @@ class UiCacheMessage(BaseModel):
         return super().model_post_init(context)
 
 
-class UiUpdateMessage(BaseModel):
-    cache: UiCacheMessage | None = None  # Whether to update cache
-    dom: UiDomMessage | None = None  # DOM update information
-    card: UiCardMessage | None = None  # UI card information
+class UiUpdateNotification(BaseModel):
+    cache: UiCacheNotification | None = None  # Whether to update cache
+    dom: UiDomNotification | None = None  # DOM update information
+    card: UiCardNotification | None = None  # UI card information
 
 
-class UiUpdateRequest(BaseModel):
+class UiUpdateNotifications(BaseModel):
     """
     A status update notification request
     - produced when a notification is initiated, in units, controller or spec
@@ -147,9 +149,11 @@ class UiUpdateRequest(BaseModel):
     - broadcasted to attached browsers to update DOM elements, and display notification cards
     """
 
-    type: NotificationTypes = "ui_update"  # Type of notification
+    type: NotificationTypes = "ui_notification"  # Type of notification
     initiator: NotificationInitiator = initiator  # The originator of the notification
-    messages: list[UiUpdateMessage] = []  # List of individual notification items
+    notifications: list[
+        UiUpdateNotification
+    ] = []  # List of individual notification items
 
 
 class Notifier:
@@ -240,51 +244,76 @@ class Notifier:
             if was_empty:
                 self.notification_event.set()
 
-    def ui_update(self, ui_specs: list[UiUpdateSpec] | UiUpdateSpec):
+    def ui_notification(self, ui_specs: list[UiUpdateSpec] | UiUpdateSpec):
         """
         Asks for a notification to be sent to the Django server.
         - always updates the cache at 'path' with 'value'
         - optionally updates the DOM element with id derived from 'path' using 'dom' renderer
         - optionally displays a notification card using 'card' specification
+
+        Example usages:
+        - unit mast00 (at Neot Smadar) wants to update the stage's position and preset name, it will send two ui_specs:
+          - both with initiator.site = 'ns' and initiator.hostname = 'mast00'
+          - one with path=['stage', 'position'], value being the current stage position and dom='text' to render it as text in the DOM element with id 'id-stage-position'
+          - and one with path=['stage', 'preset'], value being the current preset name, and dom='badge' to render it as text in the DOM element with id 'id-stage-preset' with a badge style
+
+        - the camera at unit mastw (at Weizmann) starts a CameraActivities.CoolingDown activity:
+          - it will send one ui_spec with
+          - initiator.site = 'wis'
+          - initiator.hostname = 'mastw'
+          - path=['camera', 'activities'] and value=['CoolingDown', 'StartingUp'], dom='badge' to update the cache and render it as badges in the DOM element with id 'id-camera-activities'
+          - card specification with type='info', message='Camera is cooling down', and component='CameraActivityCard' to display an informational card in the UI
+
         """
         if isinstance(ui_specs, UiUpdateSpec):
             ui_specs = [ui_specs]
 
-        ui_update_request: UiUpdateRequest = UiUpdateRequest(
-            type="ui_update", initiator=self.initiator
+        ui_update_request: UiUpdateNotifications = UiUpdateNotifications(
+            type="ui_notification", initiator=self.initiator
         )
 
         for ui_spec in ui_specs:
-            message = UiUpdateMessage()
+            message = UiUpdateNotification()
             path = ui_spec.path
             value = ui_spec.value
 
             # cache update
-            cache_path = [self.initiator.site]
-            if self.initiator.type == "unit":
-                cache_path += ["unit"]
             cache_path: list[str] = [self.initiator.site]
             if self.initiator.type == "unit":
                 cache_path += ["unit"]
             assert self.initiator.hostname is not None
             cache_path += [self.initiator.hostname] + path
-            message.cache = UiCacheMessage(path=cache_path, value=value)
+            message.cache = UiCacheNotification(path=cache_path, value=value)
 
             # DOM update
             if ui_spec.dom is not None:
                 dom_id = "-".join(["id"] + path)
-                message.dom = UiDomMessage(id=dom_id, render_as=ui_spec.dom)
+                message.dom = UiDomNotification(id=dom_id, render_as=ui_spec.dom)
 
             # Card notification
             if ui_spec.card is not None:
-                message.card = UiCardMessage(
+                message.card = UiCardNotification(
                     type=ui_spec.card.type,
                     message=ui_spec.card.message,
                     details=ui_spec.card.details,
                     duration=ui_spec.card.duration,
                     component=ui_spec.card.component,
                 )
-            # logger.debug(f"Notifier.ui_update: message={message.model_dump_json()}")
-            ui_update_request.messages.append(message)
+
+            # logger.debug(f"Notifier.ui_notification: message={message.model_dump_json()}")
+            ui_update_request.notifications.append(message)
 
         self._enqueue_notification(ui_update_request.model_dump_json())
+
+    def assignment_notification(self, assignment_spec: dict):
+        """
+        Sends an assignment notification to the controller machine.
+        - used for notifying about assignment status and details, e.g. resources allocated
+        - the exact content of the assignment_spec is TBD but it should include at least:
+          - plan ULID, if this assignment is related to a specific plan
+          - batch ULID, if this assignment is related to a specific batch
+          - assigned resources (e.g., path to results)
+        """
+        # For now we just log the assignment notification request
+        logger.info(f"Received assignment notification request: {assignment_spec}")
+        # In the future, we would construct an AssignmentUpdateRequest similar to UiUpdateRequest and

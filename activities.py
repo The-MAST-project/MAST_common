@@ -160,7 +160,7 @@ class Activities:
         details = self.details.get(activity, None)
         if details is not None and not isinstance(details, list):
             details = [str(details)]
-        Notifier().ui_update(
+        Notifier().ui_notification(
             UiUpdateSpec(
                 path=self.activities_type_to_notification_path,
                 value=self.activities_verbal,
@@ -204,7 +204,7 @@ class Activities:
         info += f", duration='{duration}'"
         logger.info(info)
 
-        Notifier().ui_update(
+        Notifier().ui_notification(
             UiUpdateSpec(
                 path=self.activities_type_to_notification_path,
                 value=self.activities_verbal,
