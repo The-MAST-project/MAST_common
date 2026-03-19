@@ -241,8 +241,17 @@ class NewtonStatus(ComponentStatus):
     latest_settings: Any = None
 
 
+class QHY600Status(ComponentStatus):
+    powered: bool = False
+    temperature: float | None = None
+    errors: list[str] | None = None
+    latest_exposure: Any = None
+    latest_settings: Any = None
+
+
 class HighspecStatus(ComponentStatus):
-    camera: NewtonStatus | None = None
+    camera_type: str | None = None
+    camera_status: NewtonStatus | QHY600Status | None = None
 
 
 CalibrationLampStatus = BasicStatus
