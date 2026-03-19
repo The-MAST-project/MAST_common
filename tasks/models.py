@@ -168,7 +168,7 @@ async def main():
             logger.error(err)
         raise
 
-    remote_assignment = assigned_plan.spec
+    remote_assignment = assigned_plan.spec_assignment
     if not remote_assignment:
         raise Exception(
             f"plan '{assigned_plan.ulid}' has no spec assignment, cannot continue"

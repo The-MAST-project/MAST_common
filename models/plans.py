@@ -25,11 +25,11 @@ from common.models.events import EventModel
 from common.models.spectrographs import SpectrographModel
 from common.models.statuses import UnitStatus
 from common.models.targets import Target
-from common.models.transmited_assignments import AssignmentEnvelope
 from common.parsers import parse_units
 from common.utils import OperatingMode, function_name
 
 if TYPE_CHECKING:
+    from common.models.assignments import AssignmentDelivery
     from common.tasks.models import GatherResponse
 
 logger = logging.Logger("mast." + __name__)
@@ -55,7 +55,7 @@ class Plan(BaseModel, Activities):
     )
     too: bool = False
     approved: bool = False
-    spec: SpectrographModel
+    spec_assignment: SpectrographModel
     run_folder: str | None = None
     production: bool | None = Field(
         default=True, description="if 'false' some availability tests are more relaxed"
@@ -90,14 +90,14 @@ class Plan(BaseModel, Activities):
 
     @property
     @computed_field
-    def remote_unit_assignments(self) -> list["AssignmentEnvelope"]:
+    def remote_unit_assignments(self) -> list["AssignmentDelivery"]:
         from common.models.assignments import (
+            AssignmentDelivery,
             Initiator,
             UnitAssignment,
         )
-        from common.models.transmited_assignments import AssignmentEnvelope
 
-        ret: list[AssignmentEnvelope] = []
+        ret: list["AssignmentDelivery"] = []
         initiator = Initiator.local_machine()
         for unit_name in self.allocated_units or []:
             unit_assignment: UnitAssignment = UnitAssignment(
@@ -107,7 +107,7 @@ class Plan(BaseModel, Activities):
 
             units_specifier = parse_units(unit_name)
             if units_specifier:
-                units = AssignmentEnvelope.from_units_specifier(
+                units = AssignmentDelivery.from_units_specifier(
                     units_specifier, unit_assignment
                 )
                 if units:
@@ -116,8 +116,14 @@ class Plan(BaseModel, Activities):
 
     @computed_field
     @property
-    def remote_spec_assignment(self) -> Any | None:  # AssignmentEnvelope | None
-        from common.models.assignments import Initiator, SpectrographAssignment
+    def remote_spec_assignment(
+        self,
+    ) -> "AssignmentDelivery | None":  # AssignmentEnvelope | None
+        from common.models.assignments import (
+            AssignmentDelivery,
+            Initiator,
+            SpectrographAssignment,
+        )
 
         local_site = Config().local_site
         assert local_site is not None
@@ -130,29 +136,27 @@ class Plan(BaseModel, Activities):
         except socket.gaierror:
             ipaddr = None
 
-        if not self.spec:
+        if not self.spec_assignment:
             logger.error("cannot create a spectrograph model, aborting!")
             return None
-        if not self.spec.instrument:
+        if not self.spec_assignment.instrument:
             logger.error("spectrograph model has no instrument, aborting!")
             return None
-
-        from control.scheduling import make_batch
 
         initiator = Initiator.local_machine()
         try:
             spec_assignment = SpectrographAssignment(
-                instrument=self.spec.instrument,
+                instrument=self.spec_assignment.instrument,
                 initiator=initiator,
-                batch=make_batch([self]),
-                spec=self.spec,
+                plan=self,
+                spec=self.spec_assignment,
             )
         except ValidationError as e:
             for err in e.errors():
                 logger.error(f"ERR:\n  {err}")
             raise
 
-        return AssignmentEnvelope(
+        return AssignmentDelivery(
             hostname=spec_hostname, fqdn=fqdn, ipaddr=ipaddr, assignment=spec_assignment
         )
 

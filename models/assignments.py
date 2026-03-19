@@ -2,12 +2,14 @@ import socket
 
 from pydantic import BaseModel, computed_field, model_validator
 
+from common.config import Config
 from common.const import Const
+from common.models.batches import Batch
 from common.models.deepspec import DeepspecSettings
 from common.models.highspec import HighspecSettings
-from common.models.batches import Batch
 from common.models.plans import Plan
 from common.models.spectrographs import SpectrographModel
+from common.parsers import parse_units
 from common.spec import SpecInstruments
 
 
@@ -85,5 +87,50 @@ class SpectrographAssignment(BaseModel):
 
     instrument: SpecInstruments
     initiator: Initiator
-    batch: Batch
+    batch: Batch | None = None
+    plan: Plan | None = None
     spec: SpectrographModel
+
+
+class AssignmentDelivery(BaseModel):
+    """
+    This is what gets sent out via UnitApi or SpecApi
+    """
+
+    hostname: str
+    fqdn: str
+    ipaddr: str | None
+    assignment: UnitAssignment | SpectrographAssignment | None = None
+
+    @classmethod
+    def from_site_colon_unit(cls, site_colon_unit: str, assignment):
+        site_name, unit_id = site_colon_unit.split(":")
+        sites = Config().sites
+        site = [s for s in sites if site_name == s.name][0]
+
+        if unit_id.isdigit():
+            unit_id = f"{int(unit_id):02}"
+
+        hostname = f"{site.project}{unit_id}"
+        fqdn = f"{hostname}.{site.domain}"
+        try:
+            ipaddr = socket.gethostbyname(hostname)
+        except socket.gaierror:
+            ipaddr = None
+
+        return cls(hostname=hostname, fqdn=fqdn, ipaddr=ipaddr, assignment=assignment)
+
+    @classmethod
+    def from_units_specifier(
+        cls, units_specifier: str | list[str], assignment
+    ) -> list["AssignmentDelivery"]:
+        if isinstance(units_specifier, str):
+            units_specifier = [units_specifier]
+        ret: list[AssignmentDelivery] = []
+        for site_colon_unit in parse_units(units_specifier):
+            remote = AssignmentDelivery.from_site_colon_unit(
+                site_colon_unit, assignment=assignment
+            )
+            if remote:
+                ret.append(remote)
+        return ret
