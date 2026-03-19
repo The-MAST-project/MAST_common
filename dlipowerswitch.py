@@ -7,7 +7,6 @@ from json import JSONDecodeError
 from threading import Lock
 
 import httpx
-from matplotlib.pylab import f
 from pydantic import BaseModel
 
 from common.activities import PowerSwitchActivities
