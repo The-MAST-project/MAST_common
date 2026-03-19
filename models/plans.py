@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 
 import tomlkit
 import ulid
-from pydantic import BaseModel, Field, ValidationError, computed_field
+from pydantic import BaseModel, Field, ValidationError
 from pydantic.config import ConfigDict
 
 from common.activities import Activities, AssignmentActivities, UnitActivities
@@ -68,8 +68,8 @@ class Plan(BaseModel, Activities):
         default_factory=dict, description="Timing information for task execution"
     )
 
-    requested_units: list[str] | None = None  # requested by planner
-    allocated_units: list[str] | None = None  # allocated by the scheduler
+    requested_units: list[str] = []  # requested by planner
+    allocated_units: list[str] = []  # allocated by the scheduler
     quorum: int = (
         1  # least number of units that must be allocated for the plan to proceed
     )
@@ -89,7 +89,6 @@ class Plan(BaseModel, Activities):
     )
 
     @property
-    @computed_field
     def remote_unit_assignments(self) -> list["AssignmentDelivery"]:
         from common.models.assignments import (
             AssignmentDelivery,
@@ -114,7 +113,6 @@ class Plan(BaseModel, Activities):
                     ret += units
         return ret
 
-    @computed_field
     @property
     def remote_spec_assignment(
         self,
