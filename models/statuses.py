@@ -209,7 +209,9 @@ class UnitStatusResponse(BaseModel):
     status: UnitStatus  # This is the discriminated union
 
 
-ControllerStatus = BasicStatus
+class ControllerStatus(BasicStatus):
+    operational: bool = True
+    why_not_operational: list[str] | None = []
 
 
 class GreateyesStatus(ComponentStatus):
