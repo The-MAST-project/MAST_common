@@ -1,3 +1,5 @@
+from typing import Any
+
 from pydantic import BaseModel
 from ulid import ULID
 
@@ -13,7 +15,7 @@ class Batch(BaseModel):
     spec_assignment: SpectrographModel | None = None
     predicted_duration: float | None = None
 
-    def model_post_init(self) -> None:
+    def model_post_init(self, context: dict[str, Any] | None) -> None:
         """
         Make a batch out of the given plans.
         """
