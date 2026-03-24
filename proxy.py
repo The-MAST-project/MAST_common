@@ -161,14 +161,19 @@ class ProxyContext:
         """
         Rewrite an internal service URL to its external proxy form.
 
-        Strips the host/port from *internal_url*, keeps only the path (and
-        query/fragment if present), then calls absolute_url().
+        When proxied: strips the host/port from *internal_url*, prepends the
+        effective base, and returns a fully-qualified external URL.
 
-        Example:
+        When not proxied: returns *internal_url* unchanged so that clients on
+        the local network can still reach the service directly.
+
+        Example (proxied):
             proxy.rewrite('http://mast-wis-control:8008/unit01/2025-01-01/…',
                           base='/mast-share/')
             → 'http://10.23.3.73:8000/mast-share/unit01/2025-01-01/…'
         """
+        if not self.proxied:
+            return internal_url
         parsed = urlparse(internal_url)
         path = urlunparse(("", "", parsed.path, parsed.params, parsed.query, parsed.fragment))
         return self.absolute_url(path, base=base)
