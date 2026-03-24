@@ -6,8 +6,6 @@ from common.models.constraints import RepeatsModel
 class Target(BaseModel):
     ra_hours: str | float = Field(
         description="RightAscension [sexagesimal or decimal]",
-        ge=0,
-        le=24,
         json_schema_extra={
             "ui": {
                 "label": "RA",
@@ -24,8 +22,6 @@ class Target(BaseModel):
     )
     dec_degrees: str | float = Field(
         description="Declination [sexagesimal or decimal]",
-        ge=-90,
-        le=90,
         json_schema_extra={
             "ui": {
                 "label": "Dec",
@@ -101,10 +97,12 @@ class Target(BaseModel):
         """
         Validates RightAscension inputs
         :param value: sexagesimal string or float
-        :return: a float
+        :return: a float in [0, 24)
         """
-        ra = astropy.coordinates.Longitude(value, unit="hour").value
-        return float(ra)  # converts np.float64 to float
+        ra = float(astropy.coordinates.Longitude(value, unit="hour").value)
+        if not (0 <= ra < 24):
+            raise ValueError(f"RA decimal value {ra} is out of range [0, 24)")
+        return ra
 
     @field_validator("dec_degrees")
     @classmethod
@@ -112,10 +110,12 @@ class Target(BaseModel):
         """
         Validates Declination inputs
         :param value: sexagesimal string or float
-        :return: a float
+        :return: a float in [-90, 90]
         """
-        dec = astropy.coordinates.Latitude(value, unit="deg").value
-        return float(dec)  # converts np.float64 to float
+        dec = float(astropy.coordinates.Latitude(value, unit="deg").value)
+        if not (-90 <= dec <= 90):
+            raise ValueError(f"Dec decimal value {dec} is out of range [-90, 90]")
+        return dec
 
     def __repr__(self) -> str:
         return f"Target(ra_hours={self.ra_hours}, dec_degrees={self.dec_degrees})"
