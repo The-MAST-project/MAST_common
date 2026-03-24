@@ -43,49 +43,146 @@ class Plan(BaseModel, Activities):
         arbitrary_types_allowed=True,  # Allow non-Pydantic types like UnitApi
     )
 
-    ulid: str | None = Field(default=None, description="Unique ID")
-    full_path: Path | None = None
-    owner: str | None = None
-    merit: int | None = 1
-    timeout_to_guiding: int | None = Field(
-        default=600, description="How long to wait for all units to achieve 'guiding'"
+    ulid: str | None = Field(
+        default=None,
+        json_schema_extra={"ui": {
+            "hidden": True,
+        }},
+    )
+    full_path: Path | None = Field(
+        default=None,
+        json_schema_extra={"ui": {
+            "hidden": True,
+        }},
+    )
+    owner: str | None = Field(
+        default=None,
+        json_schema_extra={"ui": {
+            "label": "Owner",
+            "editable": False,
+            "summary": True,
+        }},
+    )
+    merit: int | None = Field(
+        default=1,
+        json_schema_extra={"ui": {
+            "label": "Merit",
+            "widget": "select",
+            "options": list(range(1, 11)),
+            "summary": True,
+        }},
+    )
+    timeout_to_guiding: float | None = Field(
+        default=600,
+        gt = 0,
+        le = 600,
+        json_schema_extra={"ui": {
+            "label": "Timeout to Guiding",
+            "widget": "number",
+            "unit": "seconds",
+            "required_capabilities": ["can_manage_plans"],
+        }},
     )
     autofocus: bool | None = Field(
-        default=False, description="Should the units start with 'autofocus'"
+        default=False,
+        json_schema_extra={"ui": {
+            "label": "Autofocus",
+            "widget": "checkbox",
+        }},
     )
-    too: bool = False
-    approved: bool = False
-    spec_assignment: SpectrographModel
-    run_folder: str | None = None
+    too: bool = Field(
+        default=False,
+        json_schema_extra={"ui": {
+            "label": "Target of Opportunity",
+            "widget": "checkbox",
+            "summary": True,
+            "required_capabilities": ["can_manage_plans"],
+        }},
+    )
+    approved: bool = Field(
+        default=False,
+        json_schema_extra={"ui": {
+            "label": "Approved",
+            "widget": "checkbox",
+            "editable": False,
+            "required_capabilities": ["can_manage_plans"],
+        }},
+    )
+    spec_assignment: SpectrographModel | None = Field(
+        default=None,
+        json_schema_extra={"ui": {
+            "label": "Spectrograph",
+        }},
+    )
+    run_folder: str | None = Field(
+        default=None,
+        json_schema_extra={"ui": {
+            "hidden": True,
+        }},
+    )
     production: bool | None = Field(
-        default=True, description="if 'false' some availability tests are more relaxed"
+        default=True,
+        json_schema_extra={"ui": {
+            "label": "Production",
+            "widget": "checkbox",
+            "required_capabilities": ["can_manage_plans"],
+            "tooltip": "Disable to relax availability checks (testing only)",
+        }},
     )
-    events: list[EventModel] | None = None  # things that happened to this plan
-    constraints: ConstraintsModel | None = None
-    commited_unit_apis: list[UnitApi] = []  # the units that committed to this task
-
+    events: list[EventModel] | None = Field(
+        default=None,
+        json_schema_extra={"ui": {
+            "hidden": True,
+        }},
+    )
+    constraints: ConstraintsModel | None = Field(
+        default=None,
+        json_schema_extra={"ui": {
+            "label": "Constraints",
+        }},
+    )
+    commited_unit_apis: list[UnitApi] = Field(
+        default_factory=list,
+        json_schema_extra={"ui": {
+            "hidden": True,
+        }},
+    )
     timings: dict = Field(
-        default_factory=dict, description="Timing information for task execution"
+        default_factory=dict,
+        json_schema_extra={"ui": {
+            "hidden": True,
+        }},
     )
-
-    requested_units: list[str] = []  # requested by planner
-    allocated_units: list[str] = []  # allocated by the scheduler
-    quorum: int = (
-        1  # least number of units that must be allocated for the plan to proceed
+    requested_units: list[str] = Field(
+        default_factory=list,
+        json_schema_extra={"ui": {
+            "label": "Requested Units",
+            "widget": "text",
+            "tooltip": "Comma-separated unit names, e.g. mast01,mast02",
+        }},
     )
-
-    # unit_assignments: list["AssignmentEnvelope"] = Field(
-    #     default_factory=list,
-    #     description="List of unit assignments",
-    #     alias="unit_assignments",
-    # )
-    # spec_assignment: Any | None = Field(  # AssignmentEnvelope | None
-    #     default=None,
-    #     description="Spectrograph assignment if any",
-    #     alias="spec_assignment",
-    # )
+    allocated_units: list[str] = Field(
+        default_factory=list,
+        json_schema_extra={"ui": {
+            "label": "Allocated Units",
+            "editable": False,
+            "required_capabilities": ["can_manage_plans"],
+        }},
+    )
+    quorum: int = Field(
+        default=1,
+        json_schema_extra={"ui": {
+            "label": "Quorum",
+            "widget": "number",
+            "tooltip": "Minimum units required for the plan to proceed",
+            "required_capabilities": ["can_manage_plans"],
+        }},
+    )
     spec_api: SpecApi | None = Field(
-        default=None, description="API client for spectrograph communication"
+        default=None,
+        json_schema_extra={"ui": {
+            "hidden": True,
+        }},
     )
 
     @property

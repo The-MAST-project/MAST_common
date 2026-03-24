@@ -44,18 +44,18 @@ class Batch(BaseModel):
         #   Some plans may become over-exposed.
         #
         exposure_duration = max(
-            [plan.spec_assignment.exposure_duration for plan in self.plans]
+            plan.target.requested_exposure_duration
+            for plan in self.plans
+            if plan.target.requested_exposure_duration is not None
         )
 
-        number_of_exposures = (
-            max(
-                [
-                    plan.spec_assignment.number_of_exposures
-                    for plan in self.plans
-                    if plan.spec_assignment.number_of_exposures is not None
-                ]
-            )
-            or 1
+        number_of_exposures = max(
+            (
+                plan.target.requested_number_of_exposures
+                for plan in self.plans
+                if plan.target.requested_number_of_exposures is not None
+            ),
+            default=1,
         )
 
         requested_calibration = CalibrationSettings(lamp_on=False, filter=None)

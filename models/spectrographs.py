@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from common.models.calibration import CalibrationSettings
 from common.models.deepspec import DeepspecSettings
@@ -7,11 +7,37 @@ from common.spec import SpecInstruments
 
 
 class SpectrographModel(BaseModel):
-    instrument: SpecInstruments
-    exposure_duration: float  # required exposure duration
-    max_exposure_duration: float | None = (
-        None  #  Cannot be batched together with plans having longer exposure durations
+    instrument: SpecInstruments | None = Field(
+        default=None,
+        json_schema_extra={"ui": {
+            "label": "Instrument",
+            "widget": "select",
+            "options": ["highspec", "deepspec"],
+            "required": True,
+            "summary": True,
+        }},
     )
-    number_of_exposures: int | None = 1
-    calibration: CalibrationSettings | None
-    settings: HighspecSettings | DeepspecSettings | None = None
+    exposure_duration: float | None = Field(
+        default=None,
+        json_schema_extra={"ui": {
+            "hidden": True,
+        }},
+    )
+    number_of_exposures: int | None = Field(
+        default=None,
+        json_schema_extra={"ui": {
+            "hidden": True,
+        }},
+    )
+    calibration: CalibrationSettings | None = Field(
+        default=None,
+        json_schema_extra={"ui": {
+            "label": "Calibration",
+        }},
+    )
+    settings: HighspecSettings | DeepspecSettings | None = Field(
+        default=None,
+        json_schema_extra={"ui": {
+            "hidden": True,
+        }},
+    )
