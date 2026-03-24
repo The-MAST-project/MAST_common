@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import datetime
 import json
@@ -14,33 +16,33 @@ import ulid
 from pydantic import BaseModel, Field, ValidationError
 from pydantic.config import ConfigDict
 
-from common.activities import Activities, AssignmentActivities, UnitActivities
-from common.api import SpecApi, UnitApi
-from common.canonical import CanonicalResponse
-from common.config import Config
-from common.interfaces.components import ComponentStatus
-from common.mast_logging import init_log
 from common.models.constraints import ConstraintsModel
 from common.models.events import EventModel
 from common.models.spectrographs import SpectrographModel
-from common.models.statuses import UnitStatus
 from common.models.targets import Target
-from common.parsers import parse_units
-from common.utils import OperatingMode, function_name
 
 if TYPE_CHECKING:
+    from common.api import SpecApi, UnitApi
+    from common.canonical import CanonicalResponse
+    from common.interfaces.components import ComponentStatus
     from common.models.assignments import AssignmentDelivery
     from common.tasks.models import GatherResponse
 
 logger = logging.Logger("mast." + __name__)
-init_log(logger)
+try:
+    from common.activities import Activities
+    from common.mast_logging import init_log
+    init_log(logger)
+except ImportError:
+    class Activities:  # type: ignore[no-redef]
+        pass
 
 
 class Plan(BaseModel, Activities):
     target: Target
     model_config = ConfigDict(
         extra="allow",
-        arbitrary_types_allowed=True,  # Allow non-Pydantic types like UnitApi
+        arbitrary_types_allowed=True,
     )
 
     ulid: str | None = Field(
@@ -59,6 +61,7 @@ class Plan(BaseModel, Activities):
         default=None,
         json_schema_extra={"ui": {
             "label": "Owner",
+            "widget": "user",
             "editable": False,
             "summary": True,
         }},
@@ -74,8 +77,8 @@ class Plan(BaseModel, Activities):
     )
     timeout_to_guiding: float | None = Field(
         default=600,
-        gt = 0,
-        le = 600,
+        gt=0,
+        le=600,
         json_schema_extra={"ui": {
             "label": "Timeout to Guiding",
             "widget": "number",
@@ -88,6 +91,7 @@ class Plan(BaseModel, Activities):
         json_schema_extra={"ui": {
             "label": "Autofocus",
             "widget": "checkbox",
+            "tooltip": "Perform autofocus before start of sequence",
         }},
     )
     too: bool = Field(
@@ -106,6 +110,7 @@ class Plan(BaseModel, Activities):
             "widget": "checkbox",
             "editable": False,
             "required_capabilities": ["can_manage_plans"],
+            "hidden": True,  # hide by default, only show if user has 'can_manage_plans' capability
         }},
     )
     spec_assignment: SpectrographModel | None = Field(
@@ -127,6 +132,7 @@ class Plan(BaseModel, Activities):
             "widget": "checkbox",
             "required_capabilities": ["can_manage_plans"],
             "tooltip": "Disable to relax availability checks (testing only)",
+            "hidden": True,  # hide by default, only show if user has 'can_manage_plans' capability
         }},
     )
     events: list[EventModel] | None = Field(
@@ -141,12 +147,12 @@ class Plan(BaseModel, Activities):
             "label": "Constraints",
         }},
     )
-    commited_unit_apis: list[UnitApi] = Field(
+    commited_unit_apis: list[Any] = Field(
         default_factory=list,
         json_schema_extra={"ui": {
             "hidden": True,
         }},
-    )
+    )  # list[UnitApi]
     timings: dict = Field(
         default_factory=dict,
         json_schema_extra={"ui": {
@@ -167,6 +173,7 @@ class Plan(BaseModel, Activities):
             "label": "Allocated Units",
             "editable": False,
             "required_capabilities": ["can_manage_plans"],
+            "tooltip": "Units allocated by scheduler",
         }},
     )
     quorum: int = Field(
@@ -174,26 +181,27 @@ class Plan(BaseModel, Activities):
         json_schema_extra={"ui": {
             "label": "Quorum",
             "widget": "number",
-            "tooltip": "Minimum units required for the plan to proceed",
+            "tooltip": "Minimum operational units required for the plan to proceed",
             "required_capabilities": ["can_manage_plans"],
         }},
     )
-    spec_api: SpecApi | None = Field(
+    spec_api: Any | None = Field(
         default=None,
         json_schema_extra={"ui": {
             "hidden": True,
         }},
-    )
+    )  # SpecApi | None
 
     @property
-    def remote_unit_assignments(self) -> list["AssignmentDelivery"]:
+    def remote_unit_assignments(self) -> list[AssignmentDelivery]:
         from common.models.assignments import (
             AssignmentDelivery,
             Initiator,
             UnitAssignment,
         )
+        from common.parsers import parse_units
 
-        ret: list["AssignmentDelivery"] = []
+        ret: list[AssignmentDelivery] = []
         initiator = Initiator.local_machine()
         for unit_name in self.allocated_units or []:
             unit_assignment: UnitAssignment = UnitAssignment(
@@ -211,9 +219,8 @@ class Plan(BaseModel, Activities):
         return ret
 
     @property
-    def remote_spec_assignment(
-        self,
-    ) -> "AssignmentDelivery | None":  # AssignmentEnvelope | None
+    def remote_spec_assignment(self) -> AssignmentDelivery | None:
+        from common.config import Config
         from common.models.assignments import (
             AssignmentDelivery,
             Initiator,
@@ -346,17 +353,6 @@ class Plan(BaseModel, Activities):
     async def api_coroutine(
         api, method: str, sub_url: str, data=None, _json: dict | None = None
     ):
-        """
-        An asynchronous coroutine for remote APIs
-
-        :param api:
-        :param method:
-        :param sub_url:
-        :param data:
-        :param _json:
-        :return:
-        """
-
         response = None
         try:
             if method == "GET":
@@ -370,28 +366,8 @@ class Plan(BaseModel, Activities):
 
     async def fetch_statuses(
         self, units: list[UnitApi], spec: SpecApi | None = None
-    ) -> tuple[list["GatherResponse"], Any | None]:
-        """Asynchronously fetch status information from multiple units and optionally a spectrograph.
-
-        This method makes parallel API calls to get the status of all specified units and
-        optionally a spectrograph. It uses asyncio.gather to run all requests concurrently.
-
-        Args:
-            units: List of UnitApi instances representing the telescope units to query
-            spec: Optional SpecApi instance for querying a spectrograph's status
-
-        Returns:
-            If spec is None:
-                list[GatherResponse]: List of status responses from units, in same order as input
-            If spec is provided:
-                tuple[list[GatherResponse], GatherResponse | None]: Tuple containing:
-                    - List of unit status responses
-                    - Spectrograph status response or None if failed
-
-        The GatherResponse type can be either:
-            - CanonicalResponse: Successful API response with status data
-            - BaseException: If the API call failed
-        """
+    ) -> tuple[list[GatherResponse], Any | None]:
+        """Asynchronously fetch status information from multiple units and optionally a spectrograph."""
         tasks = [
             self.api_coroutine(api=unit_api, method="GET", sub_url="status")
             for unit_api in units
@@ -407,7 +383,10 @@ class Plan(BaseModel, Activities):
             return all_status_responses[:-1], all_status_responses[-1]
         return all_status_responses, None
 
-    async def get_spec_status(self) -> ComponentStatus | None:
+    async def get_spec_status(self) -> Any | None:  # ComponentStatus | None
+        from common.activities import AssignmentActivities
+        from common.utils import function_name
+
         if not self.spec_api:
             raise Exception(f"{function_name()}: spec_api is None")
 
@@ -423,12 +402,6 @@ class Plan(BaseModel, Activities):
     def terminate(
         self, reason: Literal["failed", "rejected", "completed"], details: list[str]
     ):
-        """
-        Handles the task's termination
-        :param reason:
-        :param details:
-        :return:
-        """
         self.controller.task_in_progress = None
 
         logger.error(f"terminating task '{self.ulid}', {reason=}, {details=}")
@@ -448,11 +421,6 @@ class Plan(BaseModel, Activities):
             )
 
     def add_event(self, event: EventModel):
-        """
-        Adds an event to the task's history
-        :param event:
-        :return:
-        """
         if self.model_extra and "toml_file" in self.model_extra:
             file = self.model_extra["toml_file"]
 
@@ -478,8 +446,15 @@ class Plan(BaseModel, Activities):
         Sends the assignment to the spectrograph
         Waits for spectrograph to finish the assignment
         Tells units to end 'guiding'
-        :return:
         """
+        from common.activities import Activities, AssignmentActivities, UnitActivities
+        from common.api import SpecApi, UnitApi
+        from common.canonical import CanonicalResponse
+        from common.config import Config
+        from common.interfaces.components import ComponentStatus
+        from common.models.statuses import UnitStatus
+        from common.utils import OperatingMode
+
         local_site = Config().local_site
         assert local_site is not None
 
@@ -805,9 +780,6 @@ class Plan(BaseModel, Activities):
         assert self.remote_spec_assignment is not None, (
             "spec_assignment should not be None"
         )
-        # send the assignment to the spec
-
-        # logger.info(f"spec_assignment ({type(self.spec_assignment)}):\n" + self.spec_assignment.model_dump_json(indent=2))
         canonical_response = await self.spec_api.put(
             method="execute_assignment", json=self.remote_spec_assignment.model_dump()
         )
@@ -850,6 +822,7 @@ class Plan(BaseModel, Activities):
                 )
 
     async def abort(self):
+        from common.activities import AssignmentActivities
         self.start_activity(AssignmentActivities.Aborting)
         tasks = [
             self.api_coroutine(unit_api, method="GET", sub_url="abort")
@@ -874,7 +847,6 @@ if __name__ == "__main__":
     toml_path = sys.argv[1]
     try:
         plan = Plan.from_toml_file(toml_path)
-        # model_dump() is Pydantic v2 method; fall back to dict() if needed
         try:
             data = plan.model_dump()
         except Exception:
