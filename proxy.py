@@ -24,15 +24,18 @@ class ProxyContext:
     _HDR_IP   = "x-proxy-external-ip"
     _HDR_PORT = "x-proxy-port"
     _HDR_BASE = "x-proxy-base"
+    _HDR_HOST = "x-forwarded-host"
 
     # Django META equivalents (uppercase, HTTP_ prefix)
     _META_IP   = "HTTP_X_PROXY_EXTERNAL_IP"
     _META_PORT = "HTTP_X_PROXY_PORT"
     _META_BASE = "HTTP_X_PROXY_BASE"
+    _META_HOST = "HTTP_X_FORWARDED_HOST"
 
-    def __init__(self, scheme: str, external_ip: str, port: str, base: str):
+    def __init__(self, scheme: str, external_ip: str, port: str, base: str, forwarded_host: str = ""):
         self.scheme      = scheme or "http"
         self.external_ip = (external_ip or "").strip()
+        self.forwarded_host = (forwarded_host or "").strip()
         self.port        = str(port).strip() if port else ""
         # Normalise base: always starts with '/', never ends with '/'
         b = (base or "").strip().strip("/")
@@ -70,6 +73,7 @@ class ProxyContext:
             external_ip=m.get(cls._META_IP, ""),
             port=m.get(cls._META_PORT, ""),
             base=m.get(cls._META_BASE, ""),
+            forwarded_host=m.get(cls._META_HOST, ""),
         )
 
     @classmethod
@@ -80,6 +84,7 @@ class ProxyContext:
             external_ip=h.get(cls._HDR_IP, ""),
             port=h.get(cls._HDR_PORT, ""),
             base=h.get(cls._HDR_BASE, ""),
+            forwarded_host=h.get(cls._HDR_HOST, ""),
         )
 
     @classmethod
@@ -123,8 +128,9 @@ class ProxyContext:
     @property
     def origin(self) -> str:
         """scheme://host[:port]  — only valid when proxied."""
+        host = self.forwarded_host or self.external_ip
         port_suffix = f":{self.port}" if self.port else ""
-        return f"{self.scheme}://{self.external_ip}{port_suffix}"
+        return f"{self.scheme}://{host}{port_suffix}"
 
     # ── core URL builder ─────────────────────────────────────────────────────
 
