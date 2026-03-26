@@ -164,9 +164,12 @@ class Plan(BaseModel, Activities):
         json_schema_extra={"ui": {
             "label": "Requested Units",
             "widget": "text",
-            "tooltip": "Comma-separated unit names, e.g. mast01,mast02",
+            "tooltip": "Comma-separated unit names, e.g. <b>mast01,mast02</b><br>"
+            + "&nbsp;If specified, the scheduler will try to allocate these specific units (if available), <br>"
+            + "&nbsp;otherwise it will choose from available units",
         }},
     )
+    
     allocated_units: list[str] = Field(
         default_factory=list,
         json_schema_extra={"ui": {
