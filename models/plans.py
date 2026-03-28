@@ -99,7 +99,7 @@ class Plan(BaseModel, Activities):
         json_schema_extra={"ui": {
             "label": "Autofocus",
             "widget": "checkbox",
-            "tooltip": "Perform autofocus before start of sequence",
+            "tooltip": "Perform autofocus before acquisition",
         }},
     )
     too: bool = Field(
@@ -348,12 +348,7 @@ class Plan(BaseModel, Activities):
                 raise Exception(
                     f"Failed to update ULID in TOML file {real_path}: {str(e)}"
                 ) from e
-        try:
-            new_plan = Plan(**toml_doc)  # type: ignore
-        except ValidationError as e:
-            for err in e.errors():
-                logger.error(f"ValidationError:\n  {err}")
-            raise ValidationError from e
+        new_plan = Plan(**toml_doc)  # type: ignore  — ValidationError propagates to caller
 
         return new_plan
 
