@@ -17,18 +17,6 @@ class SpectrographModel(BaseModel):
             "summary": True,
         }},
     )
-    exposure_duration: float | None = Field(
-        default=None,
-        json_schema_extra={"ui": {
-            "hidden": True,
-        }},
-    )
-    number_of_exposures: int | None = Field(
-        default=None,
-        json_schema_extra={"ui": {
-            "hidden": True,
-        }},
-    )
     calibration: CalibrationSettings | None = Field(
         default=None,
         json_schema_extra={"ui": {

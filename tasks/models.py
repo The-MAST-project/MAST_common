@@ -1,143 +1,22 @@
 import asyncio
-import json
 import logging
-from copy import deepcopy
 from typing import Literal
 
 from pydantic import BaseModel, ValidationError
 
 from common.api import SpecApi
 from common.canonical import CanonicalResponse
-from common.config import Config
-from common.deep import deep_dict_update
 from common.mast_logging import init_log
 from common.models.assignments import (
     Initiator,
     SpectrographAssignment,
 )
 from common.models.plans import Plan
-from common.models.spectrographs import SpectrographModel
-from common.spec import DeepspecBands
 
 GatherResponse = CanonicalResponse | BaseException | None
 
 logger = logging.getLogger("tasks")
 init_log(logger)
-
-
-def make_spec_model(spec_doc: dict) -> SpectrographModel | None:
-    """
-    Accumulates a dictionary by combining:
-    - a TOML-derived dictionary (parameter) which contains the user's task description
-    - defaults from the configuration database
-
-    The resulting dictionary is fully populated, i.e. ALL the expected fields
-      have a value (either from the task, or the defaults)
-
-    :param spec_doc: a dictionary from a TOML model
-    :return: a spectrograph model built from the accumulated dictionary
-    """
-    if "instrument" not in spec_doc:
-        logger.error(f"missing 'instrument' in {spec_doc=}")
-        return None
-    instrument = spec_doc["instrument"]
-    if instrument not in ["highspec", "deepspec"]:
-        logger.error(f"bad '{instrument=}', must be either 'deepspec' or 'highspec")
-        return None
-
-    defaults = Config().get_specs()
-    calibration_settings = {
-        "lamp_on": spec_doc.get("lamp_on", False),
-        "filter": spec_doc.get("filter"),
-    }
-
-    if instrument == "highspec":
-        camera_settings = deepcopy(defaults.highspec.settings)
-        if "camera" in spec_doc:
-            # deep_dict_update(camera_settings, spec_doc["camera"])
-            deepcopy(camera_settings, spec_doc["camera"])
-        exposure_duration = defaults.highspec.settings.exposure_duration
-        number_of_exposures = defaults.highspec.settings.number_of_exposures
-
-        # propagate 'exposure_duration' and 'number_of_exposures' to the camera settings
-        camera_settings.exposure_duration = exposure_duration
-        camera_settings.number_of_exposures = number_of_exposures
-
-        new_spec_dict = {
-            "instrument": instrument,
-            "calibration": calibration_settings,
-            "exposure_duration": exposure_duration,
-            "number_of_exposures": number_of_exposures,
-            "spec": {
-                "instrument": instrument,
-                "disperser": spec_doc["disperser"],
-                "camera": camera_settings,
-            },
-        }
-
-    else:
-        default_common_settings = defaults.deepspec["common"].settings
-        assert default_common_settings is not None, (
-            "empty default_camera_settings for Deepspec"
-        )
-
-        new_spec_dict = {
-            "instrument": instrument,
-            "calibration": calibration_settings,
-            "exposure_duration": (
-                spec_doc.get(
-                    "exposure_duration", default_common_settings.exposure_duration
-                )
-            ),
-            "number_of_exposures": (
-                spec_doc.get(
-                    "number_of_exposures", default_common_settings.number_of_exposures
-                )
-            ),
-            "spec": {
-                "instrument": instrument,
-                "exposure_duration": (
-                    spec_doc.get(
-                        "exposure_duration", default_common_settings.exposure_duration
-                    )
-                ),
-                "number_of_exposures": (
-                    spec_doc.get(
-                        "number_of_exposures",
-                        default_common_settings.number_of_exposures,
-                    )
-                ),
-                "camera": {},
-            },
-        }
-        common_camera_settings = deepcopy(default_common_settings)
-        # propagate 'exposure_duration' and 'number_of_exposures' to the camera settings
-        common_camera_settings.exposure_duration = new_spec_dict["spec"][
-            "exposure_duration"
-        ]
-        common_camera_settings.number_of_exposures = new_spec_dict["spec"][
-            "number_of_exposures"
-        ]
-
-        # get band-specific camera settings
-        for band in DeepspecBands.__args__:
-            band_conf = deepcopy(common_camera_settings)
-            if "camera" in spec_doc and band in spec_doc["camera"]:
-                deep_dict_update(band_conf.model_dump(), spec_doc["camera"][band])
-
-            new_spec_dict["spec"]["camera"][band] = band_conf
-
-    new_spec_dict["instrument"] = instrument
-
-    # logger.info("new_spec_dict:\n" + json.dumps(new_spec_dict, indent=2))
-    try:
-        spectrograph_model = SpectrographModel(**new_spec_dict)
-    except ValidationError as e:
-        logger.error("====== ValidationError(s) =======\n")
-        for err in e.errors():
-            logger.error(f"[ERR] {json.dumps(err, indent=2)}\n")
-        raise
-    return spectrograph_model
 
 
 AcquisitionSubpath = Literal["autofocus", "acquisition", "deepspec", "highspec", "spec"]
