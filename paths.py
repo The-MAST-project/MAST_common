@@ -136,6 +136,10 @@ class PathMaker:
         return str(Path(Filer().shared.root) / "plans")
 
     @staticmethod
+    def make_plans_files_folder() -> str:
+        return str(Path(PathMaker.make_plans_folder()) / "files")
+
+    @staticmethod
     def make_run_folder():
         daily_run_folder = PathMaker().make_daily_folder_name(
             root=os.path.join(Filer().shared.root, "runs")

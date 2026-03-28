@@ -66,6 +66,14 @@ class Plan(BaseModel, Activities):
             "summary": True,
         }},
     )
+    mockup: bool = Field(
+        default=False,
+        json_schema_extra={"ui": {
+            "label": "Mockup",
+            "widget": "checkbox",
+            "tooltip": "If true, the plan will not be executed but only go through the scheduling phase (for testing and debugging)",
+        }},
+    )
     merit: int | None = Field(
         default=1,
         json_schema_extra={"ui": {

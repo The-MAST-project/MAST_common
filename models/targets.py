@@ -1,9 +1,24 @@
 import astropy.coordinates
 from pydantic import BaseModel, Field, field_validator
 from common.models.constraints import RepeatsModel
+from common.models.science import ScienceModel
 
 
 class Target(BaseModel):
+    name : str | None = Field(
+        default=None,
+        json_schema_extra={"ui": {
+            "label": "Name",
+            "widget": "text",
+        }},
+    )
+    magnitude: float | None = Field(
+        default=None,
+        json_schema_extra={"ui": {
+            "label": "Magnitude",
+            "widget": "number",
+        }},
+    )
     ra_hours: str | float = Field(
         description="RightAscension [sexagesimal or decimal]",
         json_schema_extra={
@@ -35,6 +50,13 @@ class Target(BaseModel):
                 "error_message": "Sexagesimal (colon or space separated) or decimal degrees [-90:90]",
             }
         },
+    )
+    science: ScienceModel = Field(
+        default_factory=ScienceModel,
+        json_schema_extra={"ui": {
+            "label": "Science",
+            "tooltip": "Science case and classification for this target",
+        }},
     )
     requested_exposure_duration: float | None = Field(
         default=None,
