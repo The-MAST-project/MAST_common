@@ -8,20 +8,25 @@ EmptyFilter = "Empty"
 class CalibrationSettings(BaseModel):
     lamp_on: bool | None = Field(
         default=False,
-        json_schema_extra={"ui": {
-            "label": "ThAr lamp",
-            "widget": "checkbox",
-        }},
+        json_schema_extra={
+            "ui": {
+                "label": "ThAr lamp",
+                "widget": "checkbox",
+            },
+            "searchable": True,
+        },
     )
     filter: str | None = Field(
         default=None,
-        json_schema_extra={"ui": {
-            "label": "ThAr filter",
-            "widget": "select",
-            "options": [],
-            "options_key": "filter_options",
-            "tooltip": "ThAr filter; required when ThAr lamp is on",
-        }},
+        json_schema_extra={
+            "ui": {
+                "label": "ThAr filter",
+                "widget": "select",
+                "options": [],
+                "options_key": "filter_options",
+                "tooltip": "ThAr filter; required when ThAr lamp is on",
+            }
+        },
     )
 
     @model_validator(mode="after")

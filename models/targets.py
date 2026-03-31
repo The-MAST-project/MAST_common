@@ -7,24 +7,29 @@ from common.models.science import ScienceModel
 class Target(BaseModel):
     name : str | None = Field(
         default=None,
-        json_schema_extra={"ui": {
-            "label": "Name",
-            "widget": "text",
-        }},
+        json_schema_extra={
+            "ui": {
+                "label": "Name",
+                "widget": "text",
+            },
+            "searchable": "text",
+        },
     )
     magnitude: float | None = Field(
         default=None,
-        json_schema_extra={"ui": {
-            "label": "Magnitude",
-            "widget": "number",
-        }},
+        json_schema_extra={
+            "ui": {
+                "label": "Magnitude",
+                "widget": "number",
+            },
+            "searchable": "range",
+        },
     )
     ra_hours: str | float = Field(
         description="RightAscension [sexagesimal or decimal]",
         json_schema_extra={
             "ui": {
                 "label": "RA",
-                # RA: sexagesimal (no sign, 0–23h) OR decimal hours
                 "pattern": r"^\d{1,2}[: ][0-5]?\d[: ][0-5]?\d(?:\.\d+)?$|^\d+(?:\.\d+)?$",
                 "error_message": "Sexagesimal (colon or space separated) or decimal hours [0:24]",
                 "widget": "text",
@@ -32,7 +37,8 @@ class Target(BaseModel):
                 "summary": True,
                 "required": True,
                 "tooltip": "Sexagesimal:<ul><li>&nbsp;<b>05:34:32.5</b><li>&nbsp;<b>05 34 32.5</b></li></ul>&nbsp;or decimal hours <ul><li>&nbsp;<b>5.575</b></li></ul>",
-            }
+            },
+            "searchable": "range",
         },
     )
     dec_degrees: str | float = Field(
@@ -40,7 +46,6 @@ class Target(BaseModel):
         json_schema_extra={
             "ui": {
                 "label": "Dec",
-                # Dec: sexagesimal (optional sign) OR decimal degrees (optional sign)
                 "pattern": r"^[+-]?\d{1,2}[: ][0-5]?\d[: ][0-5]?\d(?:\.\d+)?$|^[+-]?\d+(?:\.\d+)?$",
                 "widget": "text",
                 "unit": "degrees",
@@ -48,15 +53,18 @@ class Target(BaseModel):
                 "required": True,
                 "tooltip": "Sexagesimal:<ul><li>&nbsp;<b>+22:00:52.5</b></li><li>&nbsp;<b>-22 00 52.5</b></li></ul>&nbsp;or decimal degrees <ul><li>&nbsp;<b>22.014</b></li></ul>",
                 "error_message": "Sexagesimal (colon or space separated) or decimal degrees [-90:90]",
-            }
+            },
+            "searchable": "range",
         },
     )
     science: ScienceModel = Field(
         default_factory=ScienceModel,
-        json_schema_extra={"ui": {
-            "label": "Science",
-            "tooltip": "Science case and classification for this target",
-        }},
+        json_schema_extra={
+            "ui": {
+                "label": "Science",
+                "tooltip": "Science case and classification for this target",
+            }
+        },
     )
     requested_exposure_duration: float | None = Field(
         default=None,
@@ -74,7 +82,7 @@ class Target(BaseModel):
                     "label": "Exposure Series",
                     "tooltip": "Series of exposures to be scheduled for this target",
                 },
-            }
+            },
         },
     )
     max_exposure_duration: float | None = Field(
@@ -101,16 +109,20 @@ class Target(BaseModel):
                 "label": "Number of exposures",
                 "widget": "number",
                 "required": True,
-                "section": {"label": "Exposure Series"},
+                "section": {
+                    "label": "Exposure Series",
+                },
             }
         },
     )
     repeats: RepeatsModel = Field(
         default_factory=RepeatsModel,
-        json_schema_extra={"ui": {
-            "label": "repeats",
-            "tooltip": "When and how much should the exposure series be rescheduled?",
-        }},
+        json_schema_extra={
+            "ui": {
+                "label": "repeats",
+                "tooltip": "When and how much should the exposure series be rescheduled?",
+            }
+        },
     )
 
     @field_validator("ra_hours")

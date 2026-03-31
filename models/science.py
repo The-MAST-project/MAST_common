@@ -6,13 +6,16 @@ class ScienceModel(BaseModel):
         json_schema_extra={"ui": {
             "label": "Case",
             "widget": "textarea",
-        }},
+        }, "searchable": "text"},
     )
     classification: str | None = Field(
         default=None,
-        json_schema_extra={"ui": {
-            "label": "Classification",
-            "widget": "text",
-        }},
+        json_schema_extra={
+            "ui": {
+                "label": "Classification",
+                "widget": "text",
+            },
+            "searchable": "exact",
+        },
     )
     

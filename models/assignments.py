@@ -92,7 +92,7 @@ class SpectrographAssignment(BaseModel):
     spec: SpectrographModel
 
 
-class AssignmentDelivery(BaseModel):
+class Manifest(BaseModel):
     """
     This is what gets sent out via UnitApi or SpecApi
     """
@@ -123,12 +123,12 @@ class AssignmentDelivery(BaseModel):
     @classmethod
     def from_units_specifier(
         cls, units_specifier: str | list[str], assignment
-    ) -> list["AssignmentDelivery"]:
+    ) -> list["Manifest"]:
         if isinstance(units_specifier, str):
             units_specifier = [units_specifier]
-        ret: list[AssignmentDelivery] = []
+        ret: list[Manifest] = []
         for site_colon_unit in parse_units(units_specifier):
-            remote = AssignmentDelivery.from_site_colon_unit(
+            remote = Manifest.from_site_colon_unit(
                 site_colon_unit, assignment=assignment
             )
             if remote:

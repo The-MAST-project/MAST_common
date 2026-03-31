@@ -16,6 +16,7 @@ class MoonConstraintModel(BaseModel):
                 "unit": "percent",
                 "tooltip": "Maximum moon illumination percentage (0=new moon, 100=full moon)",
             },
+            "searchable": "range",
         },
     )
     min_distance: float | None = Field(
@@ -29,6 +30,7 @@ class MoonConstraintModel(BaseModel):
                 "unit": "degrees",
                 "tooltip": "Minimum angular distance from the moon",
             },
+            "searchable": "range",
         },
     )
 
@@ -44,6 +46,7 @@ class AirmassConstraintModel(BaseModel):
                 "widget": "number",
                 "tooltip": "Maximum airmass (1.0 = zenith)",
             },
+            "searchable": "range",
         },
     )
 
@@ -93,6 +96,7 @@ class TimeWindow(BaseModel):
                 "widget": "datetime",
                 "hidden": True,
             },
+            "searchable": "range",
         },
     )
     end: date | datetime | None = Field(
@@ -103,6 +107,7 @@ class TimeWindow(BaseModel):
                 "widget": "datetime",
                 "hidden": True,
             },
+            "searchable": "range",
         },
     )
     end_after_nights: int | None = Field(
