@@ -79,6 +79,7 @@ class Plan(BaseModel, Activities):
             "ui": {
                 "label": "Mockup",
                 "widget": "checkbox",
+                "hidden": True,
                 "tooltip": "If true, the plan will not be executed but only go through the scheduling phase (for testing and debugging)",
             },
             "searchable": True,
