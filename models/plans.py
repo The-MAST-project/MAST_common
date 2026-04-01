@@ -252,8 +252,15 @@ class Plan(BaseModel, Activities):
                 "hidden": True,
             }
         },
-    )  # SpecApi | None
-    terminated = False  # not a field, just an instance variable to track if the plan has been terminated during execution
+    )
+    terminated: bool = Field(
+        default=False,
+        json_schema_extra={
+            "ui": {
+                "hidden": True,
+            }
+        },
+    )
 
     @property
     def remote_unit_assignments(self) -> list[Manifest]:
