@@ -16,26 +16,23 @@ import ulid
 from pydantic import BaseModel, Field, ValidationError
 from pydantic.config import ConfigDict
 
+from common.activities import Activities, PlanActivities, UnitActivities
+from common.mast_logging import init_log
 from common.models.constraints import ConstraintsModel
 from common.models.events import EventModel
 from common.models.spectrographs import SpectrographModel
 from common.models.targets import Target
+from common.utils import function_name
 
 if TYPE_CHECKING:
     from common.api import SpecApi, UnitApi
     from common.canonical import CanonicalResponse
     from common.interfaces.components import ComponentStatus
-    from common.models.assignments import AssignmentDelivery
+    from common.models.assignments import Manifest
     from common.tasks.models import GatherResponse
 
 logger = logging.Logger("mast." + __name__)
-try:
-    from common.activities import Activities
-    from common.mast_logging import init_log
-    init_log(logger)
-except ImportError:
-    class Activities:  # type: ignore[no-redef]
-        pass
+init_log(logger)
 
 
 class Plan(BaseModel, Activities):
@@ -240,6 +237,14 @@ class Plan(BaseModel, Activities):
             }
         },
     )
+    unit_apis: list[Any] = Field(
+        default=[],
+        json_schema_extra={
+            "ui": {
+                "hidden": True,
+            }
+        },
+    )
     spec_api: Any | None = Field(
         default=None,
         json_schema_extra={
@@ -248,17 +253,18 @@ class Plan(BaseModel, Activities):
             }
         },
     )  # SpecApi | None
+    terminated = False  # not a field, just an instance variable to track if the plan has been terminated during execution
 
     @property
-    def remote_unit_assignments(self) -> list[AssignmentDelivery]:
+    def remote_unit_assignments(self) -> list[Manifest]:
         from common.models.assignments import (
-            AssignmentDelivery,
             Initiator,
+            Manifest,
             UnitAssignment,
         )
         from common.parsers import parse_units
 
-        ret: list[AssignmentDelivery] = []
+        ret: list[Manifest] = []
         initiator = Initiator.local_machine()
         for unit_name in self.allocated_units or []:
             unit_assignment: UnitAssignment = UnitAssignment(
@@ -268,19 +274,17 @@ class Plan(BaseModel, Activities):
 
             units_specifier = parse_units(unit_name)
             if units_specifier:
-                units = AssignmentDelivery.from_units_specifier(
-                    units_specifier, unit_assignment
-                )
+                units = Manifest.from_units_specifier(units_specifier, unit_assignment)
                 if units:
                     ret += units
         return ret
 
     @property
-    def remote_spec_assignment(self) -> AssignmentDelivery | None:
+    def remote_spec_assignment(self) -> Manifest | None:
         from common.config import Config
         from common.models.assignments import (
-            AssignmentDelivery,
             Initiator,
+            Manifest,
             SpectrographAssignment,
         )
 
@@ -315,7 +319,7 @@ class Plan(BaseModel, Activities):
                 logger.error(f"ERR:\n  {err}")
             raise
 
-        return AssignmentDelivery(
+        return Manifest(
             hostname=spec_hostname, fqdn=fqdn, ipaddr=ipaddr, assignment=spec_assignment
         )
 
@@ -436,9 +440,6 @@ class Plan(BaseModel, Activities):
         return all_status_responses, None
 
     async def get_spec_status(self) -> Any | None:  # ComponentStatus | None
-        from common.activities import AssignmentActivities
-        from common.utils import function_name
-
         if not self.spec_api:
             raise Exception(f"{function_name()}: spec_api is None")
 
@@ -446,12 +447,16 @@ class Plan(BaseModel, Activities):
         if not canonical_response.succeeded:
             canonical_response.log(_logger=logger, label="spec")
             await self.abort()
-            self.end_activity(AssignmentActivities.ExposingSpec)
+            self.end_activity(PlanActivities.Exposing)
             return None
 
         return canonical_response.value
 
-    def terminate(
+    def prepare(self, controller):
+        self.controller = controller
+        self.sites_conf = controller.sites_conf
+
+    async def terminate(
         self, reason: Literal["failed", "rejected", "completed"], details: list[str]
     ):
         self.controller.task_in_progress = None
@@ -471,6 +476,8 @@ class Plan(BaseModel, Activities):
             logger.info(
                 f"moved plan '{self.ulid}' from {str(current_path)} to {str(new_path)}"
             )
+        self.end_activity(PlanActivities.Executing)
+        self.terminated = True
 
     def add_event(self, event: EventModel):
         if self.model_extra and "toml_file" in self.model_extra:
@@ -491,63 +498,37 @@ class Plan(BaseModel, Activities):
             with open(file, "w") as f:
                 f.write(tomlkit.dumps(toml_doc))
 
-    async def execute(self, controller):
-        """
-        Checks if the allocated components (units and spectrograph) are available and operational
-        Dispatches assignments to units and waits for a quorum of them to reach 'guiding'
-        Sends the assignment to the spectrograph
-        Waits for spectrograph to finish the assignment
-        Tells units to end 'guiding'
-        """
-        from common.activities import Activities, AssignmentActivities, UnitActivities
-        from common.api import SpecApi, UnitApi
-        from common.canonical import CanonicalResponse
-        from common.config import Config
-        from common.interfaces.components import ComponentStatus
-        from common.models.statuses import UnitStatus
-        from common.utils import OperatingMode
+    async def probe(self):
+        """Checks if the allocated components (units and spectrograph) are available and operational."""
 
-        local_site = Config().local_site
-        assert local_site is not None
-
-        self.spec_api = SpecApi(local_site.name)
-        self.controller = controller
-        unit_apis: list[UnitApi] = []
-
-        for assignment in self.remote_unit_assignments:
-            unit_apis.append(UnitApi(ipaddr=assignment.ipaddr))
-
-        self.start_activity(AssignmentActivities.Executing)
-
-        # Phase #1: check the required components are operational
-        self.start_activity(AssignmentActivities.Probing)
-        if not unit_apis or not self.spec_api:
-            self.end_activity(AssignmentActivities.Probing)
-            self.end_activity(AssignmentActivities.Executing)
-            self.terminate(
+        self.start_activity(PlanActivities.Probing)
+        if not self.unit_apis or not self.spec_api:
+            self.end_activity(PlanActivities.Probing)
+            await self.terminate(
                 reason="rejected",
                 details=["no units assigned to this task"],
             )
             return
         canonical_unit_responses, spec_response = await self.fetch_statuses(
-            unit_apis, self.spec_api
+            self.unit_apis, self.spec_api
         )
 
         # see what units respond at all
-        detected_unit_apis = [unit_api for unit_api in unit_apis if unit_api.detected]
+        detected_unit_apis = [
+            unit_api for unit_api in self.unit_apis if unit_api.detected
+        ]
         n_detected = len(detected_unit_apis)
         if self.quorum is not None and n_detected < self.quorum:
-            self.end_activity(AssignmentActivities.Probing)
-            self.end_activity(AssignmentActivities.Executing)
+            self.end_activity(PlanActivities.Probing)
             if n_detected == 0:
-                self.terminate(
+                await self.terminate(
                     reason="rejected",
                     details=[
                         f"no units quorum, no units were detected (required: {self.quorum})"
                     ],
                 )
             else:
-                self.terminate(
+                await self.terminate(
                     reason="rejected",
                     details=[
                         f"no units quorum, detected only {n_detected} "
@@ -562,15 +543,16 @@ class Plan(BaseModel, Activities):
 
         if not self.spec_api.detected:
             # spec does not respond
-            self.end_activity(AssignmentActivities.Probing)
-            self.end_activity(AssignmentActivities.Executing)
-            self.terminate(reason="rejected", details=["spec not detected"])
+            self.end_activity(PlanActivities.Probing)
+            await self.terminate(reason="rejected", details=["spec not detected"])
             return
 
         # enough units were detected (they answered to API calls), now check if they are operational
-        operational_unit_apis = []
+        self.operational_unit_apis = []
         for i, response in enumerate(canonical_unit_responses):
-            unit_api = unit_apis[i]
+            unit_api = self.unit_apis[i]
+
+            from common.models.statuses import UnitStatus
 
             if isinstance(response, CanonicalResponse):
                 if response.failed:
@@ -583,56 +565,43 @@ class Plan(BaseModel, Activities):
                     continue
 
                 if unit_status.operational:
-                    operational_unit_apis.append(unit_apis[i])
+                    self.operational_unit_apis.append(self.unit_apis[i])
                     logger.info(
                         f"unit '{unit_api.hostname}' ({unit_api.ipaddr}), operational"
                     )
                 else:
-                    if OperatingMode.production_mode:
-                        logger.info(
-                            f"unit '{unit_api.hostname}' ({unit_api.ipaddr}), "
-                            + f"not operational: {unit_status.why_not_operational}"
-                        )
-                    else:
-                        operational_unit_apis.append(unit_apis[i])
-                        logger.info(
-                            f"using non-operational unit '{unit_api.hostname}' ({unit_api.ipaddr}), operational"
-                        )
+                    logger.info(
+                        f"unit '{unit_api.hostname}' ({unit_api.ipaddr}), "
+                        + f"not operational: {unit_status.why_not_operational}"
+                    )
 
-        if len(operational_unit_apis) == 0:
-            if OperatingMode.production_mode:
-                self.end_activity(AssignmentActivities.Probing)
-                self.end_activity(AssignmentActivities.Executing)
-                self.terminate(
-                    reason="rejected",
-                    details=[f"no operational units (quorum: {self.quorum})"],
-                )
-                return
-        elif (
-            self.quorum is not None
-            and len(operational_unit_apis) < self.quorum
-            and OperatingMode.production_mode
-        ):
-            self.end_activity(AssignmentActivities.Probing)
-            self.end_activity(AssignmentActivities.Executing)
-            self.terminate(
+        if len(self.operational_unit_apis) == 0:
+            self.end_activity(PlanActivities.Probing)
+            await self.terminate(
                 reason="rejected",
-                details=[
-                    f"only {len(operational_unit_apis)} operational "
-                    + f"units (quorum: {self.quorum})"
-                ],
+                details=[f"no operational units (quorum: {self.quorum})"],
             )
             return
+        elif self.quorum is not None:
+            if len(self.operational_unit_apis) < self.quorum:
+                self.end_activity(PlanActivities.Probing)
+                await self.terminate(
+                    reason="rejected",
+                    details=[
+                        f"only {len(self.operational_unit_apis)} operational "
+                        + f"units (quorum: {self.quorum})"
+                    ],
+                )
+                return
+
         logger.info(
-            f"continuing with {len(operational_unit_apis)} unit(s) "
-            + f"(instead of {self.quorum}), operating in 'debug' mode"
+            f"continuing with {len(self.operational_unit_apis)} unit(s) (quorum: {self.quorum})"
         )
 
         if isinstance(spec_response, CanonicalResponse):
             if spec_response and spec_response.failed:
-                self.end_activity(AssignmentActivities.Probing)
-                self.end_activity(AssignmentActivities.Executing)
-                self.terminate(
+                self.end_activity(PlanActivities.Probing)
+                await self.terminate(
                     reason="rejected",
                     details=[
                         f"cannot talk to spec '{self.spec_api.hostname}' ({self.spec_api.ipaddr}) "
@@ -644,43 +613,31 @@ class Plan(BaseModel, Activities):
             assert spec_response is not None
             spec_status = spec_response.value
             if spec_status and not spec_status.operational:
-                if OperatingMode.production_mode:
-                    self.end_activity(AssignmentActivities.Probing)
-                    self.end_activity(AssignmentActivities.Executing)
-                    self.terminate(
-                        reason="rejected",
-                        details=[
-                            f"spec is not operational {spec_status.why_not_operational}"
-                        ],
-                    )
-                    return
-                else:
-                    logger.info(
-                        "continuing with non-operational spec, operating in 'debug' mode"
-                    )
-
-        elif isinstance(spec_response, BaseException):
-            if OperatingMode.production_mode:
-                self.end_activity(AssignmentActivities.Probing)
-                self.end_activity(AssignmentActivities.Executing)
-                self.terminate(
-                    reason="failed",
+                self.end_activity(PlanActivities.Probing)
+                await self.terminate(
+                    reason="rejected",
                     details=[
-                        f"exception when getting status from spec {spec_response=}"
+                        f"spec is not operational {spec_status.why_not_operational}"
                     ],
                 )
                 return
-            else:
-                logger.info(
-                    "continuing with non-operational spec, operating in 'debug' mode"
-                )
 
-        self.end_activity(AssignmentActivities.Probing)
+        elif isinstance(spec_response, BaseException):
+            self.end_activity(PlanActivities.Probing)
+            await self.terminate(
+                reason="failed",
+                details=[f"exception when getting status from spec {spec_response=}"],
+            )
+            return
 
-        # Phase #2: we have a quorum of responding units and a responding spec, we can dispatch the assignments
-        self.start_activity(AssignmentActivities.Dispatching)
+        self.end_activity(PlanActivities.Probing)
+
+    async def dispatch(self):
+        """We have a quorum of responding units and a responding spec, we can dispatch the assignments"""
+
+        self.start_activity(PlanActivities.Dispatching)
         assignment_tasks = []
-        for operational_unit_api in operational_unit_apis:
+        for operational_unit_api in self.operational_unit_apis:
             for unit_assignment in self.remote_unit_assignments:
                 if unit_assignment.assignment is None:
                     logger.error(
@@ -700,70 +657,104 @@ class Plan(BaseModel, Activities):
         canonical_unit_responses: list[GatherResponse] = await asyncio.gather(
             *assignment_tasks, return_exceptions=True
         )
-        self.end_activity(AssignmentActivities.Dispatching)
+        self.end_activity(PlanActivities.Dispatching)
 
         for i, canonical_response in enumerate(canonical_unit_responses):
             try:
                 if isinstance(canonical_response, CanonicalResponse):
                     if canonical_response.succeeded:
-                        self.commited_unit_apis.append(operational_unit_apis[i])
+                        self.commited_unit_apis.append(self.operational_unit_apis[i])
                     else:
                         canonical_response.log(
                             _logger=logger,
-                            label=f"{operational_unit_apis[i].hostname} "
-                            + f"({operational_unit_apis[i].ipaddr})",
+                            label=f"{self.operational_unit_apis[i].hostname} "
+                            + f"({self.operational_unit_apis[i].ipaddr})",
                         )
                 elif isinstance(canonical_response, BaseException):
                     logger.error(
-                        f"exception response from {operational_unit_apis[i].hostname} "
-                        + f"({operational_unit_apis[i].ipaddr}): {canonical_response}"
+                        f"exception response from {self.operational_unit_apis[i].hostname} "
+                        + f"({self.operational_unit_apis[i].ipaddr}): {canonical_response}"
                     )
 
             except Exception as e:
                 logger.error(f"non-canonical response (error: {e}), ignoring!")
                 continue
 
-        assert self.quorum is not None, (
-            "task.quorum should not be None, it should be set in the task definition"
-        )
-
         n_committed = len(self.commited_unit_apis)
         if n_committed == 0:
-            self.terminate(
+            self.end_activity(PlanActivities.Dispatching)
+            await self.terminate(
                 reason="rejected",
                 details=[f"no committed units (quorum: {self.quorum})"],
             )
-            self.end_activity(AssignmentActivities.Dispatching)
-            self.end_activity(AssignmentActivities.Executing)
             return
-        elif n_committed < self.quorum:
-            if OperatingMode.production_mode:
-                self.terminate(
+        elif self.quorum is not None:
+            if n_committed < self.quorum:
+                self.end_activity(PlanActivities.Dispatching)
+                await self.terminate(
                     reason="rejected",
                     details=[f"only {n_committed} units (quorum: {self.quorum})"],
                 )
-                self.end_activity(AssignmentActivities.Dispatching)
-                self.end_activity(AssignmentActivities.Executing)
                 return
-        else:
-            logger.info(
-                f"continuing with only {n_committed} 'committed_units' "
-                + f"(instead of {self.quorum}) (operating in 'debug' mode)"
-            )
 
         self.add_event(
             EventModel(
-                what="submitted",
+                what="dispatched",
                 details=[
                     f"committed_units: {[api.hostname for api in self.commited_unit_apis]}"
                 ],
             )
         )
 
-        # the units are committed to their assignments, now wait for them to reach 'guiding'
+    async def expose(self):
+        """Tell the spectrograph to execute the assignment and wait for it to finish"""
+
+        self.start_activity(PlanActivities.Exposing)
+
+        # get (again) the spectrograph's status and make sure it is operational and not busy
+        spec_status = await self.get_spec_status()
+        assert spec_status is not None, "spec_status should not be None"
+
+        if not spec_status.operational:
+            await self.terminate(
+                reason="failed",
+                details=[f"spec not operational: {spec_status.why_not_operational}"],
+            )
+            return
+
+        if spec_status.activities != Activities.Idle:
+            await self.terminate(
+                reason="failed",
+                details=[
+                    f"spectrograph is busy (activities={spec_status.activities}), aborting!"
+                ],
+            )
+            return
+
+        assert self.remote_spec_assignment is not None, (
+            "spec_assignment should not be None"
+        )
+
+        assert self.spec_api is not None, "spec_api should not be None"
+        canonical_response = await self.spec_api.put(
+            method="execute_assignment", json=self.remote_spec_assignment.model_dump()
+        )
+
+        if not canonical_response.succeeded:
+            await self.terminate(
+                reason="failed",
+                details=[
+                    f"failed to send assignment to spectrograph: {canonical_response.errors}"
+                ],
+            )
+            return
+
+    async def wait_for_guiding(self):
+        """Units are committed to their assignments, now wait for them to reach 'guiding'"""
+
         start = datetime.datetime.now()
         reached_guiding = False
-        self.start_activity(AssignmentActivities.WaitingForGuiding)
+        self.start_activity(PlanActivities.WaitingForGuiding)
 
         assert self.timeout_to_guiding is not None, (
             "task.timeout_to_guiding should not be None, "
@@ -796,53 +787,21 @@ class Plan(BaseModel, Activities):
                 )
                 reached_guiding = True
                 break
-        self.end_activity(AssignmentActivities.WaitingForGuiding)
+        self.end_activity(PlanActivities.WaitingForGuiding)
 
         if not reached_guiding:
-            self.terminate(
+            await self.terminate(
                 reason="failed",
                 details=[
                     f"did not reach 'guiding' within {self.timeout_to_guiding} seconds"
                 ],
             )
-            self.end_activity(AssignmentActivities.Executing)
-            await self.abort()
             return
 
-        self.start_activity(AssignmentActivities.ExposingSpec)
+    async def wait_for_spec_done(self):
+        """Wait for the spectrograph to finish the assignment (go back to idle)"""
 
-        # get (again) the spectrograph's status and make sure it is operational and not busy
-        status = await self.get_spec_status()
-        assert status is not None, "status should not be None"
-
-        if self.production and not status.operational:
-            logger.error("spectrograph became non-operational, aborting!")
-            self.end_activity(AssignmentActivities.Executing)
-            await self.abort()
-            return
-
-        if status.activities != Activities.Idle:
-            logger.error(
-                f"spectrograph is busy (activities={status.activities}), aborting!"
-            )
-            self.end_activity(AssignmentActivities.Executing)
-            await self.abort()
-            return
-
-        assert self.remote_spec_assignment is not None, (
-            "spec_assignment should not be None"
-        )
-        canonical_response = await self.spec_api.put(
-            method="execute_assignment", json=self.remote_spec_assignment.model_dump()
-        )
-
-        if not canonical_response.succeeded:
-            canonical_response.log(_logger=logger, label="spec rejected assignment")
-            await self.abort()
-            self.end_activity(AssignmentActivities.Executing)
-            return
-
-        self.start_activity(AssignmentActivities.WaitingForSpecDone)
+        self.start_activity(PlanActivities.WaitingForSpecDone)
         while True:
             time.sleep(20)
             spec_status: ComponentStatus | None = await self.get_spec_status()
@@ -851,40 +810,94 @@ class Plan(BaseModel, Activities):
             if not spec_status.operational:
                 for err in spec_status.why_not_operational:
                     logger.error(f"spec not operational: {err}")
-                if OperatingMode.production_mode:
-                    await self.abort()
-                    self.end_activity(AssignmentActivities.WaitingForSpecDone)
-                    self.end_activity(AssignmentActivities.Executing)
-                    return
-                else:
-                    logger.info(
-                        "ignoring non-operational spec (operating in 'debug' mode)"
-                    )
+                self.end_activity(PlanActivities.WaitingForSpecDone)
+                await self.terminate(
+                    reason="failed",
+                    details=[
+                        f"spec not operational: {spec_status.why_not_operational}"
+                    ],
+                )
+                return
 
-            logger.info("execute: " + json.dumps(spec_status, indent=2))
+            logger.info("wait_for_spec_done: " + json.dumps(spec_status, indent=2))
             if spec_status.activities == Activities.Idle:
                 logger.info("spec is Idle")
-                self.end_activity(AssignmentActivities.WaitingForSpecDone)
-                self.end_activity(AssignmentActivities.Executing)
+                self.end_activity(PlanActivities.WaitingForSpecDone)
                 break
             else:
                 logger.info(
-                    f"spec is busy: activities: {spec_status.activities} "
+                    f"wait_for_spec_done: spec is busy: activities: {spec_status.activities} "
                     + f"({spec_status.activities_verbal})"
                 )
 
+        self.end_activity(PlanActivities.WaitingForSpecDone)
+
+    async def execute(self, controller):
+        """
+        Executes the plan by orchestrating the probing, dispatching, guiding, exposing and waiting for completion phases.
+        """
+        from common.api import SpecApi, UnitApi
+        from common.config import Config
+
+        local_site = Config().local_site
+        assert local_site is not None
+
+        self.spec_api = SpecApi(local_site.name)
+        self.controller = controller
+        unit_apis: list[UnitApi] = []
+
+        for assignment in self.remote_unit_assignments:
+            unit_apis.append(UnitApi(ipaddr=assignment.ipaddr))
+
+        self.start_activity(PlanActivities.Executing)
+
+        await self.probe()
+        if self.terminated:
+            logger.debug(
+                f"{function_name()}: terminated after probing, exiting execute()"
+            )
+            return
+
+        await self.dispatch()
+        if self.terminated:
+            logger.debug(
+                f"{function_name()}: terminated after dispatching, exiting execute()"
+            )
+            return
+
+        await self.wait_for_guiding()
+        if self.terminated:
+            logger.debug(
+                f"{function_name()}: terminated while waiting for guiding, exiting execute()"
+            )
+            return
+
+        await self.expose()
+        if self.terminated:
+            logger.debug(
+                f"{function_name()}: terminated while exposing, exiting execute()"
+            )
+            return
+
+        await self.wait_for_spec_done()
+        if self.terminated:
+            logger.debug(
+                f"{function_name()}: terminated while waiting for spec done, exiting execute()"
+            )
+            return
+
+        await self.terminate(reason="completed", details=["plan executed successfully"])
+
     async def abort(self):
-        from common.activities import AssignmentActivities
-        self.start_activity(AssignmentActivities.Aborting)
+        from common.activities import PlanActivities
+
+        self.start_activity(PlanActivities.Aborting)
         tasks = [
             self.api_coroutine(unit_api, method="GET", sub_url="abort")
             for unit_api in self.commited_unit_apis
         ]
-        if self.spec_api:
-            tasks.append(
-                self.api_coroutine(self.spec_api, method="GET", sub_url="abort")
-            )
-        self.end_activity(AssignmentActivities.Aborting)
+        tasks.append(self.api_coroutine(self.spec_api, method="GET", sub_url="abort"))
+        self.end_activity(PlanActivities.Aborting)
 
 
 if __name__ == "__main__":
