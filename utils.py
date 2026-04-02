@@ -121,11 +121,11 @@ def function_name():
 
         module = inspect.getmodule(caller_frame)
         class_name = None
-        if 'self' in caller_frame.f_locals:
-            class_name = caller_frame.f_locals['self'].__class__.__name__
-        elif 'cls' in caller_frame.f_locals:
-            class_name = caller_frame.f_locals['cls'].__name__
-        ret = ''
+        if "self" in caller_frame.f_locals:
+            class_name = caller_frame.f_locals["self"].__class__.__name__
+        elif "cls" in caller_frame.f_locals:
+            class_name = caller_frame.f_locals["cls"].__name__
+        ret = ""
         if module:
             ret += f"[{module.__name__}]."
         if class_name:
@@ -171,10 +171,14 @@ class Coord(NamedTuple):
         if not isinstance(other, Coord):
             return NotImplemented
         return np.isclose(
-            self.ra.degree, other.ra.degree, atol=1e-6
+            self.ra.degree,  # type: ignore
+            other.ra.degree,  # type: ignore
+            atol=1e-6,  # type: ignore
         ) and np.isclose(  # type: ignore
-            self.dec.degree, other.dec.degree, atol=1e-6
-        )  # type: ignore
+            self.dec.degree,  # type: ignore
+            other.dec.degree,  # type: ignore
+            atol=1e-6,  # type: ignore
+        )
 
 
 # class UnitRoi:
@@ -338,20 +342,29 @@ def wslpath(path: str, to_windows: bool = False) -> str | None:
         return None
 
 
-def boxed_log(logger: logging.Logger, lines: str | list[str], center: bool = False, level=logging.INFO):
+def boxed_log(
+    logger: logging.Logger,
+    lines: str | list[str],
+    center: bool = False,
+    level=logging.INFO,
+):
     if isinstance(lines, str):
         lines = [lines]
     for line in boxed_lines(lines, center):
         logger.log(level, line)
 
+
 def boxed_debug(logger: logging.Logger, lines: str | list[str], center: bool = False):
     boxed_log(logger, lines, center, level=logging.DEBUG)
+
 
 def boxed_info(logger: logging.Logger, lines: str | list[str], center: bool = False):
     boxed_log(logger, lines, center, level=logging.INFO)
 
+
 def boxed_warning(logger: logging.Logger, lines: str | list[str], center: bool = False):
     boxed_log(logger, lines, center, level=logging.WARNING)
+
 
 def canonic_unit_name(name: str) -> str | None:
     """
@@ -461,3 +474,8 @@ def fromisoformat_zulu(s: str) -> datetime.datetime:
         return datetime.datetime.fromisoformat(s).replace(tzinfo=datetime.UTC)
     else:
         return datetime.datetime.fromisoformat(s)
+
+def hostname() -> str:
+    import socket
+
+    return socket.gethostname().split(".")[0]

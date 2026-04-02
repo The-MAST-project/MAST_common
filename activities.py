@@ -48,9 +48,9 @@ class Activities:
     Idle = 0
 
     def __init__(self):
-        self.activities: IntFlag = Activity.Idle
-        self.timings: dict[IntFlag, Timing] = {}  # keyed on activity
-        self.details: dict[IntFlag, list[str] | None] = {}  # keyed on activity
+        self.activities = Activity.Idle
+        self.timings = {}
+        self.details = {}
         self.lock = threading.Lock()
 
     @property
@@ -340,13 +340,24 @@ class HighspecActivities(IntFlag):
     Acquiring = auto()
 
 
-class AssignmentActivities(IntFlag):
+class PlanActivities(IntFlag):
     Idle = auto()
     Probing = auto()
     Dispatching = auto()
     Aborting = auto()
     WaitingForGuiding = auto()
-    ExposingSpec = auto()
+    Exposing = auto()
+    Executing = auto()
+    WaitingForSpecDone = auto()
+
+
+class BatchActivities(IntFlag):
+    Idle = auto()
+    Probing = auto()
+    Dispatching = auto()
+    Aborting = auto()
+    WaitingForGuiding = auto()
+    Exposing = auto()
     Executing = auto()
     WaitingForSpecDone = auto()
 

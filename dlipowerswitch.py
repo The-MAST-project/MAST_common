@@ -282,7 +282,18 @@ class DliPowerSwitch(Component):
 
 
 class PowerSwitchFactory:
-    _instances = {}
+    _factory_instance = None
+    _power_switch_instances = None
+    _lock = Lock()
+    _initialized = False
+
+    def __new__(cls):
+        if cls._factory_instance is None:
+            cls._factory_instance = super(PowerSwitchFactory, cls).__new__(cls)
+            logger.info(
+                f"Created PowerSwitchFactory instance: id=0x{id(cls._factory_instance):08X}"
+            )
+        return cls._factory_instance
 
     @classmethod
     def get_instance(cls, name: str | None = None) -> DliPowerSwitch:
@@ -303,6 +314,15 @@ class PowerSwitchFactory:
         from common.utils import function_name
 
         op = function_name()
+
+        if cls._factory_instance is None:
+            cls._factory_instance = cls()
+            # logger.debug(
+            #     f"{op}: Created PowerSwitchFactory instance id=0x{id(cls._factory_instance):08X}"
+            # )
+        # logger.debug(
+        #     f"{op}: Using PowerSwitchFactory instance id=0x{id(cls._factory_instance):08X}"
+        # )
 
         from common.utils import canonic_unit_name
 
@@ -362,16 +382,35 @@ class PowerSwitchFactory:
             raise ValueError(f"cannot get 'ipaddr' for '{power_switch_name}")
 
         # We have an 'ipaddr'
-        if ipaddr not in cls._instances:
-            # we don't have an instance for this 'ipaddr', make a new one
-            cls._instances[ipaddr] = DliPowerSwitch(
-                hostname=power_switch_name, ipaddr=ipaddr, conf=power_switch_config
-            )
+        if cls._factory_instance._power_switch_instances is None:
+            # logger.debug(
+            #     f"{op}: Initializing _power_switch_instances id={id(cls._factory_instance._power_switch_instances):08X}"
+            # )
+            cls._factory_instance._power_switch_instances = {}
 
-        return cls._instances[ipaddr]
+        # logger.debug(
+        #     f"{op}: Using _power_switch_instances id={id(cls._factory_instance._power_switch_instances):08X}, keys={list(cls._factory_instance._power_switch_instances.keys())} looking for '{ipaddr}'"
+        # )
+
+        with cls._lock:
+            if ipaddr not in list(cls._factory_instance._power_switch_instances.keys()):
+                # we don't have an instance for this 'ipaddr', make a new one
+                cls._factory_instance._power_switch_instances[ipaddr] = DliPowerSwitch(
+                    hostname=power_switch_name, ipaddr=ipaddr, conf=power_switch_config
+                )
+                logger.info(
+                    f"{op}: Created power switch instance for '{power_switch_name}' at '{ipaddr}'"
+                )
+            return cls._factory_instance._power_switch_instances[ipaddr]
 
     def __init__(self):
-        pass
+        if self._initialized:
+            return
+        self._power_switch_instances = {}
+        self._initialized = True
+        # logger.debug(
+        #     f"PowerSwitchFactory __init__ called for instance id=0x{id(self):08X}"
+        # )
 
 
 class PowerStatus(BaseModel):
@@ -471,7 +510,7 @@ class SwitchedOutlet:
         """
         Returns True if this SwitchedOutlet is a group of outlets, i.e. it has multiple outlets.
         """
-        return self.group_name is not None
+        return hasattr(self, "group_name") and self.group_name is not None
 
     @classmethod
     def group(
@@ -568,12 +607,14 @@ class SwitchedOutlet:
         ret = "SwitchedOutlet("
         if self.is_outlet_group:
             ret += f"group='{self.group_name}', "
-        ret += f"switch={self.power_switch}, "
-        ret += (
-            f"outlets={self.outlet_names}"
-            if self.is_outlet_group
-            else f"outlet='{self.outlet_names[0]}'"
-        )
+        if hasattr(self, "power_switch"):
+            ret += f"power_switch='{self.power_switch}', "
+        if hasattr(self, "outlet_names"):
+            ret += (
+                f"outlets={self.outlet_names}"
+                if self.is_outlet_group
+                else f"outlet='{self.outlet_names[0]}'"
+            )
         ret += ")"
         return ret
 

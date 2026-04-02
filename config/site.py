@@ -108,9 +108,9 @@ class Site(BaseModel):
 
         observer = Observer(
             location=EarthLocation(
-                lat=self.location.latitude * u.deg,
-                lon=self.location.longitude * u.deg,
-                height=(self.location.elevation or 0) * u.m,
+                lat=self.location.latitude * u.deg,  # type: ignore
+                lon=self.location.longitude * u.deg,  # type: ignore
+                height=(self.location.elevation or 0) * u.m,  # type: ignore
             )
         )
 
@@ -119,10 +119,14 @@ class Site(BaseModel):
         )
 
         dusk = observer.sun_set_time(
-            noon, which="next", horizon=self.location.sun_limits.dusk * u.deg
+            noon,
+            which="next",
+            horizon=self.location.sun_limits.dusk * u.deg,  # type: ignore
         )
         dawn = observer.sun_rise_time(
-            dusk, which="next", horizon=self.location.sun_limits.dawn * u.deg
+            dusk,
+            which="next",
+            horizon=self.location.sun_limits.dawn * u.deg,  # type: ignore
         )
 
         assert isinstance(dusk, Time) and isinstance(dawn, Time)

@@ -209,7 +209,9 @@ class UnitStatusResponse(BaseModel):
     status: UnitStatus  # This is the discriminated union
 
 
-ControllerStatus = BasicStatus
+class ControllerStatus(BasicStatus):
+    operational: bool = True
+    why_not_operational: list[str] | None = []
 
 
 class GreateyesStatus(ComponentStatus):
@@ -241,8 +243,17 @@ class NewtonStatus(ComponentStatus):
     latest_settings: Any = None
 
 
+class QHY600Status(ComponentStatus):
+    powered: bool = False
+    temperature: float | None = None
+    errors: list[str] | None = None
+    latest_exposure: Any = None
+    latest_settings: Any = None
+
+
 class HighspecStatus(ComponentStatus):
-    camera: NewtonStatus | None = None
+    camera_type: str | None = None
+    camera_status: NewtonStatus | QHY600Status | None = None
 
 
 CalibrationLampStatus = BasicStatus
@@ -264,10 +275,11 @@ SpecStagePresets = dict[GratingNames | SpecInstruments, int]
 class SpecStageStatus(ComponentStatus):
     presets: SpecStagePresets = {}
     position: int | None = None
-    position_nm: float | None = None
-    position_um: float | None = None
-    position_mm: float | None = None
+    position_m: float | None = None
     position_cm: float | None = None
+    position_mm: float | None = None
+    position_um: float | None = None
+    position_nm: float | None = None
     at_preset: str | None = None
 
 

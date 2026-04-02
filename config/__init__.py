@@ -397,7 +397,12 @@ class Config:
             raise ex
         return ret
 
-    def set_unit(self, site_name: str | None = None, unit_name: str | None = None, unit_conf: UnitConfig | None = None):
+    def set_unit(
+        self,
+        site_name: str | None = None,
+        unit_name: str | None = None,
+        unit_conf: UnitConfig | None = None,
+    ):
         if unit_conf is None:
             raise ValueError(f"{function_name()}: unit_conf cannot be None")
         unit_dict = unit_conf.model_dump()
@@ -508,6 +513,14 @@ class Config:
             sites.append(Site(**site))
 
         return sites
+
+    def get_thar_filters(self) -> list[str]:
+        doc = self.fetch_config_section("specs")[0]
+        return [
+            v
+            for k, v in doc["wheels"]["ThAr"]["filters"].items()
+            if isinstance(v, str) and k != "default"
+        ]
 
     def get_specs(self) -> "SpecsConfig":  # type: ignore # noqa: F821
         from .specs import SpecsConfig
