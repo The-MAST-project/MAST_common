@@ -3,15 +3,11 @@ import pathlib
 from pathlib import Path
 
 from common.api import ControllerApi
-from common.tasks.models import (
-    AcquisitionSubpath,
-    Initiator,
-    TaskAcquisitionPathNotification,
-)
+from common.tasks.models import AcquisitionPathNotification, AcquisitionSubpath, Initiator
 
 
-def notify_controller_about_task_acquisition_path(
-    task_id: str, path_on_share: str | Path, subpath: AcquisitionSubpath
+def notify_controller_about_acquisition_path(
+    assignment_id: str, path_on_share: str | Path, subpath: AcquisitionSubpath
 ):
     if isinstance(path_on_share, pathlib.WindowsPath):
         path_on_share = str(path_on_share.as_posix()).replace(
@@ -22,9 +18,9 @@ def notify_controller_about_task_acquisition_path(
             "Z:/MAST", "/Storage/mast-share/MAST"
         )
 
-    notification: TaskAcquisitionPathNotification = TaskAcquisitionPathNotification(
+    notification: AcquisitionPathNotification = AcquisitionPathNotification(
         initiator=Initiator.local_machine(),
-        task_id=task_id,
+        assignment_id=assignment_id,
         src=str(path_on_share),
         subpath=subpath,
     )
@@ -39,8 +35,8 @@ def notify_controller_about_task_acquisition_path(
 
 
 async def main():
-    notify_controller_about_task_acquisition_path(
-        task_id="01jknm5pywgsh9f3v61w4ybffy",
+    notify_controller_about_acquisition_path(
+        assignment_id="01jknm5pywgsh9f3v61w4ybffy",
         path_on_share="Z:/MAST/mast-wis-spec/2025-02-25/deepspec/acquisition-0007",
         subpath="spec",
     )
