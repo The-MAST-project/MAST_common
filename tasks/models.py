@@ -11,10 +11,7 @@ from common.canonical import CanonicalResponse
 from common.config import Config
 from common.deep import deep_dict_update
 from common.mast_logging import init_log
-from common.models.assignments import (
-    Initiator,
-    SpectrographAssignment,
-)
+from common.models.assignments import Initiator, SpectrographAssignment
 from common.models.plans import Plan
 from common.models.spectrographs import SpectrographModel
 from common.spec import DeepspecBands
@@ -143,7 +140,7 @@ def make_spec_model(spec_doc: dict) -> SpectrographModel | None:
 AcquisitionSubpath = Literal["autofocus", "acquisition", "deepspec", "highspec", "spec"]
 
 
-class TaskAcquisitionPathNotification(BaseModel):
+class AcquisitionPathNotification(BaseModel):
     """
     Sent to the controller by:
     - the units, as soon as they know the path of either an 'autofocus' or 'acquisition' folder
@@ -151,7 +148,7 @@ class TaskAcquisitionPathNotification(BaseModel):
     """
 
     initiator: Initiator
-    task_id: str
+    assignment_id: str  # either plan or batch id
     src: str
     subpath: AcquisitionSubpath
 
