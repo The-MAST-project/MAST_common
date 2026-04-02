@@ -85,6 +85,7 @@ class CardUpdateSpec(BaseModel):
     message: str | None = None
     details: list[str] | None = None
     duration: str | None = None  # Human-readable duration for 'end' type cards
+    data: dict | None = None  # Machine-readable payload (e.g. motion target)
 
 
 class UiUpdateSpec(BaseModel):
@@ -120,6 +121,7 @@ class UiCardNotification(BaseModel):
     details: list[str] | None = None
     duration: str | None = None  # For 'end' type cards
     component: str | None = None
+    data: dict | None = None  # Machine-readable payload (e.g. motion target)
 
 
 class UiCacheNotification(BaseModel):

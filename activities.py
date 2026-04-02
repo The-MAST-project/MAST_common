@@ -51,6 +51,7 @@ class Activities:
         self.activities = Activity.Idle
         self.timings = {}
         self.details = {}
+        self.data = {}
         self.lock = threading.Lock()
 
     @property
@@ -134,6 +135,7 @@ class Activities:
         existing_ok: bool = False,
         label: str | None = None,
         details: list[str] | None = None,
+        data: dict | None = None,
     ):
         """
         Marks the start of an activity.
@@ -155,6 +157,8 @@ class Activities:
         if details:
             self.details[activity] = details
             info += f" details={details}"
+        if data:
+            self.data[activity] = data
         logger.info(info)
 
         details = self.details.get(activity, None)
@@ -170,6 +174,7 @@ class Activities:
                     type="start",
                     message=f"Started {activity._name_}",
                     details=details,
+                    data=self.data.get(activity),
                 ),
             )
         )
@@ -198,12 +203,12 @@ class Activities:
 
         label = label + ": " if label else ""
         info = f"{label}ended   activity {activity.__repr__()}"
-        if self.details.get(activity):
-            info += f" details={self.details[activity]}"
-            del self.details[activity]
+        end_details = self.details.pop(activity, [])
+        end_data = self.data.pop(activity, None)
+        if end_details:
+            info += f" details={end_details}"
         info += f", duration='{duration}'"
         logger.info(info)
-
         Notifier().ui_notification(
             UiUpdateSpec(
                 path=self.activities_type_to_notification_path,
@@ -213,8 +218,9 @@ class Activities:
                     component=self.activities_type_to_component,
                     type="end",
                     message=f"Ended {activity._name_}",
-                    details=self.details.get(activity, []),
+                    details=end_details,
                     duration=duration,
+                    data=end_data,
                 ),
             )
         )
