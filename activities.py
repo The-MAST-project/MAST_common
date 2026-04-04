@@ -87,6 +87,8 @@ class Activities:
                 return "calibration-lamp"
             case "QHYActivities":
                 return "highspec"
+            case "WheelActivities":
+                return "wheel"
             case _:
                 logger.error(
                     f"Unknown activities type '{type(self.activities).__name__}'"
