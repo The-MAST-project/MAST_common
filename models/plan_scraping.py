@@ -12,4 +12,5 @@ class ScrapingResults(BaseModel):
     owners: list[OwnersModel] | None = None
     classifications: list[str] | None = None
     known_classifications: list[str] | None = None
+    requested_units: list[str] | None = None
     scraped_at: str = Field(default_factory=time_stamp)
