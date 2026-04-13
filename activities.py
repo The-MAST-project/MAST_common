@@ -8,6 +8,7 @@ import humanfriendly
 
 from common.mast_logging import init_log
 from common.notifications import CardUpdateSpec, Notifier, UiUpdateSpec
+from common.utils import caller_name
 
 # from src.common.utils import function_name
 
@@ -206,6 +207,9 @@ class Activities:
         label = label + ": " if label else ""
         info = f"{label}ended   activity {activity.__repr__()}"
         end_details = self.details.pop(activity, [])
+        if not isinstance(end_details, list):
+            logger.warning(f"Activity details for {activity} is not a list: {end_details} (from {caller_name()})")
+            end_details = [str(end_details)]
         end_data = self.data.pop(activity, None)
         if end_details:
             info += f" details={end_details}"
