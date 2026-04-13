@@ -208,7 +208,7 @@ class Activities:
         info = f"{label}ended   activity {activity.__repr__()}"
         end_details = self.details.pop(activity, [])
         if not isinstance(end_details, list):
-            logger.warning(f"Activity details for {activity} is not a list: {end_details} (from {caller_name()})")
+            logger.warning(f"Activity details for {activity.name} is not a list: {end_details} (from {caller_name()})")
             end_details = [str(end_details)]
         end_data = self.data.pop(activity, None)
         if end_details:
