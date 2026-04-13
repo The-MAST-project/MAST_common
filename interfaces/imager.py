@@ -1,7 +1,7 @@
 import datetime
 import logging
 from abc import ABC, abstractmethod
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import Any, Literal
 
@@ -21,7 +21,7 @@ from common.utils import function_name
 logger = logging.Logger(__name__)
 init_log(logger)
 
-class ImagerTypes(str, Enum):
+class ImagerTypes(StrEnum):
     Ascom = "ascom"
     Phd2 = "phd2"
     Zwo = "zwo"
