@@ -13,7 +13,7 @@ from common.config import Config
 from common.config.site import Site
 from common.const import Const
 from common.mast_logging import init_log
-from common.utils import function_name
+from common.utils import function_name, gethostbyaddr, gethostbyname
 
 logger = logging.getLogger("api")
 init_log(logger)
@@ -86,7 +86,7 @@ class ApiClient:
             raise ValueError("both 'hostname' and 'ipaddr' are None")
 
         if ipaddr is None and hostname is not None:
-            ipaddr = socket.gethostbyname(hostname)
+            ipaddr = gethostbyname(hostname)
 
         if ipaddr is not None and domain is None:
             raise ValueError(
@@ -99,14 +99,16 @@ class ApiClient:
             self.domain = domain
             self.ipaddr = ipaddr
             domain_base = ""
-            if domain == ApiDomain.Safety:
-                pass
-            elif domain == ApiDomain.Unit:
-                domain_base = Const.BASE_UNIT_PATH
-            elif domain == ApiDomain.Spec:
-                domain_base = Const.BASE_SPEC_PATH
-            elif domain == ApiDomain.Control:
-                domain_base = Const.BASE_CONTROL_PATH
+
+            match domain:
+                case ApiDomain.Safety:
+                    pass
+                case ApiDomain.Unit:
+                    domain_base = Const.BASE_UNIT_PATH
+                case ApiDomain.Spec:
+                    domain_base = Const.BASE_SPEC_PATH
+                case ApiDomain.Control:
+                    domain_base = Const.BASE_CONTROL_PATH
         else:
             if hostname is None:
                 raise ValueError("if 'ipaddr' is None, 'hostname' must be provided")
@@ -125,10 +127,10 @@ class ApiClient:
 
             self.hostname = hostname
             try:
-                self.ipaddr = socket.gethostbyname(hostname)
+                self.ipaddr = gethostbyname(hostname)
             except socket.gaierror:
                 try:
-                    self.ipaddr = socket.gethostbyname(
+                    self.ipaddr = gethostbyname(
                         hostname + "." + Const.WEIZMANN_DOMAIN
                     )
                 except socket.gaierror as err:
@@ -136,7 +138,7 @@ class ApiClient:
 
         if self.ipaddr is not None and hostname is None:
             try:
-                hostname, _, _ = socket.gethostbyaddr(self.ipaddr)
+                hostname = gethostbyaddr(self.ipaddr)
                 self.hostname = hostname
             except socket.herror:
                 self.hostname = None
@@ -296,19 +298,40 @@ class ApiClient:
 
 
 class UnitApi(ApiClient):
+    _instance = None
+    _initialized = False
+
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
     def __init__(
         self,
         hostname: str | None = None,
         ipaddr: str | None = None,
         device: str | None = None,
     ):
-        super().__init__(
-            hostname=hostname, ipaddr=ipaddr, device=device, domain=ApiDomain.Unit
-        )
+        if self._initialized:
+            return
+
+        self.client = ApiClient(hostname=hostname, ipaddr=ipaddr, device=device, domain=ApiDomain.Unit)
+        self._initialized = True
 
 
 class SpecApi(ApiClient):
+    _instance = None
+    _initialized = False
+
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
     def __init__(self, site_name: str | None = None):
+        if self._initialized:
+            return
+
         self.client = None
 
         if site_name:
@@ -322,11 +345,23 @@ class SpecApi(ApiClient):
             return
         port = service_conf.port
         assert site is not None
-        super().__init__(hostname=site.spec_host, port=port, domain=ApiDomain.Spec)
+        self.client = ApiClient(hostname=site.spec_host, port=port, domain=ApiDomain.Spec)
+        self._initialized = True
 
 
-class ControllerApi(ApiClient):
+class ControllerApi:
+    _instance = None
+    _initialized = False
+
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
     def __init__(self, site_name: str | None = None):
+        if self._initialized:
+            return
+
         self.client = None
 
         if site_name:
@@ -340,12 +375,19 @@ class ControllerApi(ApiClient):
             return
         port = service_conf.port
         assert site is not None
-        super().__init__(
-            hostname=site.controller_host, port=port, domain=ApiDomain.Control
-        )
+        self.client = ApiClient(hostname=site.controller_host, port=port, domain=ApiDomain.Control)
+        self._initialized = True
 
 
 class SafetyApi(ApiClient):
+    _instance = None
+    _initialized = False
+
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
     def __init__(
         self,
         site_name: str | None = None,
@@ -354,6 +396,9 @@ class SafetyApi(ApiClient):
         port: int | None = None,
         timeout: float | None = 0.5,
     ):
+        if self._initialized:
+            return
+
         self.client = None
 
         site: Site | None = None
@@ -373,14 +418,12 @@ class SafetyApi(ApiClient):
             if hostname is None:
                 hostname = f"{site.project}-{site.name}-safety"
             try:
-                ipaddr = socket.gethostbyname(hostname)
+                ipaddr = gethostbyname(hostname)
             except socket.gaierror as err:
                 raise ValueError(f"cannot get 'ipaddr' for {hostname=}") from err
 
-        super().__init__(
-            ipaddr=ipaddr, port=port, timeout=timeout, domain=ApiDomain.Safety
-        )
-
+        self.client = ApiClient(ipaddr=ipaddr, port=port, timeout=timeout, domain=ApiDomain.Safety)
+        self._initialized = True
 
 def test_bogus_unit_api():
     try:
