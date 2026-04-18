@@ -18,6 +18,7 @@ from typing import Any, NamedTuple
 import numpy as np
 from astropy.coordinates import Angle
 from astropy.units import deg, hourangle  # type: ignore
+from cachetools import cached  # type: ignore
 
 from common.filer import Filer
 from common.paths import PathMaker
@@ -479,3 +480,29 @@ def hostname() -> str:
     import socket
 
     return socket.gethostname().split(".")[0]
+
+@cached(timeout_seconds=300)
+def gethostbyname(name: str) -> str | None:
+    import socket
+
+    try:
+        return socket.gethostbyname(name)
+    except socket.gaierror:
+        logger.error(f"cannot resolve {name=}")
+        raise
+    except socket.herror:
+        logger.error(f"cannot resolve {name} to hostname")
+        return None
+
+@cached(timeout_seconds=300)
+def gethostbyaddr(addr: str) -> str | None:
+    import socket
+
+    try:
+        return socket.gethostbyaddr(addr)[0]
+    except socket.gaierror:
+        logger.error(f"cannot resolve {addr=}")
+        raise
+    except socket.herror:
+        logger.error(f"cannot resolve {addr} to hostname")
+        return None
