@@ -476,33 +476,8 @@ def fromisoformat_zulu(s: str) -> datetime.datetime:
     else:
         return datetime.datetime.fromisoformat(s)
 
+
 def hostname() -> str:
     import socket
 
     return socket.gethostname().split(".")[0]
-
-@cached(timeout_seconds=300)
-def gethostbyname(name: str) -> str | None:
-    import socket
-
-    try:
-        return socket.gethostbyname(name)
-    except socket.gaierror:
-        logger.error(f"cannot resolve {name=}")
-        raise
-    except socket.herror:
-        logger.error(f"cannot resolve {name} to hostname")
-        return None
-
-@cached(timeout_seconds=300)
-def gethostbyaddr(addr: str) -> str | None:
-    import socket
-
-    try:
-        return socket.gethostbyaddr(addr)[0]
-    except socket.gaierror:
-        logger.error(f"cannot resolve {addr=}")
-        raise
-    except socket.herror:
-        logger.error(f"cannot resolve {addr} to hostname")
-        return None
