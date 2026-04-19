@@ -186,9 +186,9 @@ class Notifier:
 
         assert initiator is not None
         self.initiator = initiator
-        self.notification_client = ControllerApi(site_name=initiator.site).client
-        if self.notification_client:
-            self.notification_client.timeout = self.NOTIFICATION_TIMEOUT
+        self.notification_api = ControllerApi(site_name=initiator.site)
+        if self.notification_api:
+            self.notification_api.timeout = self.NOTIFICATION_TIMEOUT
 
         # Start worker thread
         self.worker_thread = threading.Thread(
@@ -218,9 +218,9 @@ class Notifier:
 
                 # Try to send
                 try:
-                    if self.notification_client:
+                    if self.notification_api:
                         asyncio.run(
-                            self.notification_client.put("notifications", data=data)
+                            self.notification_api.put("notifications", data=data)
                         )
                     # Success - remove from queue
                     with self.lock:
@@ -256,15 +256,19 @@ class Notifier:
         Example usages:
         - unit mast00 (at Neot Smadar) wants to update the stage's position and preset name, it will send two ui_specs:
           - both with initiator.site = 'ns' and initiator.hostname = 'mast00'
-          - one with path=['stage', 'position'], value being the current stage position and dom='text' to render it as text in the DOM element with id 'id-stage-position'
-          - and one with path=['stage', 'preset'], value being the current preset name, and dom='badge' to render it as text in the DOM element with id 'id-stage-preset' with a badge style
+          - one with path=['stage', 'position'], value being the current stage position and dom='text' to render it
+             as text in the DOM element with id 'id-stage-position'
+          - and one with path=['stage', 'preset'], value being the current preset name, and dom='badge' to render it
+             as text in the DOM element with id 'id-stage-preset' with a badge style
 
         - the camera at unit mastw (at Weizmann) starts a CameraActivities.CoolingDown activity:
           - it will send one ui_spec with
           - initiator.site = 'wis'
           - initiator.hostname = 'mastw'
-          - path=['camera', 'activities'] and value=['CoolingDown', 'StartingUp'], dom='badge' to update the cache and render it as badges in the DOM element with id 'id-camera-activities'
-          - card specification with type='info', message='Camera is cooling down', and component='CameraActivityCard' to display an informational card in the UI
+          - path=['camera', 'activities'] and value=['CoolingDown', 'StartingUp'], dom='badge' to update the cache and
+            render it as badges in the DOM element with id 'id-camera-activities'
+          - card specification with type='info', message='Camera is cooling down', and component='CameraActivityCard' to
+             display an informational card in the UI
 
         """
         if isinstance(ui_specs, UiUpdateSpec):

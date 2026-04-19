@@ -25,10 +25,8 @@ def notify_controller_about_acquisition_path(
         subpath=subpath,
     )
 
-    controller_api = ControllerApi()
-    assert controller_api.client is not None
     asyncio.run(
-        controller_api.client.put(
+        ControllerApi().put(
             "task_acquisition_path_notification", data=notification.model_dump()
         )
     )

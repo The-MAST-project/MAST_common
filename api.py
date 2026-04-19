@@ -185,7 +185,7 @@ class ApiClient:
                 self.detected = False
                 return CanonicalResponse(errors=self.errors)
 
-        return self.common_get_put(response)
+        return self._common_get_put(response)
 
     async def put(
         self,
@@ -220,7 +220,7 @@ class ApiClient:
                 self.detected = False
                 return CanonicalResponse(errors=self.errors)
 
-        return self.common_get_put(response)
+        return self._common_get_put(response)
 
     def append_error(self, err: str):
         self.errors.append(err)
@@ -261,7 +261,7 @@ class ApiClient:
         )
         return None
 
-    def common_get_put(self, response: httpx.Response):
+    def _common_get_put(self, response: httpx.Response):
         value = None
         op = function_name()
 
@@ -315,7 +315,7 @@ class UnitApi(ApiClient):
         if self._initialized:
             return
 
-        self.client = ApiClient(hostname=hostname, ipaddr=ipaddr, device=device, domain=ApiDomain.Unit)
+        super().__init__(hostname=hostname, ipaddr=ipaddr, device=device, domain=ApiDomain.Unit)
         self._initialized = True
 
 
@@ -332,8 +332,6 @@ class SpecApi(ApiClient):
         if self._initialized:
             return
 
-        self.client = None
-
         if site_name:
             site = [s for s in Config().get_sites() if s.name == site_name][0]
         else:
@@ -345,11 +343,11 @@ class SpecApi(ApiClient):
             return
         port = service_conf.port
         assert site is not None
-        self.client = ApiClient(hostname=site.spec_host, port=port, domain=ApiDomain.Spec)
+        super().__init__(hostname=site.spec_host, port=port, domain=ApiDomain.Spec)
         self._initialized = True
 
 
-class ControllerApi:
+class ControllerApi(ApiClient):
     _instance = None
     _initialized = False
 
@@ -362,8 +360,6 @@ class ControllerApi:
         if self._initialized:
             return
 
-        self.client = None
-
         if site_name:
             site = [s for s in Config().get_sites() if s.name == site_name][0]
         else:
@@ -375,7 +371,7 @@ class ControllerApi:
             return
         port = service_conf.port
         assert site is not None
-        self.client = ApiClient(hostname=site.controller_host, port=port, domain=ApiDomain.Control)
+        super().__init__(hostname=site.controller_host, port=port, domain=ApiDomain.Control)
         self._initialized = True
 
 
@@ -399,8 +395,6 @@ class SafetyApi(ApiClient):
         if self._initialized:
             return
 
-        self.client = None
-
         site: Site | None = None
         if site_name:
             found = [s for s in Config().sites if s.name == site_name]
@@ -422,7 +416,7 @@ class SafetyApi(ApiClient):
             except socket.gaierror as err:
                 raise ValueError(f"cannot get 'ipaddr' for {hostname=}") from err
 
-        self.client = ApiClient(ipaddr=ipaddr, port=port, timeout=timeout, domain=ApiDomain.Safety)
+        super().__init__(ipaddr=ipaddr, port=port, timeout=timeout, domain=ApiDomain.Safety)
         self._initialized = True
 
 def test_bogus_unit_api():
