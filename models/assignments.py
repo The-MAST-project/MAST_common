@@ -1,4 +1,5 @@
 import socket
+from typing import Literal
 
 from pydantic import BaseModel, computed_field, model_validator
 
@@ -9,6 +10,7 @@ from common.models.deepspec import DeepspecSettings
 from common.models.highspec import HighspecSettings
 from common.models.plans import Plan
 from common.models.spectrographs import SpectrographModel
+from common.notifications import NotificationInitiator
 from common.parsers import parse_units
 from common.spec import SpecInstruments
 
@@ -134,3 +136,19 @@ class Manifest(BaseModel):
             if remote:
                 ret.append(remote)
         return ret
+
+
+AssignmentState = Literal["in-progress", "completed", "failed", "aborted"]
+
+
+class AssignmentNotification(BaseModel):
+    """
+    This is what gets sent out via the AssignmentNotificationApi
+    """
+
+    initiator: NotificationInitiator
+    assignment_id: str  # ulid assigned by scheduler
+    state: AssignmentState
+    errors: list[str] | None = None
+    shared_top: str | None = None
+    shared_subpath: str | None = None
