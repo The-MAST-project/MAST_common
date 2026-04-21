@@ -386,6 +386,40 @@ class ControllerApi(ApiClient):
         self._initialized = True
 
 
+class NotificationApi(ApiClient):
+    """
+    Sends notifications to the controller via the nginx-proxied HTTPS URL,
+    rather than the direct internal IP:port used by ControllerApi.
+    """
+
+    _instance = None
+    _initialized = False
+    NOTIFICATION_TIMEOUT = 2.0
+
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            cls._instance = object.__new__(cls)
+        return cls._instance
+
+    def __init__(self, site_name: str | None = None):
+        if self._initialized:
+            return
+        if site_name:
+            site = [s for s in Config().get_sites() if s.name == site_name][0]
+        else:
+            site = Config().local_site
+        assert site is not None
+        controller_fqdn = f"{site.controller_host}.{Const.WEIZMANN_DOMAIN}"
+        self.base_url = f"https://{controller_fqdn}/mast-backend{Const.BASE_CONTROL_PATH}"
+        self.timeout = self.NOTIFICATION_TIMEOUT
+        self.errors = []
+        self.detected = False
+        self.hostname = site.controller_host
+        self.ipaddr = None
+        self.domain = ApiDomain.Control
+        self._initialized = True
+
+
 class SafetyApi(ApiClient):
     _instance = None
     _initialized = False

@@ -151,7 +151,7 @@ class UiUpdateNotifications(BaseModel):
     - broadcasted to attached browsers to update DOM elements, and display notification cards
     """
 
-    type: NotificationTypes = "ui_notification"  # Type of notification
+    type: Literal["ui_notification"] = "ui_notification"
     initiator: NotificationInitiator = initiator  # The originator of the notification
     notifications: list[
         UiUpdateNotification
@@ -174,10 +174,9 @@ class Notifier:
         if self._initialized:
             return
 
-        from common.api import ControllerApi
+        from common.api import NotificationApi
 
         self.lock = threading.Lock()
-        self.controller_api = ControllerApi()
 
         # Notification queue and worker thread
         self.notification_queue = deque(maxlen=self.NOTIFICATION_QUEUE_SIZE)
@@ -186,9 +185,7 @@ class Notifier:
 
         assert initiator is not None
         self.initiator = initiator
-        self.notification_api = ControllerApi(site_name=initiator.site)
-        if self.notification_api:
-            self.notification_api.timeout = self.NOTIFICATION_TIMEOUT
+        self.notification_api = NotificationApi(site_name=initiator.site)
 
         # Start worker thread
         self.worker_thread = threading.Thread(
@@ -218,10 +215,9 @@ class Notifier:
 
                 # Try to send
                 try:
-                    if self.notification_api:
-                        asyncio.run(
-                            self.notification_api.put("notifications", data=data)
-                        )
+                    asyncio.run(
+                        self.notification_api.put("notifications", data=data)
+                    )
                     # Success - remove from queue
                     with self.lock:
                         if (
@@ -311,15 +307,14 @@ class Notifier:
 
         self._enqueue_notification(ui_update_request.model_dump_json())
 
-    def assignment_notification(self, assignment_spec: dict):
+    def assignment_notification(self, notification):
         """
-        Sends an assignment notification to the controller machine.
-        - used for notifying about assignment status and details, e.g. resources allocated
-        - the exact content of the assignment_spec is TBD but it should include at least:
-          - plan ULID, if this assignment is related to a specific plan
-          - batch ULID, if this assignment is related to a specific batch
-          - assigned resources (e.g., path to results)
+        Sends an assignment notification to the controller.
+        The initiator is always stamped from this process's NotificationInitiator.
+
+        :param notification: AssignmentNotification instance (initiator will be overridden)
         """
-        # For now we just log the assignment notification request
-        logger.info(f"Received assignment notification request: {assignment_spec}")
-        # In the future, we would construct an AssignmentUpdateRequest similar to UiUpdateRequest and
+        from common.models.assignments import AssignmentNotification
+        assert isinstance(notification, AssignmentNotification)
+        notification.initiator = self.initiator
+        self._enqueue_notification(notification.model_dump_json())

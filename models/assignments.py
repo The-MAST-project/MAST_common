@@ -146,6 +146,7 @@ class AssignmentNotification(BaseModel):
     This is what gets sent out via the AssignmentNotificationApi
     """
 
+    type: Literal["assignment_notification"] = "assignment_notification"
     initiator: NotificationInitiator
     assignment_id: str  # ulid assigned by scheduler
     state: AssignmentState
