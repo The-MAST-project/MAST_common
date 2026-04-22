@@ -203,15 +203,13 @@ class Plan(BaseModel, Activities):
             }
         },
     )
-    requested_units: list[str] = Field(
-        default_factory=list,
+    required_units: int = Field(
+        default=1,
         json_schema_extra={
             "ui": {
-                "label": "Requested Units",
-                "widget": "text",
-                "tooltip": "Comma-separated unit names, e.g. <b>mast01,mast02</b><br>"
-                + "&nbsp;If specified, the scheduler will try to allocate these specific units (if available), <br>"
-                + "&nbsp;otherwise it will choose from available units",
+                "label": "Required Units",
+                "widget": "number",
+                "tooltip": "Number of required units",
             }
         },
     )
