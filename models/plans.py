@@ -207,20 +207,10 @@ class Plan(BaseModel, Activities):
         default=1,
         json_schema_extra={
             "ui": {
-                "label": "Required Units",
+                "label": "Required",
                 "widget": "number",
                 "tooltip": "Number of required units",
-            }
-        },
-    )
-    allocated_units: list[str] = Field(
-        default_factory=list,
-        json_schema_extra={
-            "ui": {
-                "label": "Allocated Units",
-                "editable": False,
-                "required_capabilities": ["can_manage_plans"],
-                "tooltip": "Units allocated by scheduler",
+                "section": {"label": "Units"},
             }
         },
     )
@@ -232,6 +222,19 @@ class Plan(BaseModel, Activities):
                 "widget": "number",
                 "tooltip": "Minimum operational units required for the plan to proceed",
                 "required_capabilities": ["can_manage_plans"],
+                "section": "Units",
+            }
+        },
+    )
+    allocated_units: list[str] = Field(
+        default_factory=list,
+        json_schema_extra={
+            "ui": {
+                "label": "Allocated",
+                "editable": False,
+                "required_capabilities": ["can_manage_plans"],
+                "tooltip": "Units allocated by scheduler",
+                "section": "Units",
             }
         },
     )
