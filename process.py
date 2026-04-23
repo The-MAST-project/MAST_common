@@ -12,8 +12,8 @@ from threading import Event, Thread
 
 import psutil
 
-from common.mast_logging import init_log
-from common.utils import function_name
+from .mast_logging import init_log
+from .utils import function_name
 
 logger = logging.Logger("mast.unit." + __name__)
 init_log(logger)

@@ -1,7 +1,7 @@
 from pydantic import BaseModel
 
-from common.models.batches import Batch
-from common.models.plans import Plan
+from .batches import Batch
+from .plans import Plan
 
 
 class Workload(BaseModel):

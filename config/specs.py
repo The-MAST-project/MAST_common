@@ -3,7 +3,7 @@ from typing import Literal
 
 from pydantic import BaseModel, model_validator
 
-from common.deep import deep_dict_update
+from ..deep import deep_dict_update
 
 from .chiller import ChillerConfig
 from .greateyes import GreateyesConfig

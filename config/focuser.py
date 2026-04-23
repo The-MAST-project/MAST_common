@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 
-from common.config.identification import UserCapabilities
+from .identification import UserCapabilities
 
 
 class FocuserConfig(BaseModel):

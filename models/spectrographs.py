@@ -1,9 +1,9 @@
 from pydantic import BaseModel, Field
 
-from common.models.calibration import CalibrationSettings
-from common.models.deepspec import DeepspecSettings
-from common.models.highspec import HighspecSettings
-from common.spec import SpecInstruments
+from .calibration import CalibrationSettings
+from .deepspec import DeepspecSettings
+from .highspec import HighspecSettings
+from ..spec import SpecInstruments
 
 
 class SpectrographModel(BaseModel):

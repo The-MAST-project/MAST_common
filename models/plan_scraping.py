@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from common.utils import time_stamp
+from ..utils import time_stamp
 
 #
 # These models are used to store the results of scraping MAST plans.

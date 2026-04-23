@@ -9,13 +9,13 @@ from threading import Lock
 import httpx
 from pydantic import BaseModel
 
-from common.activities import PowerSwitchActivities
-from common.config import Config
-from common.config.power import PowerSwitchConfig
-from common.config.unit import UnitConfig
-from common.const import Const
-from common.interfaces.components import Component
-from common.mast_logging import init_log
+from .activities import PowerSwitchActivities
+from .config import Config
+from .config.power import PowerSwitchConfig
+from .config.unit import UnitConfig
+from .const import Const
+from .interfaces.components import Component
+from .mast_logging import init_log
 
 TriStateBool = bool | None
 

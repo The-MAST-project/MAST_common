@@ -8,12 +8,12 @@ from enum import Enum, auto
 import httpx
 import humanfriendly
 
-from common.canonical import CanonicalResponse
-from common.config import Config
-from common.config.site import Site
-from common.const import Const
-from common.mast_logging import init_log
-from common.utils import function_name
+from .canonical import CanonicalResponse
+from .config import Config
+from .config.site import Site
+from .const import Const
+from .mast_logging import init_log
+from .utils import function_name
 
 logger = logging.getLogger("api")
 init_log(logger)

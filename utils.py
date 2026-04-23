@@ -20,8 +20,8 @@ from astropy.coordinates import Angle
 from astropy.units import deg, hourangle  # type: ignore
 from cachetools import cached  # type: ignore
 
-from common.filer import Filer
-from common.paths import PathMaker
+from .filer import Filer
+from .paths import PathMaker
 
 default_encoding = "utf-8"
 
@@ -477,7 +477,4 @@ def fromisoformat_zulu(s: str) -> datetime.datetime:
         return datetime.datetime.fromisoformat(s)
 
 
-def hostname() -> str:
-    import socket
-
-    return socket.gethostname().split(".")[0]
+from .hostname import get_hostname as hostname

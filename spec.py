@@ -2,7 +2,7 @@ from enum import IntFlag, auto
 from pathlib import Path
 from typing import Literal, Optional
 
-from common.paths import PathMaker
+from .paths import PathMaker
 
 Disperser = Literal["Ca", "Mg", "Halpha", "Empty"]
 SpecName = Literal["Deepspec", "Highspec"]

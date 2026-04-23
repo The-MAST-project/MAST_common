@@ -6,9 +6,9 @@ from enum import IntFlag, auto
 
 import humanfriendly
 
-from common.mast_logging import init_log
-from common.notifications import CardUpdateSpec, Notifier, UiUpdateSpec
-from common.utils import caller_name
+from .mast_logging import init_log
+from .notifications import CardUpdateSpec, Notifier, UiUpdateSpec
+from .utils import caller_name
 
 # from src.common.utils import function_name
 

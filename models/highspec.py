@@ -1,7 +1,7 @@
 from pydantic import BaseModel
 
-from common.models.newton import NewtonCameraSettingsModel
-from common.spec import Disperser
+from .newton import NewtonCameraSettingsModel
+from ..spec import Disperser
 
 
 class HighspecSettings(BaseModel):

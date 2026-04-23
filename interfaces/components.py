@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 
 from pydantic import BaseModel
 
-from common.activities import Activities, ActivitiesVerbal
+from ..activities import Activities, ActivitiesVerbal
 
 
 class ComponentStatus(BaseModel):

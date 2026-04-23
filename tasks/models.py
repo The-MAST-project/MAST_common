@@ -3,11 +3,11 @@ import logging
 
 from pydantic import BaseModel, ValidationError
 
-from common.api import SpecApi
-from common.canonical import CanonicalResponse
-from common.mast_logging import init_log
-from common.models.assignments import SpectrographAssignment
-from common.models.plans import Plan
+from ..api import SpecApi
+from ..canonical import CanonicalResponse
+from ..mast_logging import init_log
+from ..models.assignments import SpectrographAssignment
+from ..models.plans import Plan
 
 GatherResponse = CanonicalResponse | BaseException | None
 

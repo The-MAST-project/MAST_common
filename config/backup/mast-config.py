@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from common.config import Config
+from .Config
 
 # ---- dump/load helpers -------------------------------------------------
 

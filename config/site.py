@@ -6,7 +6,7 @@ from astropy.coordinates import EarthLocation
 from astropy.time import Time
 from pydantic import BaseModel, ConfigDict, model_validator
 
-from common.models.constraints import TimeWindow
+from ..models.constraints import TimeWindow
 
 
 class Building(BaseModel):

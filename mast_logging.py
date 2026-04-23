@@ -7,8 +7,8 @@ import socket
 
 from rich.logging import RichHandler
 
-from common.filer import Filer
-from common.paths import PathMaker
+from .filer import Filer
+from .paths import PathMaker
 
 # from common.utils import boxed_lines
 # from typing import List

@@ -4,7 +4,7 @@ import random
 
 from pydantic import BaseModel
 
-from common.utils import isoformat_zulu
+from .utils import isoformat_zulu
 
 
 class Correction(BaseModel):

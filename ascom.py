@@ -5,9 +5,9 @@ from abc import ABC, abstractmethod
 import pywintypes
 import win32com.client
 
-from common.canonical import CanonicalResponse, CanonicalResponse_Ok
-from common.mast_logging import init_log
-from common.models.statuses import AscomDriverInfoModel, AscomStatus
+from .canonical import CanonicalResponse, CanonicalResponse_Ok
+from .mast_logging import init_log
+from .models.statuses import AscomDriverInfoModel, AscomStatus
 
 logger = logging.getLogger("mast.unit." + __name__)
 init_log(logger)
