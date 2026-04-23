@@ -4,7 +4,7 @@ if platform.system() == "Windows":
     import win32api
 
 import fnmatch
-from common.hostname import get_hostname
+from .hostname import get_hostname
 import os
 import shutil
 from collections.abc import Callable

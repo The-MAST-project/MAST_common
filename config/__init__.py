@@ -28,7 +28,7 @@ from ..utils import function_name
 from .identification import GroupConfig, UserConfig
 from .site import Site
 from .unit import UnitConfig
-from common.hostname import get_hostname
+from ...hostname import get_hostname
 
 logger = logging.getLogger("mast.unit." + __name__)
 init_log(logger)

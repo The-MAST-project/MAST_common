@@ -3,7 +3,7 @@ import logging
 import socket
 import time
 
-from common.hostname import get_hostname
+from ..hostname import get_hostname
 from enum import IntFlag, auto
 from json import JSONDecodeError
 from threading import Lock

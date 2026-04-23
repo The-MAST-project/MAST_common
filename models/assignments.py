@@ -1,7 +1,7 @@
 import socket
 from typing import Literal
 
-from common.hostname import get_hostname
+from ...hostname import get_hostname
 
 from pydantic import BaseModel, computed_field, model_validator
 
