@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "MAST_common"
+version = "0.1.0"
+description = "Shared library for MAST telescope control system"
+requires-python = ">=3.10"
+dependencies = [
+    "humanfriendly",
+    "httpx",
+    "GitPython",
+    "tomlkit",
+    "matplotlib",
+    "pymongo",
+    "astropy",
+    "astroplan",
+    "numpy",
+    "python-ulid",
+    "psutil",
+    "watchdog",
+    "rich",
+    "pydantic",
+    "fastapi",
+    "cachetools",
+    "Pillow",
+]
+
+[project.optional-dependencies]
+windows = ["pywin32"]
+
+[tool.setuptools.packages.find]
+where = [".."]
+include = ["MAST_common*"]
