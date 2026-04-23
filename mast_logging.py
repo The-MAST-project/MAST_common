@@ -6,9 +6,9 @@ import platform
 
 from rich.logging import RichHandler
 
-from common.filer import Filer
-from common.hostname import get_hostname
-from common.paths import PathMaker
+from .filer import Filer
+from .hostname import get_hostname
+from .paths import PathMaker
 
 # from common.utils import boxed_lines
 # from typing import List

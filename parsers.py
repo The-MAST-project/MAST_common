@@ -4,9 +4,9 @@ from typing import List
 import astropy.coordinates
 import astropy.units as u
 
-from common.config import Config, Site
-from common.utils import function_name
-from common.mast_logging import init_log
+from .config import Config, Site
+from .utils import function_name
+from .mast_logging import init_log
 import re
 
 logger = logging.Logger("parsers")

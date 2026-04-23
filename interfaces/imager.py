@@ -9,14 +9,14 @@ import numpy as np
 import ulid
 from pydantic import BaseModel, Field
 
-import common.asi as asi
-from common.activities import ImagerActivities
-from common.dlipowerswitch import PowerStatus
-from common.interfaces.components import Component, ComponentStatus
-from common.mast_logging import init_log
-from common.paths import PathMaker
-from common.rois import SkyRoi, SpecRoi, UnitRoi
-from common.utils import function_name
+from .. import asi as asi
+from ..activities import ImagerActivities
+from ..dlipowerswitch import PowerStatus
+from .components import Component, ComponentStatus
+from ..mast_logging import init_log
+from ..paths import PathMaker
+from ..rois import SkyRoi, SpecRoi, UnitRoi
+from ..utils import function_name
 
 logger = logging.Logger(__name__)
 init_log(logger)

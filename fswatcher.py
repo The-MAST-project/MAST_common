@@ -4,8 +4,8 @@ import time
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-from common.mast_logging import init_log
-from common.utils import path_maker
+from .mast_logging import init_log
+from .utils import path_maker
 
 logger = logging.getLogger("fswatcher")
 init_log(logger)

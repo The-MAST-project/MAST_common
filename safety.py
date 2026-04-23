@@ -5,10 +5,10 @@ from logging import Logger
 import humanfriendly
 from pydantic import BaseModel
 
-from common.api import SafetyApi
-from common.config import Config
-from common.mast_logging import init_log
-from common.utils import fromisoformat_zulu
+from .api import SafetyApi
+from .config import Config
+from .mast_logging import init_log
+from .utils import fromisoformat_zulu
 
 
 class SensorSettingsBaseModel(BaseModel):

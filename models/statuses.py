@@ -3,11 +3,11 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
-from common.activities import ActivitiesVerbal
-from common.dlipowerswitch import PowerStatus, PowerSwitchStatus
-from common.interfaces.components import ComponentStatus
-from common.interfaces.imager import ImagerStatus
-from common.spec import (
+from ..activities import ActivitiesVerbal
+from ..dlipowerswitch import PowerStatus, PowerSwitchStatus
+from ..interfaces.components import ComponentStatus
+from ..interfaces.imager import ImagerStatus
+from ..spec import (
     FilterPositions,
     GratingNames,
     SpecInstruments,

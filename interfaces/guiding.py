@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from enum import Enum
 
-from common.activities import Activities
+from ..activities import Activities
 
 
 class GuiderInterface(ABC, Activities):

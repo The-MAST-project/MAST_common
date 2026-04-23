@@ -2,9 +2,9 @@ import ipaddress
 import logging
 import socket
 
-from common.const import Const
-from common.mast_logging import init_log
-from common.utils import function_name
+from .const import Const
+from .mast_logging import init_log
+from .utils import function_name
 
 logger = logging.getLogger("networking")
 init_log(logger, logging.DEBUG)

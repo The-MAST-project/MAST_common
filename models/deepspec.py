@@ -2,7 +2,7 @@ from typing import Dict, Optional
 
 from pydantic import BaseModel
 
-from common.models.greateyes import GreateyesSettingsModel
+from .greateyes import GreateyesSettingsModel
 
 
 class DeepspecSettings(BaseModel):

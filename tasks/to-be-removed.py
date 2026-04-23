@@ -1,5 +1,5 @@
-from common.utils import init_log
-from common.api import UnitApi
+from ..utils import init_log
+from ..api import UnitApi
 import logging
 from typing import List
 

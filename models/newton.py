@@ -2,7 +2,7 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel
 
-from common.config.power import PowerSwitchConfig
+from ..config.power import PowerSwitchConfig
 
 
 class NewtonRoiModel(BaseModel):

@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 from astropy.coordinates import Angle
 from pydantic import BaseModel
 
-from common.const import Const
+from ..const import Const
 
 
 class SolvingSolution(BaseModel):

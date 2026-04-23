@@ -1,7 +1,7 @@
 import astropy.coordinates
 from pydantic import BaseModel, Field, field_validator
-from common.models.constraints import RepeatsModel
-from common.models.science import ScienceModel
+from .constraints import RepeatsModel
+from .science import ScienceModel
 
 
 class Target(BaseModel):

@@ -6,10 +6,10 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from common.config import Config
-from common.mast_logging import init_log
-from common.hostname import get_hostname
-from common.utils import function_name
+from .config import Config
+from .mast_logging import init_log
+from .hostname import get_hostname
+from .utils import function_name
 
 logger = logging.getLogger("mast." + __name__)
 init_log(logger)
@@ -174,7 +174,7 @@ class Notifier:
         if self._initialized:
             return
 
-        from common.api import NotificationApi
+        from .api import NotificationApi
 
         self.lock = threading.Lock()
 
@@ -314,7 +314,7 @@ class Notifier:
 
         :param notification: AssignmentNotification instance (initiator will be overridden)
         """
-        from common.models.assignments import AssignmentNotification
+        from .models.assignments import AssignmentNotification
         assert isinstance(notification, AssignmentNotification)
         notification.initiator = self.initiator
         self._enqueue_notification(notification.model_dump_json())

@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 
-import common.asi as asi
+from .. import asi as asi
 
 from .rois import RoiConfig
 

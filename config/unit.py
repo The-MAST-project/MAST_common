@@ -2,7 +2,7 @@ import logging
 
 from pydantic import BaseModel, model_validator
 
-from common.asi import ASI_294MM_SUPPORTED_BINNINGS_LITERAL
+from ..asi import ASI_294MM_SUPPORTED_BINNINGS_LITERAL
 
 from .covers import CoversConfig
 from .focuser import FocuserConfig

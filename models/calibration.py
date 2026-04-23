@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field, ValidationError, model_validator
 
-from common.config import Config
+from ..config import Config
 
 EmptyFilter = "Empty"
 
