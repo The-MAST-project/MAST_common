@@ -1,10 +1,6 @@
-import platform
-
-if platform.system() == "Windows":
-    import win32api
-
 import fnmatch
 from .hostname import get_hostname
+from .os_type import OSType, CURRENT_OS
 import os
 import shutil
 from collections.abc import Callable
@@ -14,9 +10,10 @@ from threading import Thread
 
 
 def is_windows_drive_mapped(drive_letter):
-    if platform.system() != "Windows":
+    if CURRENT_OS != OSType.WINDOWS:
         raise Exception("is_windows_drive_mapped: this is not a Windows platform")
 
+    import win32api
     try:
         drives = win32api.GetLogicalDriveStrings()
         drives = drives.split("\000")[:-1]
@@ -41,8 +38,7 @@ class Location:
 
 class Filer:
     def __init__(self, logger=None):
-        sys = platform.system()
-        if sys == "Windows":
+        if CURRENT_OS == OSType.WINDOWS:
             self.local = Location("C:/", "MAST/")
             self.shared = (
                 Location("Z:/", f"MAST/{get_hostname()}/")
@@ -54,8 +50,12 @@ class Filer:
                 if is_windows_drive_mapped("D:")
                 else Location("C:/", "MAST/")
             )
-        elif sys == "Linux":
+        elif CURRENT_OS == OSType.LINUX:
             self.local = Location(None, "/Storage/mast-share/MAST")
+            self.shared = self.local
+            self.ram = None
+        else:  # MACOS
+            self.local = Location(None, os.path.expanduser("~/MAST"))
             self.shared = self.local
             self.ram = None
 

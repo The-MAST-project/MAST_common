@@ -5,7 +5,7 @@ import os
 from typing import List
 import git
 
-from ..hostname import get_hostname
+from .hostname import get_hostname
 
 
 class Config:

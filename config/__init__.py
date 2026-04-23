@@ -2,7 +2,6 @@ import io
 import json
 import logging
 import os
-import platform
 import re
 import socket
 import tempfile
@@ -24,11 +23,12 @@ from ..const import Const
 from ..deep import deep_dict_difference, deep_dict_is_empty, deep_dict_update
 from ..mast_logging import init_log
 from ..utils import function_name
+from ..os_type import OSType, CURRENT_OS
 
 from .identification import GroupConfig, UserConfig
 from .site import Site
 from .unit import UnitConfig
-from ...hostname import get_hostname
+from ..hostname import get_hostname
 
 logger = logging.getLogger("mast.unit." + __name__)
 init_log(logger)
@@ -164,17 +164,13 @@ class Config:
                     "Config: cannot deduce site from {hostname=}, please provide site explicitly"
                 )
 
-        system = platform.system()
-        assert system == "Windows" or system == "Linux"
         file = "mast-config-db.json"
-        local_config_file = (
-            f"C:/MAST/{file}"
-            if system == "Windows"
-            else os.path.expanduser("~mast") + f"/{file}"
-            if system == "Linux"
-            else None
-        )
-        assert local_config_file is not None
+        if CURRENT_OS == OSType.WINDOWS:
+            local_config_file = f"C:/MAST/{file}"
+        elif CURRENT_OS == OSType.LINUX:
+            local_config_file = os.path.expanduser("~mast") + f"/{file}"
+        else:  # MACOS
+            local_config_file = os.path.expanduser(f"~/.mast/{file}")
 
         # for the time being we have only one origin configuration, from mast-wis-control
         self.origin = ConfigOrigin(

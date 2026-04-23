@@ -2,13 +2,13 @@ import datetime
 import io
 import logging
 import os
-import platform
 
 from rich.logging import RichHandler
 
 from .filer import Filer
 from .hostname import get_hostname
 from .paths import PathMaker
+from .os_type import OSType, CURRENT_OS
 
 # from common.utils import boxed_lines
 # from typing import List
@@ -33,10 +33,12 @@ class DailyFileHandler(logging.FileHandler):
         :return:
         """
         top = ""
-        if platform.platform() == "Linux":
+        if CURRENT_OS == OSType.LINUX:
             top = "/var/log/mast"
-        elif platform.platform().startswith("Windows"):
+        elif CURRENT_OS == OSType.WINDOWS:
             top = os.path.join(os.path.expandvars("%LOCALAPPDATA%"), "mast")
+        elif CURRENT_OS == OSType.MACOS:
+            top = os.path.expanduser("~/Library/Logs/mast")
         now = datetime.datetime.now()
         if now.hour < 12:
             now = now - datetime.timedelta(days=1)
