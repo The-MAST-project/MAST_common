@@ -2,6 +2,8 @@ import contextlib
 import logging
 import socket
 import time
+
+from common.hostname import get_hostname
 from enum import IntFlag, auto
 from json import JSONDecodeError
 from threading import Lock
@@ -329,7 +331,7 @@ class PowerSwitchFactory:
         power_switch_config: PowerSwitchConfig | None = None
         power_switch_name = None
         if name is None:
-            unit_name = socket.gethostname().split(".")[0]
+            unit_name = get_hostname()
 
             site_name = Config().site_name_from_unit_name(unit_name)
             assert site_name is not None
@@ -586,7 +588,7 @@ class SwitchedOutlet:
 
         if domain == OutletDomain.UnitOutlets:
             if unit_name is None:
-                unit_name = socket.gethostname()
+                unit_name = get_hostname()
             return PowerSwitchFactory.get_instance(name=unit_name)
         elif domain == OutletDomain.SpecOutlets:
             conf = Config().get_specs().power_switch

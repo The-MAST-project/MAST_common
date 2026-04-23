@@ -1,6 +1,8 @@
 import socket
 from typing import Literal
 
+from common.hostname import get_hostname
+
 from pydantic import BaseModel, computed_field, model_validator
 
 from common.config import Config
@@ -27,7 +29,7 @@ class Initiator(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def validate_model(cls, values):
-        hostname = values.get("hostname") or socket.gethostname()
+        hostname = values.get("hostname") or get_hostname()
         values["hostname"] = hostname
 
         values["fqdn"] = values.get("fqdn") or hostname + "." + Const.WEIZMANN_DOMAIN
@@ -48,7 +50,7 @@ class Initiator(BaseModel):
         The current machine as AssignmentInitiator
         :return:
         """
-        hostname = socket.gethostname()
+        hostname = get_hostname()
         fqdn = hostname + "." + Const.WEIZMANN_DOMAIN
         try:
             ipaddr = socket.gethostbyname(hostname)

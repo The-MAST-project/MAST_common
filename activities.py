@@ -1,11 +1,11 @@
 import datetime
 import logging
-import socket
 import threading
 from enum import IntFlag, auto
 
 import humanfriendly
 
+from common.hostname import get_hostname
 from common.mast_logging import init_log
 from common.notifications import CardUpdateSpec, Notifier, UiUpdateSpec
 from common.utils import caller_name
@@ -15,7 +15,7 @@ from common.utils import caller_name
 logger = logging.getLogger("mast." + __name__)
 init_log(logger)
 
-hostname = socket.gethostname()
+hostname = get_hostname()
 
 ActivitiesVerbal = list[str] | None
 

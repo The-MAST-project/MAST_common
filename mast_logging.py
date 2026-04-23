@@ -3,11 +3,11 @@ import io
 import logging
 import os
 import platform
-import socket
 
 from rich.logging import RichHandler
 
 from common.filer import Filer
+from common.hostname import get_hostname
 from common.paths import PathMaker
 
 # from common.utils import boxed_lines
@@ -105,7 +105,7 @@ def init_log(
     if not daily_handlers:
         root = (
             Filer().local.root
-            if socket.gethostname() == "mast-wis-spec"
+            if get_hostname() == "mast-wis-spec"
             else Filer().shared.root
         )
         handler = DailyFileHandler(

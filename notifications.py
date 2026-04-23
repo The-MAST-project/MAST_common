@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import socket
 import threading
 from collections import deque
 from typing import Literal
@@ -9,6 +8,7 @@ from pydantic import BaseModel
 
 from common.config import Config
 from common.mast_logging import init_log
+from common.hostname import get_hostname
 from common.utils import function_name
 
 logger = logging.getLogger("mast." + __name__)
@@ -32,7 +32,7 @@ initiator: NotificationInitiator | None = None
 if not initiator:
     sites = Config().get_sites()
 
-    local_machine_name = socket.gethostname().split(".")[0]
+    local_machine_name = get_hostname()
     parts = local_machine_name.split("-")
     if len(parts) == 3:
         # mast-wis-spec, mast-ns-control, etc.

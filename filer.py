@@ -1,10 +1,10 @@
 import platform
-import socket
 
 if platform.system() == "Windows":
     import win32api
 
 import fnmatch
+from common.hostname import get_hostname
 import os
 import shutil
 from collections.abc import Callable
@@ -45,7 +45,7 @@ class Filer:
         if sys == "Windows":
             self.local = Location("C:/", "MAST/")
             self.shared = (
-                Location("Z:/", f"MAST/{socket.gethostname()}/")
+                Location("Z:/", f"MAST/{get_hostname()}/")
                 if is_windows_drive_mapped("Z:")
                 else Location("C:/", "MAST/")
             )

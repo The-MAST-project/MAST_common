@@ -8,6 +8,7 @@ from enum import Enum, auto
 import httpx
 import humanfriendly
 
+from common.hostname import get_hostname
 from common.canonical import CanonicalResponse
 from common.config import Config
 from common.config.site import Site
@@ -86,7 +87,7 @@ class ApiClient:
             raise ValueError("both 'hostname' and 'ipaddr' are None")
 
         if ipaddr is None and hostname is not None:
-            if socket.gethostname() == hostname:
+            if get_hostname() == hostname:
                 with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
                     s.connect(
                         ("10.255.255.255", 1)

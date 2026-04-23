@@ -1,10 +1,11 @@
 import datetime
-import socket
 
 import tomlkit
 import os
 from typing import List
 import git
+
+from common.hostname import get_hostname
 
 
 class Config:
@@ -39,7 +40,7 @@ class Config:
 
         self.global_file = os.path.join(folder, "config", f"{project}.toml")
         self.specific_file = os.path.join(
-            folder, "config", f"{socket.gethostname()}.toml"
+            folder, "config", f"{get_hostname()}.toml"
         )
         if not os.path.exists(self.global_file):
             raise Exception(f"missing global config file '{self.global_file}'")

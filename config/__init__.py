@@ -28,6 +28,7 @@ from common.utils import function_name
 from .identification import GroupConfig, UserConfig
 from .site import Site
 from .unit import UnitConfig
+from common.hostname import get_hostname
 
 logger = logging.getLogger("mast.unit." + __name__)
 init_log(logger)
@@ -142,7 +143,7 @@ class Config:
             This is a bootstrap issue: We need to determine the site based on the hostname before we can send
              database queries to a MAST-{site}-control machine.
             """
-            hostname = socket.gethostname()
+            hostname = get_hostname()
             site = None
             if hostname.startswith("mast"):
                 if hostname[4:] == "w":
@@ -341,7 +342,7 @@ class Config:
         """
 
         if unit_name is None:
-            unit_name = socket.gethostname().split(".")[0]
+            unit_name = get_hostname()
 
         if site_name is None:
             site_name = self.site_name_from_unit_name(unit_name)
@@ -408,7 +409,7 @@ class Config:
         unit_dict = unit_conf.model_dump()
 
         if unit_name is None:
-            unit_name = socket.gethostname().split(".")[0]
+            unit_name = get_hostname()
         if site_name is None:
             site_name = self.site_name_from_unit_name(unit_name)
             if site_name is None:
@@ -610,7 +611,7 @@ class Config:
 
     @property
     def local_site(self) -> Site | None:
-        hostname = socket.gethostname().split(".")[0]
+        hostname = get_hostname()
         found = [
             s
             for s in self.sites

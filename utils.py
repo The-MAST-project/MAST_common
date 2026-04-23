@@ -477,7 +477,4 @@ def fromisoformat_zulu(s: str) -> datetime.datetime:
         return datetime.datetime.fromisoformat(s)
 
 
-def hostname() -> str:
-    import socket
-
-    return socket.gethostname().split(".")[0]
+from .hostname import get_hostname as hostname
