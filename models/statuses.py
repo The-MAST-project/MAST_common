@@ -223,7 +223,7 @@ class GreateyesStatus(ComponentStatus):
     addr: int | None = None
     min_temp: float | None = None
     max_temp: float | None = None
-    sensor_temperature_adjustment_target: float | None = None
+    sensor_temperature_target: float | None = None
     sensor_temperature: float | None = None
     back_temperature: float | None = None
     errors: list[str] | None = None
@@ -297,7 +297,7 @@ class SiteStatus(BaseModel):
 
     controller: ControllerStatus | None = None
     units: dict[str, UnitStatus] | None = None
-    spec: SpecStatus | BasicStatus | None = None
+    spec: SpecStatus | None = None
 
 
 class SitesStatus(BaseModel):
