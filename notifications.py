@@ -161,6 +161,7 @@ class UiUpdateNotifications(BaseModel):
 class Notifier:
     _instance = None
     _initialized = False
+    _init_lock = threading.Lock()
 
     NOTIFICATION_QUEUE_SIZE = 10
     NOTIFICATION_TIMEOUT = 2.0
@@ -171,30 +172,32 @@ class Notifier:
         return cls._instance
 
     def __init__(self):
-        if self._initialized:
-            return
+        with Notifier._init_lock:
+            if self._initialized:
+                return
 
-        from common.api import NotificationApi
+            from common.api import NotificationApi
 
-        self.lock = threading.Lock()
+            self.lock = threading.Lock()
 
-        # Notification queue and worker thread
-        self.notification_queue = deque(maxlen=self.NOTIFICATION_QUEUE_SIZE)
-        self.notification_event = threading.Event()
-        self.stop_event = threading.Event()
+            # Notification queue and worker thread
+            self.notification_queue = deque(maxlen=self.NOTIFICATION_QUEUE_SIZE)
+            self.notification_event = threading.Event()
+            self.stop_event = threading.Event()
 
-        assert initiator is not None
-        self.initiator = initiator
-        self.notification_api = NotificationApi(site_name=initiator.site)
+            assert initiator is not None
+            self.initiator = initiator
+            self.notification_api = NotificationApi(site_name=initiator.site)
 
-        # Start worker thread
-        self.worker_thread = threading.Thread(
-            target=self._notification_worker,
-            name="NotificationWorker",
-            daemon=True,
-        )
-        self.worker_thread.start()
-        self._initialized = True
+            # Start worker thread
+            self.worker_thread = threading.Thread(
+                target=self._notification_worker,
+                name="NotificationWorker",
+                daemon=True,
+            )
+            logger.debug(f"Starting notification worker thread: {id(self):x}")
+            self.worker_thread.start()
+            self._initialized = True
 
     def _notification_worker(self):
         """Background worker that sends queued notifications"""
@@ -215,9 +218,7 @@ class Notifier:
 
                 # Try to send
                 try:
-                    asyncio.run(
-                        self.notification_api.put("notifications", data=data)
-                    )
+                    asyncio.run(self.notification_api.put("notifications", data=data))
                     # Success - remove from queue
                     with self.lock:
                         if (
@@ -315,6 +316,7 @@ class Notifier:
         :param notification: AssignmentNotification instance (initiator will be overridden)
         """
         from common.models.assignments import AssignmentNotification
+
         assert isinstance(notification, AssignmentNotification)
         notification.initiator = self.initiator
         self._enqueue_notification(notification.model_dump_json())

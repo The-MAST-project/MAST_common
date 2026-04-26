@@ -448,16 +448,26 @@ class NotificationApi(BaseApi):
         else:
             site = Config().local_site
         assert site is not None
+
+        service_conf = Config().get_service(service_name="control")
+        if service_conf is None:
+            logger.error("Control service configuration not found")
+            return
+        port = service_conf.port
+
         controller_fqdn = f"{site.controller_host}.{Const.WEIZMANN_DOMAIN}"
-        self.base_url = (
-            f"https://{controller_fqdn}/mast-backend{Const.BASE_CONTROL_PATH}"
-        )
         self.timeout = self.NOTIFICATION_TIMEOUT
         self.errors = []
         self.detected = False
         self.hostname = site.controller_host
         self.ipaddr = None
         self.domain = ApiDomain.Control
+        super().__init__(
+            hostname=site.controller_host, port=port, domain=ApiDomain.Control
+        )
+        self.base_url = (
+            f"https://{controller_fqdn}/mast-backend/{Const.BASE_CONTROL_PATH}"
+        )
         self._initialized = True
 
 
