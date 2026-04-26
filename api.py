@@ -54,7 +54,7 @@ class ApiResponse:
         return f"{self.__class__.__name__}({attrs})"
 
 
-class ApiClient:
+class BaseApi:
     """
     Creates an API interface to a MAST entity living on a remote host.
 
@@ -65,9 +65,9 @@ class ApiClient:
      - domain: ApiDomain: selects a Unit, Spec or Controller
 
     Examples:
-        - spec = ApiClient(hostname='spec')
-        - focuser01 = ApiClient(hostname='mast01', device='focuser')
-        - unit17 = ApiClient(hostname='mast17')
+        - spec = BaseApi(hostname='spec')
+        - focuser01 = BaseApi(hostname='mast01', device='focuser')
+        - unit17 = BaseApi(hostname='mast17')
 
     """
 
@@ -304,7 +304,7 @@ class ApiClient:
         return CanonicalResponse(value=value)
 
 
-class UnitApi(ApiClient):
+class UnitApi(BaseApi):
     _instance = None
     _initialized = False
 
@@ -328,7 +328,7 @@ class UnitApi(ApiClient):
         self._initialized = True
 
 
-class SpecApi(ApiClient):
+class SpecApi(BaseApi):
     _instance = None
     _initialized = False
 
@@ -356,7 +356,7 @@ class SpecApi(ApiClient):
         self._initialized = True
 
 
-class ControllerApi(ApiClient):
+class ControllerApi(BaseApi):
     _instance = None
     _initialized = False
 
@@ -386,7 +386,7 @@ class ControllerApi(ApiClient):
         self._initialized = True
 
 
-class NotificationApi(ApiClient):
+class NotificationApi(BaseApi):
     """
     Sends notifications to the controller via the nginx-proxied HTTPS URL,
     rather than the direct internal IP:port used by ControllerApi.
@@ -410,7 +410,9 @@ class NotificationApi(ApiClient):
             site = Config().local_site
         assert site is not None
         controller_fqdn = f"{site.controller_host}.{Const.WEIZMANN_DOMAIN}"
-        self.base_url = f"https://{controller_fqdn}/mast-backend{Const.BASE_CONTROL_PATH}"
+        self.base_url = (
+            f"https://{controller_fqdn}/mast-backend{Const.BASE_CONTROL_PATH}"
+        )
         self.timeout = self.NOTIFICATION_TIMEOUT
         self.errors = []
         self.detected = False
@@ -420,7 +422,7 @@ class NotificationApi(ApiClient):
         self._initialized = True
 
 
-class SafetyApi(ApiClient):
+class SafetyApi(BaseApi):
     _instance = None
     _initialized = False
 
@@ -469,7 +471,7 @@ class SafetyApi(ApiClient):
 
 def test_bogus_unit_api():
     try:
-        unit = ApiClient(hostname="mast01")
+        unit = BaseApi(hostname="mast01")
         response = unit.get("status")
         if response:
             print(f"unit.status(): {response=}")
@@ -478,7 +480,7 @@ def test_bogus_unit_api():
         pass
 
     try:
-        focuser = ApiClient(hostname="mast01", device="focuser")
+        focuser = BaseApi(hostname="mast01", device="focuser")
         response = focuser.get("status")
         if response:
             print(f"focuser.status(): {response=}")
@@ -487,7 +489,7 @@ def test_bogus_unit_api():
         pass
 
     try:
-        ApiClient(hostname="mast01", device="screwdriver")
+        BaseApi(hostname="mast01", device="screwdriver")
     except Exception as ex:
         print(f"exception: {ex}")
 
