@@ -2,6 +2,7 @@ import asyncio
 import logging
 import re
 import socket
+import ssl
 from datetime import UTC, datetime
 from enum import Enum, auto
 
@@ -52,6 +53,41 @@ class ApiResponse:
     def __repr__(self):
         attrs = ", ".join(f"{key}={value!r}" for key, value in self.__dict__.items())
         return f"{self.__class__.__name__}({attrs})"
+
+
+MAST_CA_CERT = """
+-----BEGIN CERTIFICATE-----
+MIIFQTCCAymgAwIBAgIUUjCoi2oFeX9cLZXVogeWlMdX5MAwDQYJKoZIhvcNAQEL
+BQAwMDEWMBQGA1UEAwwNTUFTVCBMb2NhbCBDQTEWMBQGA1UECgwNV2Vpem1hbm4g
+TUFTVDAeFw0yNjAzMjYxMDIwMDNaFw0zNjAzMjMxMDIwMDNaMDAxFjAUBgNVBAMM
+DU1BU1QgTG9jYWwgQ0ExFjAUBgNVBAoMDVdlaXptYW5uIE1BU1QwggIiMA0GCSqG
+SIb3DQEBAQUAA4ICDwAwggIKAoICAQC3AfeIPJy3bFwRBLgFlzCYN7BPFpxy6ZJk
+SaOwbXcNWU1uFQbL2NO/B43ytrxMtY6RSf4U2fArSy3AnfBCGpj34alq3ax0I6Aw
+gEAiG7vubAV0ZHo8FbkCXdDdHMBRKtzulKul7hLcLibziAm0TGHlYCbaszc8Kcdg
+h+JX2yNvA9bE024XWxrgPEgNmZ7zUWWIHqYnwYeMQuRFffv4iNjXI+g/FLoCUZnU
+Sg1fiEPg/wEqlwwb48m5u7ZBx5zi0VBu1EJlBtsfT5BtLR4D3/aIrghTqn6tpkQY
+vo6Q5IRgu2m07xMdgdAllg56NbuOpA1CQOsPndMLukyz+uTDX7PhzDRcHQFS0Dng
+P1j/SVKcGyUU8PJ/2r4YeN/4l8hMR//5zeQxOM2+oEDaKncLh1/23tgJR6UM+L+q
+8KqN5tnAunY7NfZlYCWXOxx6nzmYnurlLXSzrnsZ9g6rn0Dyvg+teQqcnamzFGxu
+QRRs+xWPabfKVAnU+tTE1wG6lgF4Ok1hsrXWzVjRIoSYv+6gj81Aj1kxfSCQSPgC
+FKTi52hJNmHnIJ3dhF5yy+lRJ5dervKYMmQ7dsLxEbYy10FJa8XdfcVYMEL/c7qL
+VCxthzvghxJmueFquwUAvBf4qVspifxopRteKwe1UdBoEw3dDmyZxAZYnuNW3kf4
+wr+bU8zNQQIDAQABo1MwUTAdBgNVHQ4EFgQUpO5YC/0vpHJ+fLU0JD/Ubz7w6Tkw
+HwYDVR0jBBgwFoAUpO5YC/0vpHJ+fLU0JD/Ubz7w6TkwDwYDVR0TAQH/BAUwAwEB
+/zANBgkqhkiG9w0BAQsFAAOCAgEAH/CdysE1ssaSJyxvwAtuYvc8hCg5mUNS9ojm
+F0JysvFXVYehh7oejk34s6wO40FPmIj+umZn41at+YTkJUHs+nioGQy24eoChceU
+/bY6SHnnMScL2X/4nBZ8fOjEk4B82eIvvHUf59zKaN2sPM3rM/H86GvM2GBSqP28
+rEoimZB+Cwb5GAEowcnkYbzBkF0MNqHICoMff9BG4Xe/qBq2Tdhm6+ULNms/L3ZL
+cEuiKBkjQJmdR/Us189htGudvHrX0gbeZ2udwmcT90OtsEVV2I81DEUro3X6KxEL
+u1uVS+4DKajvuRN/lef7L3tBwAGsOcK8wle1eyj4CgJinobBG4XI5SuoTbgS1qLj
+ojYC8ETfyYEVTDlI7Ji5KNGLfdVYa6JoAgdADZtWBy62mhZUeMdTKMo8el8f7shq
+HiPMeEe29a5Dh5nDc4qumvn9NVqQx/opzWRtNqwDmY3LUGUYNDaAUprJhyQYS4wC
+jTrqcUNO6Dnk2rJDmbBq2BPPcdqCISaIp3XQAyuJc43eyR6Yp9/nRD/ynbDvg3yc
+0bMZSzfUQyZN427L0cM5hPXCKRE5eAk8BCvvdQOP8MUQS+FKNM3gAUn+ioA+us3S
+ddtgEL785rddwXRi6F/t7wfDYLWjBgLZNxyRDuuPaNYRZcsfZUgYChNO2wwONQwn
+XdiV+ls=
+-----END CERTIFICATE-----
+"""
 
 
 class BaseApi:
@@ -166,6 +202,9 @@ class BaseApi:
         self.timeout = timeout
         self.errors = []
 
+        self.ssl_ctx = ssl.create_default_context()
+        self.ssl_ctx.load_verify_locations(cadata=MAST_CA_CERT)
+
     @property
     def operational(self) -> bool:
         return len(self.errors) == 0
@@ -178,7 +217,7 @@ class BaseApi:
         self.errors = []
         timeout = timeout or self.timeout
         # logger.debug(op)
-        async with httpx.AsyncClient(trust_env=False) as client:
+        async with httpx.AsyncClient(trust_env=False, verify=self.ssl_ctx) as client:
             try:
                 response = await client.get(url=url, params=params, timeout=timeout)
 
@@ -207,7 +246,7 @@ class BaseApi:
         self.errors = []
         timeout = timeout or self.timeout
         # logger.debug(op)
-        async with httpx.AsyncClient(trust_env=False) as client:
+        async with httpx.AsyncClient(trust_env=False, verify=self.ssl_ctx) as client:
             try:
                 response = await client.put(
                     url=f"{self.base_url}/{method}",
