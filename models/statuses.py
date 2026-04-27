@@ -130,7 +130,7 @@ class PHD2ImagerStatus(ActivitiesStatus):
 StatusType = Literal["basic", "full"]
 
 
-class BasicStatus(BaseModel):
+class BaseStatus(BaseModel):
     """Base class for unit status."""
 
     type: StatusType = "basic"
@@ -140,9 +140,9 @@ class BasicStatus(BaseModel):
     why_not_operational: list[str] | None = None
 
 
-# class NotPoweredStatus(BasicStatus):
-#     def model_post_init(self, __context: Any) -> BasicStatus:
-#         return BasicStatus(
+# class NotPoweredStatus(BaseStatus):
+#     def model_post_init(self, __context: Any) -> BaseStatus:
+#         return BaseStatus(
 #             powered=False,
 #             detected=False,
 #             operational=False,
@@ -150,9 +150,9 @@ class BasicStatus(BaseModel):
 #         )
 
 
-# class NotDetectedStatus(BasicStatus):
-#     def model_post_init(self, __context: Any) -> BasicStatus:
-#         return BasicStatus(
+# class NotDetectedStatus(BaseStatus):
+#     def model_post_init(self, __context: Any) -> BaseStatus:
+#         return BaseStatus(
 #             powered=True,
 #             detected=False,
 #             operational=False,
@@ -160,14 +160,14 @@ class BasicStatus(BaseModel):
 #         )
 
 
-class NotOperationalStatus(BasicStatus):
-    def model_post_init(self, __context: Any) -> BasicStatus:
+class NotOperationalStatus(BaseStatus):
+    def model_post_init(self, __context: Any) -> BaseStatus:
         if "reasons" in __context:
             reasons = __context["reasons"]
         else:
             reasons = ["Not operational"]
 
-        return BasicStatus(
+        return BaseStatus(
             powered=True,
             detected=True,
             operational=False,
@@ -175,7 +175,7 @@ class NotOperationalStatus(BasicStatus):
         )
 
 
-class FullUnitStatus(BasicStatus, ComponentStatus, PowerStatus):
+class FullUnitStatus(ComponentStatus, PowerStatus):
     """Full unit status with all components, returned from the unit itself."""
 
     type: StatusType = "full"
@@ -197,7 +197,7 @@ class FullUnitStatus(BasicStatus, ComponentStatus, PowerStatus):
     detected: bool = True
 
 
-UnitStatus = BasicStatus | FullUnitStatus
+UnitStatus = BaseStatus | FullUnitStatus
 
 
 # Example usage in an API response model:
@@ -209,7 +209,7 @@ class UnitStatusResponse(BaseModel):
     status: UnitStatus  # This is the discriminated union
 
 
-class ControllerStatus(BasicStatus):
+class ControllerStatus(BaseStatus):
     operational: bool = True
     why_not_operational: list[str] | None = []
 
@@ -256,7 +256,7 @@ class HighspecStatus(ComponentStatus):
     camera_status: NewtonStatus | QHY600Status | None = None
 
 
-CalibrationLampStatus = BasicStatus
+CalibrationLampStatus = BaseStatus
 
 
 class WheelStatus(ComponentStatus):
@@ -283,11 +283,11 @@ class SpecStageStatus(ComponentStatus):
     at_preset: str | None = None
 
 
-class SpecStatus(BasicStatus):
+class SpecStatus(BaseStatus):
     deepspec: DeepspecStatus | None = None
     highspec: HighspecStatus | None = None
     stages: dict[SpecStageNames, SpecStageStatus] | None = None
-    chiller: BasicStatus | None = None
+    chiller: BaseStatus | None = None
     lamps: dict[WheelNames, CalibrationLampStatus] | None = None
     wheels: dict[WheelNames, WheelStatus] | None = None
 

@@ -187,7 +187,7 @@ class Plan(BaseModel, Activities):
             }
         },
     )
-    commited_unit_apis: list[Any] = Field(
+    committed_unit_apis: list[Any] = Field(
         default_factory=list,
         json_schema_extra={
             "ui": {
@@ -671,7 +671,7 @@ class Plan(BaseModel, Activities):
             try:
                 if isinstance(canonical_response, CanonicalResponse):
                     if canonical_response.succeeded:
-                        self.commited_unit_apis.append(self.operational_unit_apis[i])
+                        self.committed_unit_apis.append(self.operational_unit_apis[i])
                     else:
                         canonical_response.log(
                             _logger=logger,
@@ -688,7 +688,7 @@ class Plan(BaseModel, Activities):
                 logger.error(f"non-canonical response (error: {e}), ignoring!")
                 continue
 
-        n_committed = len(self.commited_unit_apis)
+        n_committed = len(self.committed_unit_apis)
         if n_committed == 0:
             self.end_activity(PlanActivities.Dispatching)
             await self.terminate(
@@ -709,7 +709,7 @@ class Plan(BaseModel, Activities):
             EventModel(
                 what="dispatched",
                 details=[
-                    f"committed_units: {[api.hostname for api in self.commited_unit_apis]}"
+                    f"committed_units: {[api.hostname for api in self.committed_unit_apis]}"
                 ],
             )
         )
@@ -771,7 +771,7 @@ class Plan(BaseModel, Activities):
 
         while (datetime.datetime.now() - start).seconds < self.timeout_to_guiding:
             time.sleep(20)
-            responses = await self.fetch_statuses(self.commited_unit_apis)
+            responses = await self.fetch_statuses(self.committed_unit_apis)
 
             canonical_responses: list[CanonicalResponse] = [
                 response
@@ -790,7 +790,7 @@ class Plan(BaseModel, Activities):
                 [(status.activities & UnitActivities.Guiding) for status in statuses]
             ):
                 logger.info(
-                    f"all commited units ({[f'{u.hostname} ({u.ipaddr})' for u in self.commited_unit_apis]}) "
+                    f"all committed units ({[f'{u.hostname} ({u.ipaddr})' for u in self.committed_unit_apis]}) "
                     + "have reached 'Guiding'"
                 )
                 reached_guiding = True
@@ -816,8 +816,9 @@ class Plan(BaseModel, Activities):
             assert spec_status is not None, "spec_status should not be None"
 
             if not spec_status.operational:
-                for err in spec_status.why_not_operational:
-                    logger.error(f"spec not operational: {err}")
+                if spec_status.why_not_operational is not None:
+                    for err in spec_status.why_not_operational:
+                        logger.error(f"spec not operational: {err}")
                 self.end_activity(PlanActivities.WaitingForSpecDone)
                 await self.terminate(
                     reason="failed",
@@ -902,7 +903,7 @@ class Plan(BaseModel, Activities):
         self.start_activity(PlanActivities.Aborting)
         tasks = [
             self.api_coroutine(unit_api, method="GET", sub_url="abort")
-            for unit_api in self.commited_unit_apis
+            for unit_api in self.committed_unit_apis
         ]
         tasks.append(self.api_coroutine(self.spec_api, method="GET", sub_url="abort"))
         self.end_activity(PlanActivities.Aborting)
