@@ -147,9 +147,14 @@ class AssignmentNotification(BaseModel):
     """
 
     type: Literal["assignment_notification"] = "assignment_notification"
-    initiator: NotificationInitiator
     assignment_id: str  # ulid assigned by scheduler
     state: AssignmentState
+    initiator: NotificationInitiator | None = None
     errors: list[str] | None = None
     shared_top: str | None = None
     shared_subpath: str | None = None
+
+    def model_post_init(self):
+        if self.initiator is None:
+            from common.notifications import initiator
+            self.initiator = initiator
