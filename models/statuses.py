@@ -10,13 +10,7 @@ import common.asi as asi
 from common.activities import ActivitiesVerbal
 from common.mast_logging import init_log
 from common.rois import SkyRoi, SpecRoi, UnitRoi
-from common.spec import (
-    FilterPositions,
-    GratingNames,
-    SpecInstruments,
-    SpecStageNames,
-    WheelNames,
-)
+from common.spec import FilterPositions, GratingNames, SpecInstruments, SpecStageNames, WheelNames
 from common.utils import PathMaker, function_name
 
 logger = logging.Logger(__name__)
@@ -29,7 +23,6 @@ class BaseStatus(BaseModel):
     """Base class for unit status."""
 
     type: StatusType = "basic"
-    powered: bool | None = None
     detected: bool | None = None
     operational: bool | None = None
     why_not_operational: list[str] | None = None
@@ -206,13 +199,9 @@ class PHD2ImagerStatus(ActivitiesStatus):
 
 class NotOperationalStatus(BaseStatus):
     def model_post_init(self, __context: Any) -> BaseStatus:
-        if "reasons" in __context:
-            reasons = __context["reasons"]
-        else:
-            reasons = ["Not operational"]
+        reasons = __context.get("reasons", ["Not operational"])
 
         return BaseStatus(
-            powered=True,
             detected=True,
             operational=False,
             why_not_operational=reasons,
