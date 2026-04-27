@@ -4,7 +4,6 @@ from typing import Any, Literal
 from pydantic import BaseModel
 
 from common.activities import ActivitiesVerbal
-from common.dlipowerswitch import PowerStatus, PowerSwitchStatus
 from common.interfaces.components import ComponentStatus
 from common.interfaces.imager import ImagerStatus
 from common.spec import (
@@ -14,6 +13,36 @@ from common.spec import (
     SpecStageNames,
     WheelNames,
 )
+
+
+class PowerStatus(BaseModel):
+    powered: bool = False
+
+
+TriStateBool = bool | None
+
+
+class OutletStatus(BaseModel):
+    name: str | None = None
+    state: TriStateBool = None
+
+    def __repr__(self):
+        return f"OutletStatus(name='{self.name}', state={self.state})"
+
+
+class PowerSwitchStatus(BaseModel):
+    host: str | None = None
+    ipaddr: str | None = None
+    detected: bool = False
+    operational: bool = False
+    why_not_operational: list[str] = []
+    outlets: list[OutletStatus] = []
+
+    def __repr__(self):
+        return (
+            f"PowerSwitchStatus(host='{self.host}', ipaddr='{self.ipaddr}', detected={self.detected}, operational={self.operational}, "
+            + f"why_not_operational={self.why_not_operational})"
+        )
 
 
 # ASCOM stuff

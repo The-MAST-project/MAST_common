@@ -7,7 +7,6 @@ from json import JSONDecodeError
 from threading import Lock
 
 import httpx
-from pydantic import BaseModel
 
 from common.activities import PowerSwitchActivities
 from common.config import Config
@@ -17,35 +16,14 @@ from common.const import Const
 from common.interfaces.components import Component
 from common.mast_logging import init_log
 
+from common.models.statuses import OutletStatus, PowerStatus, PowerSwitchStatus
+
 TriStateBool = bool | None
 
 logger = logging.getLogger("power-switch")
 init_log(logger)
 logging.getLogger("httpcore").setLevel(logging.WARN)
 logging.getLogger("httpx").setLevel(logging.WARN)
-
-
-class OutletStatus(BaseModel):
-    name: str | None = None
-    state: TriStateBool = None
-
-    def __repr__(self):
-        return f"OutletStatus(name='{self.name}', state={self.state})"
-
-
-class PowerSwitchStatus(BaseModel):
-    host: str | None = None
-    ipaddr: str | None = None
-    detected: bool = False
-    operational: bool = False
-    why_not_operational: list[str] = []
-    outlets: list[OutletStatus] = []
-
-    def __repr__(self):
-        return (
-            f"PowerSwitchStatus(host='{self.host}', ipaddr='{self.ipaddr}', detected={self.detected}, operational={self.operational}, "
-            + f"why_not_operational={self.why_not_operational})"
-        )
 
 
 class DliPowerSwitch(Component):
@@ -411,10 +389,6 @@ class PowerSwitchFactory:
         # logger.debug(
         #     f"PowerSwitchFactory __init__ called for instance id=0x{id(self):08X}"
         # )
-
-
-class PowerStatus(BaseModel):
-    powered: bool = False
 
 
 class OutletDomain(IntFlag):
