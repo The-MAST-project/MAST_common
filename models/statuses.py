@@ -484,18 +484,8 @@ class FullUnitStatus(ComponentStatus, PowerStatus):
     powered: bool = True
     detected: bool = True
 
-
-UnitStatus = BaseStatus | FullUnitStatus
-
-
-# Example usage in an API response model:
-class UnitStatusResponse(BaseModel):
-    """API response containing unit status."""
-
-    unit_name: str
-    timestamp: str
-    status: UnitStatus  # This is the discriminated union
-
+class UnitStatus(BaseStatus, PowerStatus):
+    pass
 
 class ControllerStatus(BaseStatus):
     operational: bool = True
