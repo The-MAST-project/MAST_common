@@ -1,15 +1,7 @@
 from abc import ABC, abstractmethod
 
-from common.activities import Activities, ActivitiesVerbal
-from common.models.statuses import BaseStatus
-
-
-class ComponentStatus(BaseStatus):
-    connected: bool = False
-    activities: int = 0
-    activities_verbal: ActivitiesVerbal = None
-    was_shut_down: bool = False
-    model_config = {"arbitrary_types_allowed": True}
+from common.activities import Activities
+from common.models.statuses import ComponentStatus
 
 
 class Component(ABC, Activities):

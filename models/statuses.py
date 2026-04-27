@@ -4,7 +4,6 @@ from typing import Any, Literal
 from pydantic import BaseModel
 
 from common.activities import ActivitiesVerbal
-from common.interfaces.components import ComponentStatus
 from common.interfaces.imager import ImagerStatus
 from common.spec import (
     FilterPositions,
@@ -13,6 +12,26 @@ from common.spec import (
     SpecStageNames,
     WheelNames,
 )
+
+StatusType = Literal["basic", "full"]
+
+
+class BaseStatus(BaseModel):
+    """Base class for unit status."""
+
+    type: StatusType = "basic"
+    powered: bool | None = None
+    detected: bool | None = None
+    operational: bool | None = None
+    why_not_operational: list[str] | None = None
+
+
+class ComponentStatus(BaseStatus):
+    connected: bool = False
+    activities: int = 0
+    activities_verbal: ActivitiesVerbal = None
+    was_shut_down: bool = False
+    model_config = {"arbitrary_types_allowed": True}
 
 
 class PowerStatus(BaseModel):
@@ -154,19 +173,6 @@ class PHD2ImagerStatus(ActivitiesStatus):
     operational: bool = False
     why_not_operational: list[str] = []
     connected: bool = False
-
-
-StatusType = Literal["basic", "full"]
-
-
-class BaseStatus(BaseModel):
-    """Base class for unit status."""
-
-    type: StatusType = "basic"
-    powered: bool | None = None
-    detected: bool | None = None
-    operational: bool | None = None
-    why_not_operational: list[str] | None = None
 
 
 # class NotPoweredStatus(BaseStatus):
