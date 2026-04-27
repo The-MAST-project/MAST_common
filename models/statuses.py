@@ -197,17 +197,6 @@ class PHD2ImagerStatus(ActivitiesStatus):
 #         )
 
 
-class NotOperationalStatus(BaseStatus):
-    def model_post_init(self, __context: Any) -> BaseStatus:
-        reasons = __context.get("reasons", ["Not operational"])
-
-        return BaseStatus(
-            detected=True,
-            operational=False,
-            why_not_operational=reasons,
-        )
-
-
 class ImagerPixel(BaseModel):
     x: int
     y: int
@@ -482,13 +471,11 @@ class FullUnitStatus(ComponentStatus, PowerStatus):
     corrections: list | None = None
     date: str | None = None
     powered: bool = True
-    detected: bool = True
 
 class UnitStatus(BaseStatus, PowerStatus):
     pass
 
 class ControllerStatus(BaseStatus):
-    operational: bool = True
     why_not_operational: list[str] | None = []
 
 
