@@ -10,7 +10,13 @@ import common.asi as asi
 from common.activities import ActivitiesVerbal
 from common.mast_logging import init_log
 from common.rois import SkyRoi, SpecRoi, UnitRoi
-from common.spec import FilterPositions, GratingNames, SpecInstruments, SpecStageNames, WheelNames
+from common.spec import (
+    FilterPositions,
+    GratingNames,
+    SpecInstruments,
+    SpecStageNames,
+    WheelNames,
+)
 from common.utils import PathMaker, function_name
 
 logger = logging.Logger(__name__)
@@ -472,8 +478,13 @@ class FullUnitStatus(ComponentStatus, PowerStatus):
     date: str | None = None
     powered: bool = True
 
-class UnitStatus(BaseStatus, PowerStatus):
+
+class BasicUnitStatus(BaseStatus, PowerStatus):
     pass
+
+
+UnitStatus = BasicUnitStatus | FullUnitStatus
+
 
 class ControllerStatus(BaseStatus):
     why_not_operational: list[str] | None = []
