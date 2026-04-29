@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from common.models.calibration import CalibrationSettings
 from common.models.deepspec import DeepspecSettings
@@ -36,3 +36,22 @@ class SpectrographModel(BaseModel):
             }
         },
     )
+
+    @model_validator(mode="after")
+    def check_settings_type(self) -> "SpectrographModel":
+        match self.instrument:
+            case "highspec":
+                if self.settings is not None and not isinstance(
+                    self.settings, HighspecSettings
+                ):
+                    raise ValueError(
+                        f"instrument='highspec' requires HighspecSettings, got {type(self.settings).__name__}"
+                    )
+            case "deepspec":
+                if self.settings is not None and not isinstance(
+                    self.settings, DeepspecSettings
+                ):
+                    raise ValueError(
+                        f"instrument='deepspec' requires DeepspecSettings, got {type(self.settings).__name__}"
+                    )
+        return self
