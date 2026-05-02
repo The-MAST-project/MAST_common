@@ -13,6 +13,7 @@ from common.rois import SkyRoi, SpecRoi, UnitRoi
 from common.spec import (
     FilterPositions,
     GratingNames,
+    SpecExposureSettings,
     SpecInstruments,
     SpecStageNames,
     WheelNames,
@@ -503,8 +504,8 @@ class GreateyesStatus(ComponentStatus):
     sensor_temperature: float | None = None
     back_temperature: float | None = None
     errors: list[str] | None = None
-    latest_exposure: Any = None
-    latest_settings: Any = None
+    latest_exposure: Any | None = None
+    latest_spec_exposure_settings: SpecExposureSettings | None = None
 
 
 class DeepspecStatus(ComponentStatus):
@@ -513,18 +514,19 @@ class DeepspecStatus(ComponentStatus):
 
 class NewtonStatus(ComponentStatus):
     powered: bool = False
+    set_point: float | None = None
     temperature: float | None = None
     errors: list[str] | None = None
-    latest_exposure: Any = None
-    latest_settings: Any = None
+    latest_exposure: Any | None = None
+    latest_spec_exposure_settings: SpecExposureSettings | None = None
 
 
 class QHY600Status(ComponentStatus):
     powered: bool = False
     temperature: float | None = None
     errors: list[str] | None = None
-    latest_exposure: Any = None
-    latest_settings: Any = None
+    latest_exposure: Any | None = None
+    latest_spec_exposure_settings: SpecExposureSettings | None = None
 
 
 class HighspecStatus(ComponentStatus):
