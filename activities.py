@@ -90,6 +90,8 @@ class Activities:
                 return "highspec"
             case "WheelActivities":
                 return "wheel"
+            case "NewtonActivities":
+                return "highspec"
             case _:
                 logger.error(
                     f"Unknown activities type '{type(self.activities).__name__}'"
@@ -208,7 +210,9 @@ class Activities:
         info = f"{label}ended   activity {activity.__repr__()}"
         end_details = self.details.pop(activity, [])
         if not isinstance(end_details, list):
-            logger.warning(f"Activity details for {activity.name} is not a list: {end_details} (from {caller_name()})")
+            logger.warning(
+                f"Activity details for {activity.name} is not a list: {end_details} (from {caller_name()})"
+            )
             end_details = [str(end_details)]
         end_data = self.data.pop(activity, None)
         if end_details:
@@ -264,6 +268,18 @@ class Activities:
         ret = self.activities.__repr__().rpartition(".")[2]
         ret = ret.partition(":")[0].split("|")
         return ret
+
+
+class NewtonActivities(IntFlag):
+    StartingUp = auto()
+    ShuttingDown = auto()
+    CoolingDown = auto()
+    WarmingUp = auto()
+    Acquiring = auto()
+    Exposing = auto()
+    ReadingOut = auto()
+    Saving = auto()
+    SettingParameters = auto()
 
 
 class UnitActivities(IntFlag):
