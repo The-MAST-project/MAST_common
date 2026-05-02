@@ -157,4 +157,5 @@ class AssignmentNotification(BaseModel):
     def model_post_init(self):
         if self.initiator is None:
             from common.notifications import initiator
+
             self.initiator = initiator
