@@ -1,47 +1,69 @@
-from typing import Literal, Optional
+from enum import Enum
+from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, model_validator
 
 from common.config.power import PowerSwitchConfig
+from common.config.shutter import ShutterConfig
 
 
 class NewtonRoiModel(BaseModel):
-    hstart: Optional[int]
-    hend: Optional[int]
-    vstart: Optional[int]
-    vend: Optional[int]
+    hstart: int | None = None
+    hend: int | None = None
+    vstart: int | None = None
+    vend: int | None = None
 
 
-class NewtonTemperatureModel(BaseModel):
-    set_point: Optional[int]
-    cooler_mode: Optional[int]
+class CoolerMode(Enum):
+    RETURN_TO_AMBIENT = 0
+    MAINTAIN_CURRENT_TEMP = 1
 
 
-class NewtonShutterModel(BaseModel):
-    opening_time: Optional[int]
-    closing_time: Optional[int]
+class NewtonTemperatureConfig(BaseModel):
+    """Configuration for the Newton camera temperature settings."""
+
+    set_point: int = -10  # Default target temperature in Celsius
+    cooler_mode: int = CoolerMode.RETURN_TO_AMBIENT.value  # Default cooler mode
 
 
-class NewtonBinningModel(BaseModel):
-    x: Optional[int]
-    y: Optional[int]
+class NewtonBinning(BaseModel):
+    x: int = Field(1, ge=1, description="Binning factor in X")
+    y: int = Field(1, ge=1, description="Binning factor in Y")
 
 
-class NewtonCameraSettingsModel(BaseModel):
-    binning: Optional[NewtonBinningModel]
-    roi: Optional[NewtonRoiModel]
-    temperature: Optional[NewtonTemperatureModel]
-    shutter: Optional[NewtonShutterModel]
-    acquisition_mode: Optional[Literal[0, 1]]
-    em_gain: Optional[int]
-    pre_amp_gain: Optional[Literal[0, 1, 2]]
-    exposure_duration: Optional[float]
-    number_of_exposures: Optional[int] = 1
+class NewtonRoi(BaseModel):
+    hstart: int | None = None
+    hend: int | None = None
+    vstart: int | None = None
+    vend: int | None = None
+
+
+class NewtonSettingsConfig(BaseModel):
+    """Configuration for the Newton camera settings."""
+
+    binning: NewtonBinning | None = Field(
+        default_factory=lambda: NewtonBinning(x=1, y=1)
+    )  # Binning configuration for the camera
+    roi: NewtonRoi | None = None  # Region of interest settings
+    shutter: ShutterConfig | None = None
+    acquisition_mode: int = 1  # Default acquisition mode
+    number_of_exposures: int = 1
+    exposure_duration: float = 5.0  # Default exposure duration in seconds
+    em_gain: int = 254  # Default EM gain value
+    pre_amp_gain: int = 0  # Default pre-amplifier gain value
+    temperature: NewtonTemperatureConfig | None = None
+    read_mode: int | None = None
+
+    @model_validator(mode="after")
+    def validate_newton_settings(self):
+        if self.binning is None:
+            self.binning = NewtonBinning(x=1, y=1)
+        return self
 
 
 class HighspecConfig(BaseModel):
     power: PowerSwitchConfig
-    settings: NewtonCameraSettingsModel
+    settings: NewtonSettingsConfig
     camera: Literal["qhy600", "newton"]
     valid_cameras: list[str]
     known_as_good_focus_position: int
