@@ -66,4 +66,5 @@ class HighspecConfig(BaseModel):
     settings: NewtonSettingsConfig
     camera: Literal["qhy600", "newton"]
     valid_cameras: list[str]
+    camera_enabled: bool = True
     known_as_good_focus_position: int
