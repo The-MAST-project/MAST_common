@@ -1,8 +1,10 @@
 from enum import IntFlag, auto
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
-from common.paths import PathMaker
+from pydantic import BaseModel
+
+from common.utils import function_name
 
 Disperser = Literal["Ca", "Mg", "Halpha", "Empty"]
 SpecName = Literal["Deepspec", "Highspec"]
@@ -22,47 +24,24 @@ class SpecId(IntFlag):
     Highspec = auto()
 
 
-class SpecExposureSettings:
+class SpecExposureSettings(BaseModel):
     """
     Defines the settings for spectrograph camera exposures
     """
 
-    def __init__(
-        self,
-        exposure_duration: float,
-        number_of_exposures: int | None = 1,
-        x_binning: int | None = 1,
-        y_binning: int | None = 1,
-        folder: str | None = None,
-        image_path: str | None = None,
-        gain: int | None = None,
-    ):
-        # TODO: get rid of this class, basically we only use the image_file field
+    exposure_duration: float
+    number_of_exposures: int | None = 1
+    x_binning: int | None = 1
+    y_binning: int | None = 1
+    image_full_name: str | None = None
+    gain: int | None = None
 
-        self.exposure_duration = exposure_duration
-        self.number_of_exposures = number_of_exposures
-        self.x_binning = x_binning
-        self.y_binning = y_binning
-        self.output_folder = folder  # A folder path underneath the Filer().root
-        self._number_in_sequence: int | None = None
-        self.gain = gain
+    def model_post_init(self, __context: Any):
 
-        if image_path is not None:
-            path = Path(image_path)
-            self.image_path = str(path)
-            self.folder = str(path.parent)
+        if self.image_full_name is not None:
+            Path(self.image_full_name).parent.mkdir(parents=True, exist_ok=True)
         else:
-            if folder is not None:
-                self.image_path = (
-                    Path(folder) / f"seq={PathMaker.make_seq(folder=folder)}"
-                )
-                self.folder = folder
-            else:
-                self.image_path = None
-                self.folder = None
-
-        if self.folder is not None:
-            Path(self.folder).mkdir(parents=True, exist_ok=True)
+            raise ValueError(f"{function_name()}: image_full_name must be provided")
 
     @property
     def number_in_sequence(self) -> int | None:
