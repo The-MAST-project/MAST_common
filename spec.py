@@ -1,4 +1,4 @@
-from enum import IntFlag, auto
+from enum import IntFlag, StrEnum, auto
 from pathlib import Path
 from typing import Any, Literal, Optional
 
@@ -24,6 +24,13 @@ class SpecId(IntFlag):
     Highspec = auto()
 
 
+class FrameType(StrEnum):
+    LIGHT = "light"
+    BIAS = "bias"
+    DARK = "dark"
+    FLAT = "flat"
+
+
 class SpecExposureSettings(BaseModel):
     """
     Defines the settings for spectrograph camera exposures
@@ -35,13 +42,14 @@ class SpecExposureSettings(BaseModel):
     y_binning: int | None = 1
     image_full_name: str | None = None
     gain: int | None = None
+    frame_type: FrameType = FrameType.LIGHT
 
     def model_post_init(self, __context: Any):
 
         if self.image_full_name is not None:
             Path(self.image_full_name).parent.mkdir(parents=True, exist_ok=True)
-        else:
-            raise ValueError(f"{function_name()}: image_full_name must be provided")
+        # else:
+        #     raise ValueError(f"{function_name()}: image_full_name must be provided")
 
     @property
     def number_in_sequence(self) -> int | None:
