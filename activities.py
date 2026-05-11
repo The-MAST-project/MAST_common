@@ -92,6 +92,8 @@ class Activities:
                 return "wheel"
             case "NewtonActivities":
                 return "highspec"
+            case "SpecActivities":
+                return "spec"
             case _:
                 logger.error(
                     f"Unknown activities type '{type(self.activities).__name__}'"
@@ -128,6 +130,8 @@ class Activities:
                 return ["imager", "activities_verbal"]
             case "GreatEyesActivities":
                 return ["deepspec", "greateyes", "activities_verbal"]
+            case "SpecActivities":
+                return ["spec", "activities_verbal"]
             case _:
                 component = "unknown-component"
                 # logger.error(f"{function_name()}: Unknown activities type '{type(self.activities).__name__}'")

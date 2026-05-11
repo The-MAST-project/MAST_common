@@ -4,8 +4,6 @@ from typing import Any, Literal, Optional
 
 from pydantic import BaseModel
 
-from common.utils import function_name
-
 Disperser = Literal["Ca", "Mg", "Halpha", "Empty"]
 SpecName = Literal["Deepspec", "Highspec"]
 
@@ -15,6 +13,8 @@ class SpecActivities(IntFlag):
     Positioning = auto()
     Acquiring = auto()
     Exposing = auto()
+    ExposingHighspec = auto()
+    ExposingDeepspec = auto()
     StartingUp = auto()
     ShuttingDown = auto()
 
