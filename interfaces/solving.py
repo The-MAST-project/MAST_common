@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from enum import StrEnum
 
 from astropy.coordinates import Angle
 from pydantic import BaseModel
@@ -6,10 +7,18 @@ from pydantic import BaseModel
 from common.const import Const
 
 
+class SolvingConfidenceLevel(StrEnum):
+    Unsolved = "unsolved"
+    Marginal = "marginal"
+    Confident = "confident"
+    VeryConfident = "very confident"
+    Certain = "certain"
+
 class SolvingSolution(BaseModel):
     ra_rads: float | None = None
     dec_rads: float | None = None
     ra_hours: float = 0.0
+    ra_degs: float = 0.0
     dec_degs: float = 0.0
     matched_stars: int = 0
     catalog_stars: int = 0
@@ -17,6 +26,8 @@ class SolvingSolution(BaseModel):
     pixel_scale: float | None = None
     sources: int | None = None
     index_file: str | None = None
+    confidence_level: SolvingConfidenceLevel | None = None
+    confidence: float | None = None
 
 
 class SolvingResult:
