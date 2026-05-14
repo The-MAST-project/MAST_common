@@ -5,6 +5,7 @@ import logging
 import re
 import shlex
 import subprocess
+import sys
 import threading
 import time
 from pathlib import Path
@@ -71,6 +72,7 @@ def ensure_process_is_running(
     cwd: str | None = None,
     shell: bool = False,
     log_stdout_and_stderr: bool = False,
+    startup_wait_s: int = 30,
 ) -> psutil.Process | None:
     """
     Makes sure a process containing 'pattern' in the command line exists.
@@ -111,6 +113,9 @@ def ensure_process_is_running(
             cmd_posix.split("/")[-1].replace('"', "") if "/" in cmd_posix else cmd_posix.split(" ")[0]
         )
 
+        # Suppress the cmd.exe console window that would otherwise flash on Windows.
+        creation_flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+
         if shell:
             # cmd.exe splits on spaces, so paths containing spaces must be quoted.
             # Quote the .exe portion if it's not already quoted.
@@ -123,12 +128,14 @@ def ensure_process_is_running(
             else:
                 cmd_for_shell = cmd_posix
             process = subprocess.Popen(
-                args=cmd_for_shell, env=env, shell=True, cwd=cwd, stderr=stderr, stdout=stdout
+                args=cmd_for_shell, env=env, shell=True, cwd=cwd, stderr=stderr, stdout=stdout,
+                creationflags=creation_flags,
             )
         else:
             args = cmd.split()
             process = subprocess.Popen(
-                args, env=env, executable=args[0], cwd=cwd, stderr=stderr, stdout=stdout
+                args, env=env, executable=args[0], cwd=cwd, stderr=stderr, stdout=stdout,
+                creationflags=creation_flags,
             )
         if log_stdout_and_stderr:
             threading.Thread(
@@ -151,12 +158,30 @@ def ensure_process_is_running(
             logger.error(f"ensure_process_is_running: failed to start '{cmd}': {e}")
         else:
             logging.error(f"ensure_process_is_running: failed to start '{cmd}': {e}")
+        return None
 
-    # Wait for process to appear
+    # Wait for the process to appear in the process list, with a deadline.
+    deadline = time.monotonic() + startup_wait_s
     while not (p := find_process(name, pattern)):
+        rc = process.poll()
+        if rc is not None:
+            if logger:
+                logger.error(
+                    f"ensure_process_is_running: '{name or pattern}' exited immediately "
+                    f"with code {rc} -- check path, permissions, and dependencies"
+                )
+            return None
+        if time.monotonic() >= deadline:
+            if logger:
+                logger.error(
+                    f"ensure_process_is_running: timed out after {startup_wait_s}s "
+                    f"waiting for '{name or pattern}'"
+                )
+            return None
         if logger:
             logger.info(f"Waiting for process to start: {name or pattern}")
         time.sleep(1)
+    return p
 
 
 class WatchedProcess:
