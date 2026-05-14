@@ -1,19 +1,7 @@
 from abc import ABC, abstractmethod
 
-from pydantic import BaseModel
-
-from common.activities import Activities, ActivitiesVerbal
-
-
-class ComponentStatus(BaseModel):
-    detected: bool = False
-    connected: bool = False
-    activities: int = 0
-    activities_verbal: ActivitiesVerbal = None
-    operational: bool = False
-    why_not_operational: list[str] = []
-    was_shut_down: bool = False
-    model_config = {"arbitrary_types_allowed": True}
+from common.activities import Activities
+from common.models.statuses import ComponentStatus
 
 
 class Component(ABC, Activities):

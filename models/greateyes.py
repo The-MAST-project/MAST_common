@@ -3,6 +3,8 @@ from typing import Literal
 
 from pydantic import BaseModel, field_validator
 
+from common.spec import FrameType
+
 
 class Gain(IntEnum):
     Low = 0  # Low ( Max. Dyn. Range )
@@ -61,8 +63,8 @@ class ReadoutModel(BaseModel):
 
 
 class ProbingModel(BaseModel):
-    interval:   float | None = None
-    boot_delay:   float | None = None
+    interval: float | None = None
+    boot_delay: float | None = None
 
 
 class GreateyesSettingsModel(BaseModel):
@@ -74,6 +76,7 @@ class GreateyesSettingsModel(BaseModel):
     shutter: ShutterModel | None = None
     readout: ReadoutModel | None = None
     probing: ProbingModel | None = None
-    exposure_duration:   float | None = None
-    number_of_exposures:   int | None = 1
-    image_file:   str | None = None
+    exposure_duration: float | None = None
+    number_of_exposures: int | None = 1
+    image_file: str | None = None
+    frame_type: FrameType = FrameType.LIGHT
