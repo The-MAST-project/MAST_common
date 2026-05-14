@@ -42,7 +42,7 @@
     dec = 'None'                # Decimal (e.g. -23.45) or Sexagesimal (DD:MM:SS.FFF)
     magnitude = 0               # optional - Estimated magnitude of researched object
     magnitude_band = 'None'     # optional - band/filter identifier
-    requested_units = []        # List of required units
+    required_units = 1          # Number of required units
     quorum = 1                  # minimal number of units mandatory for this target
     allocated_units = []        # to be filled-in by the scheduler or manually before we have a scheduler
 

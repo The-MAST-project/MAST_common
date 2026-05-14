@@ -1,13 +1,12 @@
 import asyncio
 import logging
-from typing import Literal
 
 from pydantic import BaseModel, ValidationError
 
 from common.api import SpecApi
 from common.canonical import CanonicalResponse
 from common.mast_logging import init_log
-from common.models.assignments import Initiator, SpectrographAssignment
+from common.models.assignments import SpectrographAssignment
 from common.models.plans import Plan
 
 GatherResponse = CanonicalResponse | BaseException | None
@@ -15,21 +14,6 @@ GatherResponse = CanonicalResponse | BaseException | None
 logger = logging.getLogger("tasks")
 init_log(logger)
 
-
-AcquisitionSubpath = Literal["autofocus", "acquisition", "deepspec", "highspec", "spec"]
-
-
-class AcquisitionPathNotification(BaseModel):
-    """
-    Sent to the controller by:
-    - the units, as soon as they know the path of either an 'autofocus' or 'acquisition' folder
-    - the spec, as soon as it has the path of the acquisition
-    """
-
-    initiator: Initiator
-    assignment_id: str  # either plan or batch id
-    src: str
-    subpath: AcquisitionSubpath
 
 
 async def main():

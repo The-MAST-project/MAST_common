@@ -30,7 +30,7 @@ class Target(BaseModel):
         json_schema_extra={
             "ui": {
                 "label": "RA",
-                "pattern": r"^\d{1,2}[: ][0-5]?\d[: ][0-5]?\d(?:\.\d+)?$|^\d+(?:\.\d+)?$",
+                "pattern": r"^([01]?\d|2[0-3])[: ][0-5]\d[: ][0-5]\d(?:\.\d+)?$|^([01]?\d|2[0-3])(?:\.\d+)?$",
                 "error_message": "Sexagesimal (colon or space separated) or decimal hours [0:24]",
                 "widget": "text",
                 "unit": "hours",
@@ -46,7 +46,7 @@ class Target(BaseModel):
         json_schema_extra={
             "ui": {
                 "label": "Dec",
-                "pattern": r"^[+-]?\d{1,2}[: ][0-5]?\d[: ][0-5]?\d(?:\.\d+)?$|^[+-]?\d+(?:\.\d+)?$",
+                "pattern": r"^[+-]?([0-8]?\d|90)[: ][0-5]\d[: ][0-5]\d(?:\.\d+)?$|^[+-]?([0-8]?\d|90)(?:\.\d+)?$",
                 "widget": "text",
                 "unit": "degrees",
                 "summary": True,

@@ -17,12 +17,20 @@ class NewtonBinning(BaseModel):
     y: int = Field(1, ge=1, description="Binning factor in Y")
 
 
+class NewtonRoi(BaseModel):
+    hstart: int | None = None
+    hend: int | None = None
+    vstart: int | None = None
+    vend: int | None = None
+
+
 class NewtonSettingsConfig(BaseModel):
     """Configuration for the Newton camera settings."""
 
     binning: NewtonBinning | None = Field(
         default_factory=lambda: NewtonBinning(x=1, y=1)
     )  # Binning configuration for the camera
+    roi: NewtonRoi | None = None  # Region of interest settings
     shutter: ShutterConfig | None = None
     acquisition_mode: int = 1  # Default acquisition mode
     number_of_exposures: int = 1
