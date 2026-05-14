@@ -101,16 +101,29 @@ def ensure_process_is_running(
         # It's not running, start it
         stdout = subprocess.PIPE if log_stdout_and_stderr else subprocess.DEVNULL
         stderr = subprocess.PIPE if log_stdout_and_stderr else subprocess.DEVNULL
-        cmd = Path(cmd).as_posix() if cmd else None
         if not cmd:
             raise ValueError("ensure_process_is_running: cmd must be set")
+
+        # Convert backslashes to forward slashes for display/matching, but preserve the
+        # original string for shell quoting (cmd.exe needs the path quoted if it has spaces)
+        cmd_posix = Path(cmd).as_posix()
         executable = (
-            cmd.split("/")[-1].replace('"', "") if "/" in cmd else cmd.split(" ")[0]
+            cmd_posix.split("/")[-1].replace('"', "") if "/" in cmd_posix else cmd_posix.split(" ")[0]
         )
 
         if shell:
+            # cmd.exe splits on spaces, so paths containing spaces must be quoted.
+            # Quote the .exe portion if it's not already quoted.
+            m = re.match(r'^(.*?\.exe)(.*)', cmd_posix, re.IGNORECASE)
+            if m:
+                exe_path, exe_args = m.group(1), m.group(2).strip()
+                if ' ' in exe_path and not exe_path.startswith('"'):
+                    exe_path = f'"{exe_path}"'
+                cmd_for_shell = f'{exe_path} {exe_args}'.strip() if exe_args else exe_path
+            else:
+                cmd_for_shell = cmd_posix
             process = subprocess.Popen(
-                args=cmd, env=env, shell=True, cwd=cwd, stderr=stderr, stdout=stdout
+                args=cmd_for_shell, env=env, shell=True, cwd=cwd, stderr=stderr, stdout=stdout
             )
         else:
             args = cmd.split()
@@ -131,10 +144,13 @@ def ensure_process_is_running(
 
         if logger:
             logger.info(
-                f"started process (pid={process.pid}) with cmd: '{cmd}' in {cwd=}"
+                f"started process (pid={process.pid}) with cmd: '{cmd_for_shell if shell else cmd}' in {cwd=}"
             )
-    except Exception:
-        pass
+    except Exception as e:
+        if logger:
+            logger.error(f"ensure_process_is_running: failed to start '{cmd}': {e}")
+        else:
+            logging.error(f"ensure_process_is_running: failed to start '{cmd}': {e}")
 
     # Wait for process to appear
     while not (p := find_process(name, pattern)):
