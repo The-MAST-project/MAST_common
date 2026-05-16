@@ -46,7 +46,7 @@ class DliPowerSwitch(Component):
             try:
                 self.ipaddr = socket.gethostbyname(self.hostname)
             except socket.gaierror:
-                raise
+                logger.warning(f"cannot resolve hostname '{self.hostname}': power switch will not be detected")
 
         self.timeout = 1
         self.base_url = f"http://{self.ipaddr}/"
@@ -66,6 +66,8 @@ class DliPowerSwitch(Component):
             self.upload_outlet_names()
 
     def probe(self):
+        if not self.ipaddr:
+            return
         if not self.detected:
             result = self.get("restapi/relay/outlets/0/state/")
             self._detected = not (isinstance(result, dict) and "error" in result)
