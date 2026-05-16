@@ -1,8 +1,8 @@
 import datetime
 import logging
-from enum import Enum
+from enum import Enum, StrEnum
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -23,7 +23,9 @@ from common.utils import PathMaker, function_name
 logger = logging.Logger(__name__)
 init_log(logger)
 
-StatusType = Literal["basic", "full"]
+class StatusType(StrEnum):
+    BASIC = "basic"
+    FULL = "full"
 
 
 class PowerStatus(BaseModel):
@@ -33,7 +35,7 @@ class PowerStatus(BaseModel):
 class BaseStatus(BaseModel):
     """Base class for elements that can be detected/not-detected and operational/not-operational."""
 
-    type: StatusType = "basic"
+    type: StatusType = StatusType.BASIC
     detected: bool | None = None
     operational: bool | None = None
     why_not_operational: list[str] | None = None
@@ -462,7 +464,7 @@ class ImagerStatus(PowerStatus, ComponentStatus):
 class FullUnitStatus(ComponentStatus, PowerStatus):
     """Full unit status with all components, returned from the unit itself."""
 
-    type: StatusType = "full"
+    type: StatusType = StatusType.FULL
     id: int
     guiding: bool = False
     autofocusing: bool = False
