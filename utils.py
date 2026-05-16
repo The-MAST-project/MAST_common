@@ -372,9 +372,10 @@ def canonic_unit_name(name: str) -> str | None:
     Tries to make a canonic MAST unit name, accepting
     - mastw, mast00
     - mast1 to mast20 (with or w/out leading zero)
+    - mast-<site>-NN (e.g. mast-wis-01, mast-ns-15)
 
     :param name: The input name
-    :return: canonic name ('mastw', 'mast00', 'mast01'..'mast20') or None
+    :return: canonic name or None
     """
     op = function_name()
 
@@ -391,6 +392,13 @@ def canonic_unit_name(name: str) -> str | None:
                 return name
             else:
                 return None
+        else:
+            m = re.match(r"^-([a-z]+)-(\d+)$", suffix)
+            if m:
+                unit_number = int(m.group(2))
+                if 1 <= unit_number <= 20:
+                    return name
+            return None
     else:
         return None
 
