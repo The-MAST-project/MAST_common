@@ -142,7 +142,7 @@ class Config:
             This is a bootstrap issue: We need to determine the site based on the hostname before we can send
              database queries to a MAST-{site}-control machine.
             """
-            hostname = socket.gethostname()
+            hostname = socket.gethostname().lower()
             site = None
             if hostname.startswith("mast"):
                 if hostname[4:] == "w":
@@ -153,7 +153,7 @@ class Config:
                 ):
                     site = "ns"
                 else:
-                    pat = re.compile(r"^mast-([^-]+)-(?:control|spec)$")
+                    pat = re.compile(r"^mast-([^-]+)-(?:control|spec|\d+)$")
                     m = pat.match(hostname)
                     if m:
                         site = m.group(1)
@@ -342,6 +342,7 @@ class Config:
 
         if unit_name is None:
             unit_name = socket.gethostname().split(".")[0]
+        unit_name = unit_name.lower()
 
         if site_name is None:
             site_name = self.site_name_from_unit_name(unit_name)
