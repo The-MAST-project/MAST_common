@@ -309,6 +309,7 @@ class Config:
         )
 
     def _verify_unit_site_membership(self, site_name: str, unit_name: str) -> bool:
+        unit_name = unit_name.lower()
         sites = self.get_sites()
         site = [s for s in sites if s.name == site_name]
         if not site:
@@ -322,6 +323,7 @@ class Config:
         return True
 
     def site_name_from_unit_name(self, unit_name: str) -> str | None:
+        unit_name = unit_name.lower()
         sites = self.get_sites()
         for site in sites:
             if unit_name in site.unit_ids:
