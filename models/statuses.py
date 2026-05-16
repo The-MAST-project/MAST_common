@@ -26,8 +26,12 @@ init_log(logger)
 StatusType = Literal["basic", "full"]
 
 
+class PowerStatus(BaseModel):
+    powered: bool = False
+
+
 class BaseStatus(BaseModel):
-    """Base class for unit status."""
+    """Base class for elements that can be detected/not-detected and operational/not-operational."""
 
     type: StatusType = "basic"
     detected: bool | None = None
@@ -41,10 +45,6 @@ class ComponentStatus(BaseStatus):
     activities_verbal: ActivitiesVerbal = None
     was_shut_down: bool = False
     model_config = {"arbitrary_types_allowed": True}
-
-
-class PowerStatus(BaseModel):
-    powered: bool = False
 
 
 TriStateBool = bool | None
@@ -477,7 +477,6 @@ class FullUnitStatus(ComponentStatus, PowerStatus):
     autofocus: dict | None = None
     corrections: list | None = None
     date: str | None = None
-    powered: bool = True
 
 
 class BasicUnitStatus(BaseStatus, PowerStatus):
@@ -488,11 +487,10 @@ UnitStatus = BasicUnitStatus | FullUnitStatus
 
 
 class ControllerStatus(BaseStatus):
-    why_not_operational: list[str] | None = []
+    pass
 
 
-class GreateyesStatus(ComponentStatus):
-    powered: bool = False
+class GreateyesStatus(PowerStatus, ComponentStatus):
     band: str | None = None
     ipaddr: str | None = None
     enabled: bool = False
@@ -513,7 +511,6 @@ class DeepspecStatus(ComponentStatus):
 
 
 class NewtonStatus(ComponentStatus):
-    powered: bool = False
     set_point: float | None = None
     temperature: float | None = None
     errors: list[str] | None = None
@@ -537,7 +534,7 @@ class HighspecStatus(ComponentStatus):
 CalibrationLampStatus = BaseStatus
 
 
-class WheelStatus(ComponentStatus):
+class WheelStatus(PowerStatus, ComponentStatus):
     filters: dict[FilterPositions, str] = {}
     serial_number: str | None = None
     id: str | None = None
