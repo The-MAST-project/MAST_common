@@ -574,7 +574,7 @@ class SiteStatus(BaseModel):
 
     controller: ControllerStatus | None = None
     units: dict[str, UnitStatus] | None = None
-    spec: SpecStatus | None = None
+    spec: SpecStatus | BaseStatus | None = None
 
 
 class SitesStatus(BaseModel):
