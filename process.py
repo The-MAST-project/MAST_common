@@ -73,6 +73,7 @@ def ensure_process_is_running(
     shell: bool = False,
     log_stdout_and_stderr: bool = False,
     startup_wait_s: int = 30,
+    needs_console: bool = False,
 ) -> psutil.Process | None:
     """
     Makes sure a process containing 'pattern' in the command line exists.
@@ -114,7 +115,12 @@ def ensure_process_is_running(
         )
 
         # Suppress the cmd.exe console window that would otherwise flash on Windows.
-        creation_flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+        # Some console apps (e.g. ps3cli --server) exit immediately without a real console,
+        # so callers can opt out via needs_console=True.
+        if sys.platform == "win32" and not needs_console:
+            creation_flags = subprocess.CREATE_NO_WINDOW
+        else:
+            creation_flags = 0
 
         if shell:
             # cmd.exe splits on spaces, so paths containing spaces must be quoted.
