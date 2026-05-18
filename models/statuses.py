@@ -23,6 +23,7 @@ from common.utils import PathMaker, function_name
 logger = logging.Logger(__name__)
 init_log(logger)
 
+
 class StatusType(StrEnum):
     BASIC = "basic"
     FULL = "full"
@@ -513,7 +514,10 @@ class DeepspecStatus(ComponentStatus):
 
 
 class NewtonStatus(ComponentStatus):
-    set_point: float | None = None
+    powered: bool = False
+    current_set_point: int | None = None
+    regular_set_point: int | None = None
+    science_set_point: int | None = None
     temperature: float | None = None
     errors: list[str] | None = None
     latest_exposure: Any | None = None

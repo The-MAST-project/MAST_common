@@ -4,10 +4,10 @@ from typing import Literal
 from pydantic import BaseModel, model_validator
 
 from common.deep import deep_dict_update
+from common.models.newton import NewtonSettingsConfig
 
 from .chiller import ChillerConfig
 from .greateyes import GreateyesConfig
-from .newton import NewtonSettingsConfig
 from .power import OutletConfig, PowerConfig, PowerSwitchConfig
 from .stage import SpecStagesConfig
 
