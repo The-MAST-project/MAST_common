@@ -95,7 +95,10 @@ def _collect_submodules(repo: Path) -> list[SubmoduleReport]:
         return []
     out: list[SubmoduleReport] = []
     for line in result.stdout.splitlines():
-        # ` <sha> <path> (<describe>)` — leading char: ' ' clean, '+' diverged, '-' uninit, 'U' conflicts
+        # `<marker><sha> <path> (<describe>)` — marker: ' ' clean, '+' diverged,
+        # '-' uninitialised, 'U' conflicts. The <sha> shown is the *checked-out*
+        # commit, not the recorded one; we read the recorded SHA from the parent
+        # tree separately so a drift case shows both values.
         line = line.rstrip("\n")
         if not line:
             continue
@@ -104,17 +107,10 @@ def _collect_submodules(repo: Path) -> list[SubmoduleReport]:
         tokens = rest.split(None, 2)
         if len(tokens) < 2:
             continue
-        recorded = tokens[0]
+        status_sha = tokens[0]
         sub_path = tokens[1]
-        # Resolve the actually-checked-out SHA
-        sub_dir = (repo / sub_path).resolve()
-        checked_out = recorded
-        if marker in {"+", "U"}:
-            sha, _, sub_code = _run_git(["rev-parse", "HEAD"], sub_dir)
-            if sub_code == 0 and sha:
-                checked_out = sha
-        elif marker == "-":
-            checked_out = ""  # uninitialised
+        recorded = _recorded_submodule_sha(repo, sub_path) or status_sha
+        checked_out = status_sha if marker != "-" else ""
         out.append(
             SubmoduleReport(
                 path=sub_path,
@@ -124,6 +120,18 @@ def _collect_submodules(repo: Path) -> list[SubmoduleReport]:
             )
         )
     return out
+
+
+def _recorded_submodule_sha(repo: Path, sub_path: str) -> Optional[str]:
+    """Return the submodule SHA *recorded* in the parent's HEAD tree."""
+    stdout, _, code = _run_git(["ls-tree", "HEAD", sub_path], repo)
+    if code != 0 or not stdout:
+        return None
+    # Format: `<mode> commit <sha>\t<path>`
+    parts = stdout.split()
+    if len(parts) >= 3 and parts[1] == "commit":
+        return parts[2]
+    return None
 
 
 def _collect_repo(repo: Path) -> RepoReport:
