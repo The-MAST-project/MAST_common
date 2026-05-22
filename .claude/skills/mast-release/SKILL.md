@@ -27,7 +27,7 @@ The CLI lives at `MAST_control/tools/mast-release` and exposes three verbs. Pick
 
 Use when the user is creating a new release. The flow the CLI runs:
 
-1. Preflight every MAST_* repo. Hard-fails (block the whole batch) on: dirty working tree, detached HEAD, or tag already at a different SHA than HEAD.
+1. **Fetch every remote** in every MAST_* repo, then **preflight**. Hard-fails (block the whole batch) on: dirty working tree, detached HEAD, tag already at a different SHA than HEAD, or **the current branch being behind its canonical upstream mainline** (upstream/master → upstream/main → origin/main → origin/master, first one that resolves wins). The freshness check is the most important addition for foolproofing: tagging a stale branch silently excludes commits that have already landed on mainline, producing exactly the partial-deployment state the release process is meant to prevent.
 2. Print the plan (one row per repo with branch + HEAD + action), then prompt for confirmation by re-typing the tag name. The re-type-the-name pattern is deliberate — it prevents muscle-memory `y` from misfiring a destructive coordinated change.
 3. Apply `git tag -a <name> -m <message>` in every repo.
 4. Run the build report. Push gate requires: single `common_sha_consistency` SHA, no per-repo errors, and every repo's new tag resolving to its current HEAD.
@@ -39,7 +39,10 @@ Run the command like this (note both args are positional and the message must be
 MAST_control/tools/mast-release tag v2.0 "Operational baseline May 2026"
 ```
 
-`--yes` skips both confirmation prompts; use it only when the user has explicitly approved automation (CI, scripted release). For interactive use, leave it off so the human types the tag name twice.
+Flags:
+
+- `--yes` — skip both confirmation prompts. Use only when the user has explicitly approved automation (CI, scripted release). For interactive use, leave it off so the human types the tag name twice.
+- `--allow-stale` — skip the freshness check. Use only when the user has explicitly stated they want to tag a stale branch (rare; usually this means tagging a hotfix or operational snapshot that intentionally lags mainline). Do not reach for this flag just because the freshness check is inconvenient — the right response to a stale branch is almost always to merge mainline in first.
 
 ### 2. `push <name>` — push an already-applied tag
 
@@ -78,6 +81,7 @@ The CLI exits with code `1` and prints which repo(s) failed and why. Common caus
 
 - **"working tree dirty"** — uncommitted changes in some repo. Ask the user whether to stash, commit, or discard. Do not silently `git stash` — the user needs to know what's about to disappear.
 - **"detached HEAD"** — someone left a repo on a checked-out SHA rather than a branch. Ask which branch they intended; checkout that branch first.
+- **"branch '<branch>' is stale — N commit(s) behind <ref>"** — the working branch is missing commits that already landed on the canonical mainline. This is the freshness gate. The correct response is almost always to bring the branch up to date before tagging: for each stale repo, `git checkout <branch> && git pull --ff-only <remote> <branch>` (or `git merge <canonical-ref>` if a merge commit is needed). Confirm with the user before doing this — pulling can introduce changes they haven't seen. Only fall back to `--allow-stale` if the user explicitly says they want to tag the stale state (e.g. a hotfix or operational baseline that intentionally lags mainline). After the merge/pull lands, re-run `mast-release tag` — the freshness check should now pass.
 - **"tag '<name>' already exists at a different SHA"** — the requested tag already exists on at least one repo pointing somewhere else. Two options: pick a different tag name (preferred), or have the user explicitly delete the old tag with `git tag -d <name>` in every affected repo (and `git push --delete origin <name>` if it was pushed). The CLI deliberately refuses to move tags silently — re-tagging is a destructive action the user must drive.
 
 ### Tagging fails partway (exit code 2)
