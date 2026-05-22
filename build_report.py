@@ -192,6 +192,59 @@ def _derive_common_sha_consistency(repos: list[RepoReport]) -> list[str]:
     return sorted(shas)
 
 
+def format_text(report: BuildReport) -> str:
+    """Render `report` as the same human-readable table the workspace CLI prints.
+
+    Lifted out of the CLI so other tools (e.g. `mast-release`) can reuse it
+    without duplicating the layout.
+    """
+    lines: list[str] = []
+    lines.append(
+        f"Build report — host={report.host} generated_at={report.generated_at.isoformat()}"
+    )
+    lines.append(f"Workspace: {report.workspace_root}")
+    lines.append("")
+    header = f"{'Repo':<26} {'Branch':<22} {'HEAD':<10} {'Describe':<28} {'Dirty'}"
+    lines.append(header)
+    lines.append("-" * len(header))
+    for r in report.repos:
+        if r.error:
+            lines.append(f"{r.name:<26} ERROR: {r.error}")
+            continue
+        dirty = r.dirty_summary or ""
+        head = (r.head_sha or "")[:9]
+        branch = (r.branch or "")[:21]
+        describe = (r.head_describe or "")[:27]
+        lines.append(f"{r.name:<26} {branch:<22} {head:<10} {describe:<28} {dirty}")
+        for sub in r.submodules:
+            flag = "" if sub.matches else "  DRIFT"
+            lines.append(
+                f"  └─ {sub.path:<22} recorded={sub.recorded_sha[:9]}  "
+                f"checked_out={(sub.checked_out_sha or '-')[:9]}{flag}"
+            )
+
+    lines.append("")
+    pkg = report.common_package
+    lines.append(
+        f"MAST_common package: version={pkg.installed_version or '-'}  "
+        f"path={pkg.installed_path or '-'}"
+    )
+    if pkg.note:
+        lines.append(f"  note: {pkg.note}")
+
+    lines.append("")
+    if len(report.common_sha_consistency) > 1:
+        lines.append(
+            f"⚠ MAST_common SHA drift: {len(report.common_sha_consistency)} distinct SHAs referenced"
+        )
+        for sha in report.common_sha_consistency:
+            lines.append(f"  - {sha}")
+    else:
+        lines.append("MAST_common SHA consistency: OK")
+
+    return "\n".join(lines)
+
+
 def collect_build_report(workspace_root: Path) -> BuildReport:
     """Walk `workspace_root` for sibling MAST_* git repos and assemble a report.
 
