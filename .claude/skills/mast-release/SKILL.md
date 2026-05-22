@@ -36,13 +36,16 @@ Use when the user is creating a new release. The flow the CLI runs:
 Run the command like this (note both args are positional and the message must be quoted):
 
 ```bash
-MAST_control/tools/mast-release tag v2.0 "Operational baseline May 2026"
+# Tag each repo at the tip of eli/build-report when present, else canonical main.
+MAST_control/tools/mast-release tag v2.0 "Operational baseline May 2026" \
+    --from eli/build-report
 ```
 
 Flags:
 
-- `--yes` — skip both confirmation prompts. Use only when the user has explicitly approved automation (CI, scripted release). For interactive use, leave it off so the human types the tag name twice.
-- `--allow-stale` — skip the freshness check. Use only when the user has explicitly stated they want to tag a stale branch (rare; usually this means tagging a hotfix or operational snapshot that intentionally lags mainline). Do not reach for this flag just because the freshness check is inconvenient — the right response to a stale branch is almost always to merge mainline in first.
+- `--yes` — skip both confirmation prompts (pre-tag and pre-push). Use only when the user has explicitly approved automation (CI, scripted release). For interactive use, leave it off so the human types the tag name twice.
+- `--allow-stale` — skip the freshness check. Use only when the user has explicitly stated they want to tag a stale ref (rare; usually this means tagging a hotfix or operational snapshot that intentionally lags mainline). Do not reach for this flag just because the freshness check is inconvenient — the right response to a stale target is almost always to merge mainline in first.
+- `--from <branch>` — in each repo, tag that local branch's tip if it exists; otherwise fall back to that repo's canonical mainline tip (upstream/master → upstream/main → origin/main → origin/master, first that resolves). Without `--from` the tagger uses current HEAD in each repo. **Strongly prefer `--from` when the release work lives on a shared working branch like `eli/build-report` that not every repo has** — it stops you from accidentally tagging an unrelated working branch in a repo where the shared branch was never created (the MAST_provisioning-tagged-on-vm-provisioning failure mode). The fallback line in the plan output makes the canonical-mainline choice explicit per repo, so the user can verify before confirming.
 
 ### 2. `push <name>` — push an already-applied tag
 
