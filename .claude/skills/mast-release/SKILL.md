@@ -103,6 +103,38 @@ Tagging succeeded but the build report shows incoherence (MAST_common SHA drift,
 
 After a successful tag, the build report's `head_describe` field automatically picks up the new tag name on every repo. This is the "friendly name" surfacing for free — there is no separate manifest file to update, no second source of truth to keep in sync. If the user asks "what's the current MAST version?", point them at `head_describe` from `GET /build-report` on any service, or `python build_report.py` at the workspace root.
 
+## After PRs merge: propagating tags upstream
+
+This is the easiest step to forget and the one that quietly produces release-vs-upstream drift. **Tags are independent refs; PR merges only move branches.** When `elibrody-weizmann:eli/build-report` is merged into `The-MAST-project:master`, the upstream repo gains the commits but **not** the `1.0.0` tag that was pushed to the fork. Until someone explicitly puts the tag on upstream, `git describe` on a fresh clone from the org repo will not see the release name at all.
+
+The right next step depends on which merge strategy GitHub used. Read the merged PR page to confirm; don't guess.
+
+### Merge-commit strategy (preferred)
+
+GitHub creates a merge commit whose first parent is upstream's previous mainline tip and whose second parent is the head of the fork branch. The originally-tagged commit (e.g. `ad50d52` for MAST_common) exists on upstream verbatim as the second-parent ancestor. The fork's tag still points at the correct SHA, and that SHA is reachable from upstream's mainline. The propagation is one push per repo:
+
+```bash
+git push upstream refs/tags/<tag>          # for repos where you have upstream rights
+```
+
+For the org repos where the user lacks upstream push rights, ask the maintainer to do this, or open a follow-up issue listing the tag → SHA mapping the build report produced (the `head_describe` row per repo).
+
+### Squash-merge or rebase-merge strategy
+
+GitHub rewrites the PR's commits into a single new commit (squash) or a chain of replayed commits (rebase) before applying them to upstream mainline. **The fork's tagged SHA no longer exists in upstream's history** — pushing the tag to upstream would still succeed mechanically (refs hold target SHAs regardless of reachability), but the result is an orphan tag pointing at a commit that nothing on upstream can reach. That is more confusing than no tag at all.
+
+The clean response is to **re-tag from the merged mainline tip** instead of pushing the fork tag:
+
+1. In every affected repo: `git fetch upstream`, then locally delete the fork tag and (if it was already pushed to your fork) delete it on origin too.
+2. Re-run `mast-release tag <tag> "<message>" --from <mainline>` where `<mainline>` is the canonical mainline branch (`master` or `main` depending on the repo). The CLI's `--from` fallback already does the right thing — for repos that have a local `master`/`main` branch tracking upstream it'll tag the branch tip; for any repo missing that local branch, it falls back to the canonical mainline ref.
+3. Push the new tags. `origin` is fine if upstream rights are unavailable, but then someone still needs to push to upstream eventually.
+
+**Strong preference**: ask the maintainer to use merge-commit on these release PRs so the squash-merge dance isn't needed. The release tag is a much more useful artifact when its SHA is actually on upstream's mainline.
+
+### Sanity check after propagation
+
+Run the build report against a fresh clone of the upstream repos to confirm `head_describe` shows the expected tag everywhere. If a repo still shows the previous tag plus a `-N-gXXX` suffix, the upstream tag push didn't reach that repo — usually a forgotten one.
+
 ## Don'ts
 
 - Do not invent a "release manifest" file (`releases/*.toml` or similar). The user explicitly rejected this — multiple sources of truth.
