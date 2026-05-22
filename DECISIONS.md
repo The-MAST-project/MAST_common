@@ -1,5 +1,52 @@
 # DECISIONS
 
+## [2026-05-22] Annotated git tags are the only source of truth for release identity
+
+**Why**
+
+The build report needed a "friendly name" for a coordinated snapshot — something
+human-readable like `v2.0` or `2026-05-operational` to put next to the SHAs.
+Two natural primitives existed: annotated git tags (already surfaced via
+`git describe --tags` in `head_describe`) or a separate manifest file mapping
+SHAs to names. A manifest is a second source of truth that has to be kept in
+sync with the actual repo state, which is exactly the class of problem the
+build report was created to detect. Tags also propagate cleanly with the repo,
+survive cloning, and are already visible in the existing report.
+
+Doing per-repo tagging by hand across ~8 repos is the kind of boilerplate that
+produces partial-deployment states, so the coordination is moved into one CLI.
+
+**What**
+
+- A new CLI lives at `MAST_control/tools/mast-release` with three verbs:
+  `tag`, `push`, `list`. It enumerates every `MAST_*` repo in the workspace,
+  preflight-checks each (no dirty trees, no detached HEAD, no tag-name SHA
+  conflicts), applies the same annotated tag at HEAD across all of them, runs
+  the existing `collect_build_report` to verify coherence, and only then
+  offers an explicit push-to-`origin` prompt. The tag-name itself must be
+  re-typed to confirm both the tag operation and the push.
+- No `releases/*.toml` manifest file. The build report's existing
+  `head_describe` field carries the human-readable release name once tags
+  exist; no schema change to `BuildReport` was needed.
+- `common.build_report.format_text(report)` was lifted out of the workspace
+  CLI so `mast-release` can render the same table after tagging, without
+  duplicating layout.
+
+**Implications**
+
+- A release is identifiable by typing the tag name into `git describe` (or
+  reading it from `head_describe` in the build report) on any repo. No tooling
+  is required to interpret a release identity.
+- Tag-set drift across repos (one repo missing the latest tag) is detectable
+  via `mast-release list` and the build report itself, since `head_describe`
+  on the laggard repo will show the previous tag.
+- The CLI is local-by-default. To make a release visible to the rest of the
+  team, the push step must be confirmed by re-typing the tag name. Push target
+  is `origin` only; per-repo push failures (e.g. forks with no push rights on
+  `upstream`) are surfaced but do not abort the batch.
+- Re-tagging requires deleting the old tag first; `mast-release` will not
+  silently move a tag.
+
 ## [2026-05-21] Add cross-module build / version report
 
 **Why**
