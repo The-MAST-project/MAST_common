@@ -5,17 +5,38 @@ description: How to cut a coordinated release across the MAST ecosystem by stamp
 
 # Stamping coordinated MAST releases
 
-This skill is the recipe for using `MAST_control/tools/mast-release` correctly. The CLI is the only sanctioned way to apply a release identity across the MAST ecosystem — tags are the single source of truth for "what version is this snapshot?", and applying them manually across ~9 repos is exactly the kind of boilerplate that creates partial-deployment states (the problem the build report was built to detect).
+This skill is the recipe for using `MAST_control/tools/mast-release` correctly. The CLI is the only sanctioned way to apply a release identity across the MAST ecosystem — tags are the single source of truth for "what version is this snapshot?", and applying them manually across ~8 repos is exactly the kind of boilerplate that creates partial-deployment states (the problem the build report was built to detect).
+
+## Audience: this is a maintainer tool
+
+`mast-release` is run by the person with write access to **every** MAST_* repo on the canonical org remote (`upstream`/`The-MAST-project`), from a workstation that has all of those repos checked out at the right state. In this project's social reality that is the **maintainer**, not contributors who hold only fork-push rights on `origin`.
+
+**Before reaching for `tag` or `push`, figure out which side the user is on.** Two clues are usually enough:
+
+- Did `git ls-remote upstream HEAD` (or similar) recently succeed for an org-write operation — i.e. does the user routinely push tags or branches to `upstream/The-MAST-project/*`? If yes → maintainer.
+- Is the user talking about *their* PRs being reviewed, merged by someone else? If yes → contributor.
+
+If the user is a **contributor**, do **not** offer to run `mast-release tag` or `mast-release push` against their forks. Tags applied to `elibrody-weizmann/*` (or any fork) are not release-quality artifacts — they live only on the fork, the upstream repo does not see them, and they accumulate as stale fork-side noise. The contributor path is:
+
+1. Develop on a shared working branch (e.g. `eli/<topic>`) across the affected repos.
+2. Open PRs from fork → upstream, one per repo touched.
+3. **Stop here.** Wait for the maintainer to merge and, if they accept the release-tagging workflow, run `mast-release tag` themselves on a workstation with upstream write rights.
+
+The two CLI verbs a contributor *can* usefully run are:
+
+- `mast-release list` — read-only audit of which tags exist where, useful for "what was the last release named?" type questions.
+- `mast-release tag` with `--allow-stale` and `--yes` on a throwaway scratch tag, for local-only experimentation. Always delete the throwaway tag afterwards.
+
+If the user asks you to "cut a release" and you've identified them as a contributor, the right response is to offer to prepare the PRs and then explain that the maintainer is the one who tags after merge. Don't run the tagger.
 
 ## When to reach for this
 
-A "release" in MAST means: every `MAST_*` repo in the workspace gets the same annotated git tag at its current HEAD, in one coordinated operation. Use this skill when the user:
+A "release" in MAST means: every `MAST_*` repo in the workspace gets the same annotated git tag at the right commit, in one coordinated operation, pushed to `upstream`. Use this skill when:
 
-- wants to cut a release, mark a baseline, freeze a version, or stamp a name
-- asks how to apply a friendly version name across MAST
-- wants to push release tags to `origin` after a previous local-only tagging
-- wants to audit which tags exist in which repos (drift detection)
-- mentions specific tag names in a release context (e.g. "tag this as v2.0")
+- A **maintainer** wants to cut a release, mark a baseline, freeze a version, or stamp a name.
+- A **contributor** asks about the release process (answer: explain the contributor → maintainer handoff; do not run the tagger).
+- Anyone wants to audit which tags exist in which repos (`list` is safe for everyone).
+- Anyone wants to push release tags to `origin` after a previous local-only tagging (`push` is maintainer-only in practice, since it pushes to `origin` which for a contributor is their fork).
 
 Do NOT reach for this skill for: per-repo tagging on a single repo, branch operations, or anything that isn't a coordinated cross-repo version stamp.
 
