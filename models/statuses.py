@@ -1,8 +1,8 @@
 import datetime
 import logging
-from enum import Enum
+from enum import Enum, StrEnum
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -23,13 +23,19 @@ from common.utils import PathMaker, function_name
 logger = logging.Logger(__name__)
 init_log(logger)
 
-StatusType = Literal["basic", "full"]
+class StatusType(StrEnum):
+    BASIC = "basic"
+    FULL = "full"
+
+
+class PowerStatus(BaseModel):
+    powered: bool = False
 
 
 class BaseStatus(BaseModel):
-    """Base class for unit status."""
+    """Base class for elements that can be detected/not-detected and operational/not-operational."""
 
-    type: StatusType = "basic"
+    type: StatusType = StatusType.BASIC
     detected: bool | None = None
     operational: bool | None = None
     why_not_operational: list[str] | None = None
@@ -41,10 +47,6 @@ class ComponentStatus(BaseStatus):
     activities_verbal: ActivitiesVerbal = None
     was_shut_down: bool = False
     model_config = {"arbitrary_types_allowed": True}
-
-
-class PowerStatus(BaseModel):
-    powered: bool = False
 
 
 TriStateBool = bool | None
@@ -462,7 +464,7 @@ class ImagerStatus(PowerStatus, ComponentStatus):
 class FullUnitStatus(ComponentStatus, PowerStatus):
     """Full unit status with all components, returned from the unit itself."""
 
-    type: StatusType = "full"
+    type: StatusType = StatusType.FULL
     id: int
     guiding: bool = False
     autofocusing: bool = False
@@ -477,7 +479,6 @@ class FullUnitStatus(ComponentStatus, PowerStatus):
     autofocus: dict | None = None
     corrections: list | None = None
     date: str | None = None
-    powered: bool = True
 
 
 class BasicUnitStatus(BaseStatus, PowerStatus):
@@ -488,11 +489,10 @@ UnitStatus = BasicUnitStatus | FullUnitStatus
 
 
 class ControllerStatus(BaseStatus):
-    why_not_operational: list[str] | None = []
+    pass
 
 
-class GreateyesStatus(ComponentStatus):
-    powered: bool = False
+class GreateyesStatus(PowerStatus, ComponentStatus):
     band: str | None = None
     ipaddr: str | None = None
     enabled: bool = False
@@ -513,7 +513,6 @@ class DeepspecStatus(ComponentStatus):
 
 
 class NewtonStatus(ComponentStatus):
-    powered: bool = False
     set_point: float | None = None
     temperature: float | None = None
     errors: list[str] | None = None
@@ -537,7 +536,7 @@ class HighspecStatus(ComponentStatus):
 CalibrationLampStatus = BaseStatus
 
 
-class WheelStatus(ComponentStatus):
+class WheelStatus(PowerStatus, ComponentStatus):
     filters: dict[FilterPositions, str] = {}
     serial_number: str | None = None
     id: str | None = None
@@ -575,7 +574,7 @@ class SiteStatus(BaseModel):
 
     controller: ControllerStatus | None = None
     units: dict[str, UnitStatus] | None = None
-    spec: SpecStatus | None = None
+    spec: SpecStatus | BaseStatus | None = None
 
 
 class SitesStatus(BaseModel):
