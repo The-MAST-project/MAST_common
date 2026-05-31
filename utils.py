@@ -386,9 +386,9 @@ def canonic_unit_name(name: str) -> str | None:
         suffix = name[4:]
         if suffix == "w" or suffix == "00":
             return name
-        elif name.isdigit():
-            unit_number = int(name[4:])
-            if 1 >= unit_number <= 20:
+        elif suffix.isdigit():
+            unit_number = int(suffix)
+            if 1 <= unit_number <= 20:
                 return name
             else:
                 return None
