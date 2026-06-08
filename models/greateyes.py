@@ -26,6 +26,19 @@ class ReadoutAmplifiers(IntEnum):
     OSR_AND_OSL = 2
 
 
+ReadoutAmplifiersNames = Literal["OSR", "OSL", "OSR_AND_OSL"]
+ReadoutAmplifiersMapping = {
+    "OSR": ReadoutAmplifiers.OSR,
+    "OSL": ReadoutAmplifiers.OSL,
+    "OSR_AND_OSL": ReadoutAmplifiers.OSR_AND_OSL,
+}
+readout_amplifier_names = {
+    ReadoutAmplifiers.OSR: "OSR",
+    ReadoutAmplifiers.OSL: "OSL",
+    ReadoutAmplifiers.OSR_AND_OSL: "OSR_AND_OSL",
+}
+
+
 class CropModeModel(BaseModel):
     col: int
     line: int
@@ -51,6 +64,24 @@ class ReadoutSpeed(IntEnum):
     ReadoutSpeed_500_kHz = 500
     ReadoutSpeed_1_MHz = 1000
     ReadoutSpeed_3_MHz = 3000
+
+
+ReadoutSpeedNames = Literal[
+    "50_kHz",
+    "100_kHz",
+    "250_kHz",
+    "500_kHz",
+    "1_MHz",
+    "3_MHz",
+]
+ReadoutSpeedMapping = {
+    "50_kHz": ReadoutSpeed.ReadoutSpeed_50_kHz,
+    "100_kHz": ReadoutSpeed.ReadoutSpeed_100_kHz,
+    "250_kHz": ReadoutSpeed.ReadoutSpeed_250_kHz,
+    "500_kHz": ReadoutSpeed.ReadoutSpeed_500_kHz,
+    "1_MHz": ReadoutSpeed.ReadoutSpeed_1_MHz,
+    "3_MHz": ReadoutSpeed.ReadoutSpeed_3_MHz,
+}
 
 
 class ReadoutModel(BaseModel):
