@@ -156,7 +156,9 @@ class PathMaker:
             raise Exception(
                 f"bad {spec_name=}, should be one of ['highspec', 'deepspec']"
             )
-        folder = PathMaker().make_daily_folder_name(os.path.join(Filer().shared.root))
+        location = Filer().ram
+        assert location is not None
+        folder = PathMaker().make_daily_folder_name(os.path.join(location.root))
         folder = os.path.join(folder, spec_name)
         folder = os.path.join(
             folder, "acquisition-" + PathMaker().make_seq(folder, None)
@@ -172,7 +174,10 @@ class PathMaker:
             raise Exception(
                 f"bad {spec_name=}, should be one of ['highspec', 'deepspec']"
             )
-        folder = PathMaker().make_daily_folder_name(os.path.join(Filer().shared.root))
+
+        location = Filer().ram
+        assert location is not None
+        folder = PathMaker().make_daily_folder_name(os.path.join(location.root))
         folder = os.path.join(folder, spec_name, "Exposures")
         folder = os.path.join(folder, "seq=" + PathMaker().make_seq(folder, None))
         if band:
