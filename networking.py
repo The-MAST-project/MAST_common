@@ -2,14 +2,12 @@ import ipaddress
 import logging
 import socket
 
-from common.const import Const
+from common.config.local import load_local_config
 from common.mast_logging import init_log
 from common.utils import function_name
 
 logger = logging.getLogger("networking")
 init_log(logger, logging.DEBUG)
-
-WEIZMANN_DOMAIN = "weizmann.ac.il"
 
 
 class NetworkDestination:
@@ -45,8 +43,9 @@ class NetworkDestination:
                 ipaddr = socket.gethostbyname(addr)
                 hostname = addr
             except socket.gaierror:
-                if not addr.endswith("." + Const.WEIZMANN_DOMAIN):
-                    full_host = addr + "." + Const.WEIZMANN_DOMAIN
+                domain = load_local_config().domain
+                if not addr.endswith("." + domain):
+                    full_host = addr + "." + domain
                     try:
                         ipaddr = socket.gethostbyname(full_host)
                         hostname = full_host

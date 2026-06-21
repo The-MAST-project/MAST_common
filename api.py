@@ -11,6 +11,7 @@ import humanfriendly
 
 from common.canonical import CanonicalResponse
 from common.config import Config
+from common.config.local import load_local_config
 from common.config.site import Site
 from common.const import Const
 from common.mast_logging import init_log
@@ -174,7 +175,7 @@ class BaseApi:
             except socket.gaierror:
                 try:
                     self.ipaddr = socket.gethostbyname(
-                        hostname + "." + Const.WEIZMANN_DOMAIN
+                        hostname + "." + load_local_config().domain
                     )
                 except socket.gaierror as err:
                     raise ValueError(f"cannot get 'ipaddr' for {hostname=}") from err
@@ -455,7 +456,7 @@ class NotificationApi(BaseApi):
             return
         port = service_conf.port
 
-        controller_fqdn = f"{site.controller_host}.{Const.WEIZMANN_DOMAIN}"
+        controller_fqdn = f"{site.controller_host}.{load_local_config().domain}"
         self.timeout = self.NOTIFICATION_TIMEOUT
         self.errors = []
         self.detected = False

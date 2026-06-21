@@ -42,8 +42,6 @@ class Site(BaseModel):
     units_in_maintenance: list[str] = []
     controller_host: str
     spec_host: str
-    domain: str
-    local: bool = False
     location: Location = Location()
     buildings: list[Building] = []
     unit_ids: str | list[str]

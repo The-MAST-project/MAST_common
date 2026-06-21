@@ -2,6 +2,53 @@
 
 ---
 
+## [2026-06-21] Per-machine bootstrap config moves to a TOML file; site never derived from hostname
+
+**Why:** `Config` hard-coded the MongoDB host (`mongodb://mast-wis-control:27017`),
+the database name, the local-file path, and `NUMBER_OF_UNITS`, and it *deduced the
+site by string-parsing the hostname* (`mastw` -> wis, `mast00`/`mast12` -> ns, etc.).
+That made the site a brittle naming convention and scattered deployment facts across
+constants and hostname heuristics. The DNS domain had three independent sources
+(`Const.WEIZMANN_DOMAIN`, a `networking.WEIZMANN_DOMAIN` global, and `Site.domain`),
+used inconsistently, which would silently break any non-`weizmann.ac.il` site.
+
+**What:**
+
+- New `config/local.py`: `LocalConfig` pydantic model (`site`, `project`,
+  `controller_host`, `database`, `domain`, `location`, `mongo_port=27017`) plus
+  `ConfigError` and a cached, MongoDB-free `load_local_config()`. The file is read
+  from `C:\WIS\<role>.toml` (Windows) / `/etc/wis/<role>.toml` (*nix), where `<role>`
+  is `MAST_PROJECT` (`unit`/`spec`/`control`); `MAST_CONFIG` overrides the path.
+  See `config/local.toml.example`.
+- **Site is never derived from the hostname.** The config file is the single source
+  of truth; the hostname is used only for machine self-identity (which unit am I).
+  Removed the hostname site-parsing block, `NUMBER_OF_UNITS`, and the hard-coded
+  mongo/db/file values from `Config`. `local_site` now resolves by `local.site` name.
+- **Config DB is MongoDB-only.** Dropped the local-JSON file backend entirely
+  (the `mast-config-db.json` reader/writer, `load_from`/`DataSource`, file caches).
+  Connection comes from `local.mongo_uri` / `local.database`; `DEFAULT_COLLECTIONS`
+  is a module constant (DB schema, not a per-deployment setting).
+- **Conscious duplication, validated.** `project`, `controller_host`, and `location`
+  live in both the config file and the DB `sites` doc by design; `Config` cross-checks
+  them at startup (`_validate_local_identity`) and raises `ConfigError` with the exact
+  field diff if they disagree, so they can never drift silently.
+- **Domain has one source.** Added `domain` to `LocalConfig`; deleted
+  `Const.WEIZMANN_DOMAIN`, the `networking.WEIZMANN_DOMAIN` global, and the
+  `Site.domain` field. All consumers use `load_local_config().domain` (or
+  `self.local.domain`). Known consequence: FQDNs for *remote* sites
+  (`api.py`, `assignments.py`) now use the local machine's domain — a single-domain
+  assumption, true today (all `weizmann.ac.il`); a multi-domain deployment would need
+  domain restored per-site.
+- Removed `Site.local` (a redundant DB flag for "which site is us"); `local_site`
+  answers that from the config file. Removed the dead parallel `config_toml.py` and
+  the obsolete `mongo_seeds/` and `config/backup/` seeds.
+- `notifications.py` `initiator` is now built lazily (PEP 562 `__getattr__` +
+  `default_factory`) from `load_local_config()` + the `MAST_PROJECT` role, instead of
+  parsing the hostname at import time — so config errors surface at the app's
+  startup fail-fast point, not as an import error.
+
+---
+
 ## [2026-05-16] DliPowerSwitch tolerates unresolvable hostname at construction and probe
 
 **Why:** `DliPowerSwitch.__init__` was calling `socket.gethostbyname()` and re-raising

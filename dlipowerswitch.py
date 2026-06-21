@@ -10,9 +10,9 @@ import httpx
 
 from common.activities import PowerSwitchActivities
 from common.config import Config
+from common.config.local import load_local_config
 from common.config.power import PowerSwitchConfig
 from common.config.unit import UnitConfig
-from common.const import Const
 from common.interfaces.components import Component
 from common.mast_logging import init_log
 
@@ -35,7 +35,7 @@ class DliPowerSwitch(Component):
         self.hostname = hostname
         self.ipaddr = ipaddr
         self.conf = conf
-        self.fqdn = self.hostname + "." + Const.WEIZMANN_DOMAIN
+        self.fqdn = self.hostname + "." + load_local_config().domain
         self._detected = False
         self.auth = httpx.DigestAuth("admin", "1234")
         self.headers = {
@@ -355,7 +355,7 @@ class PowerSwitchFactory:
                 with contextlib.suppress(socket.gaierror):
                     # try to GAI solve the fully qualified name
                     ipaddr = socket.gethostbyname(
-                        power_switch_name + "." + Const.WEIZMANN_DOMAIN
+                        power_switch_name + "." + load_local_config().domain
                     )
 
         if ipaddr is None:

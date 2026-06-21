@@ -1,0 +1,25 @@
+# MAST per-machine bootstrap configuration — EXAMPLE / TEMPLATE.
+#
+# Deploy this as the role-specific file:
+#   Windows:  C:\WIS\<role>.toml      (e.g. C:\WIS\unit.toml)
+#   *nix:     /etc/wis/<role>.toml    (e.g. /etc/wis/control.toml)
+# where <role> is the value of the MAST_PROJECT environment variable
+# (one of: unit, spec, control). The location can be overridden with the
+# MAST_CONFIG environment variable (used for dev / VM / tests).
+#
+# This file is the single source of truth for the machine's identity and for
+# how to reach the configuration database. `site`, `project`, and `location`
+# are intentionally also present in the MongoDB 'sites' document; the app
+# cross-checks them at startup and refuses to start if they disagree.
+
+site = "wis"                       # site name (must match a 'sites' doc in the DB)
+project = "mast"                   # project name (e.g. "mast")
+controller_host = "mast-wis-control"  # controller machine; also the MongoDB host
+database = "mast"                  # MongoDB database name
+domain = "weizmann.ac.il"          # DNS domain — the single source of truth
+# mongo_port = 27017               # optional, defaults to 27017
+
+[location]
+latitude = 31.9                    # degrees
+longitude = 34.8                   # degrees
+elevation = 875                    # metres
