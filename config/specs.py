@@ -59,6 +59,7 @@ class HighspecConfig(BaseModel):
     settings: NewtonSettingsConfig
     camera: str  # which camera to use, e.g. 'qhy600' or 'newton'
     valid_cameras: list[str]  # list of valid camera names
+    camera_enabled: bool = True  # whether the camera is enabled or not
 
 
 class ServerConfig(BaseModel):

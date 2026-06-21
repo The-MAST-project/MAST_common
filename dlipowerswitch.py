@@ -7,7 +7,6 @@ from json import JSONDecodeError
 from threading import Lock
 
 import httpx
-from pydantic import BaseModel
 
 from common.activities import PowerSwitchActivities
 from common.config import Config
@@ -17,35 +16,14 @@ from common.const import Const
 from common.interfaces.components import Component
 from common.mast_logging import init_log
 
+from common.models.statuses import OutletStatus, PowerStatus, PowerSwitchStatus
+
 TriStateBool = bool | None
 
 logger = logging.getLogger("power-switch")
 init_log(logger)
 logging.getLogger("httpcore").setLevel(logging.WARN)
 logging.getLogger("httpx").setLevel(logging.WARN)
-
-
-class OutletStatus(BaseModel):
-    name: str | None = None
-    state: TriStateBool = None
-
-    def __repr__(self):
-        return f"OutletStatus(name='{self.name}', state={self.state})"
-
-
-class PowerSwitchStatus(BaseModel):
-    host: str | None = None
-    ipaddr: str | None = None
-    detected: bool = False
-    operational: bool = False
-    why_not_operational: list[str] = []
-    outlets: list[OutletStatus] = []
-
-    def __repr__(self):
-        return (
-            f"PowerSwitchStatus(host='{self.host}', ipaddr='{self.ipaddr}', detected={self.detected}, operational={self.operational}, "
-            + f"why_not_operational={self.why_not_operational})"
-        )
 
 
 class DliPowerSwitch(Component):
@@ -68,7 +46,7 @@ class DliPowerSwitch(Component):
             try:
                 self.ipaddr = socket.gethostbyname(self.hostname)
             except socket.gaierror:
-                raise
+                logger.warning(f"cannot resolve hostname '{self.hostname}': power switch will not be detected")
 
         self.timeout = 1
         self.base_url = f"http://{self.ipaddr}/"
@@ -88,6 +66,8 @@ class DliPowerSwitch(Component):
             self.upload_outlet_names()
 
     def probe(self):
+        if not self.ipaddr:
+            return
         if not self.detected:
             result = self.get("restapi/relay/outlets/0/state/")
             self._detected = not (isinstance(result, dict) and "error" in result)
@@ -411,10 +391,6 @@ class PowerSwitchFactory:
         # logger.debug(
         #     f"PowerSwitchFactory __init__ called for instance id=0x{id(self):08X}"
         # )
-
-
-class PowerStatus(BaseModel):
-    powered: bool = False
 
 
 class OutletDomain(IntFlag):
