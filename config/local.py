@@ -94,8 +94,11 @@ def load_local_config() -> "LocalConfig":
         )
 
     try:
-        with open(path, "rb") as fp:
-            raw = tomllib.load(fp)
+        # Read as utf-8-sig so a leading BOM is stripped: PowerShell's
+        # `Set-Content -Encoding utf8` (used by provisioning) writes a UTF-8 BOM,
+        # which tomllib otherwise rejects ("Invalid statement" at line 1).
+        with open(path, encoding="utf-8-sig") as fp:
+            raw = tomllib.loads(fp.read())
     except (OSError, tomllib.TOMLDecodeError) as ex:
         raise ConfigError(
             f"cannot read/parse configuration file '{path}': {ex}"
