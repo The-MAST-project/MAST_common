@@ -23,13 +23,29 @@ This file is part of `MAST_common` (submoduled into each MAST project). It is im
 
 ## Configuration System (`common/config/`)
 
-`Config` is a singleton. It reads from two sources (merged):
-1. **MongoDB** at `mongodb://mast-wis-control:27017` (primary, cached with TTL)
-2. **TOML files** in `<project>/config/<project>.toml` and `<hostname>.toml` (fallback/override)
+Two layers:
 
-The `MAST_PROJECT` env var (`unit`, `control`, or `spec`) tells `Config` which TOML file to load and how to locate itself.
+1. **Bootstrap — `common/config/local.py`.** A per-machine TOML file is the single
+   source of truth for the machine's identity and how to reach the database. It is
+   read from `C:\WIS\<role>.toml` (Windows) / `/etc/wis/<role>.toml` (*nix), where
+   `<role>` is the `MAST_PROJECT` env var (`unit`, `control`, or `spec`); set
+   `MAST_CONFIG` to override the path (dev/VM/tests). `load_local_config()` parses it
+   into a `LocalConfig` (`site`, `project`, `controller_host`, `database`, `domain`,
+   `location`, `mongo_port`) — cached and MongoDB-free. On any problem it raises
+   `ConfigError` with a detailed reason; apps should fail startup on that.
 
-Key `Config` methods: `get_unit()`, `get_sites()`, `get_service()`, `get_specs()`, `get_users()`.
+2. **Config DB — `Config` (`common/config/__init__.py`), a singleton.** Loads the
+   configuration collections from **MongoDB only** (no local-file fallback), at
+   `local.mongo_uri` / `local.database`. At startup `Config` cross-checks the local
+   config against the DB `sites` document (`project`, `controller_host`, `location`
+   are intentionally duplicated) and raises `ConfigError` on any mismatch, so the two
+   sources cannot drift.
+
+The site is **never** derived from the hostname — it comes from the config file. The
+DNS `domain` likewise has a single source (`local.domain`).
+
+Key `Config` methods: `get_unit()`, `get_sites()`, `get_service()`, `get_specs()`,
+`get_users()`, `local_site`.
 
 ## API Conventions
 
@@ -71,7 +87,7 @@ Rich console output is enabled by default.
 
 ## Notifications (`common/notifications.py`)
 
-`Notifier` / `UiUpdateNotifications` push WebSocket events to the Django GUI. The `NotificationInitiator` is auto-detected from hostname convention: `mast-<site>-control`, `mast-<site>-spec`, or `mastXX` (unit).
+`Notifier` / `UiUpdateNotifications` push WebSocket events to the Django GUI. The `NotificationInitiator` is built lazily from the config file (`local.site`, `local.project`) plus the `MAST_PROJECT` role for the machine type — not from the hostname. The hostname is used only as the initiator's own machine name.
 
 ## Plans (`common/models/plans.py`)
 
