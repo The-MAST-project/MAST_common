@@ -175,10 +175,10 @@ class Config:
         )
         assert local_config_file is not None
 
-        # for the time being we have only one origin configuration, from mast-wis-control
+        # for the time being we have only one origin configuration, from mast-ns-control
         self.origin = ConfigOrigin(
             local_config_file,
-            mongo_uri="mongodb://mast-wis-control:27017",
+            mongo_uri="mongodb://mast-ns-control:27017",
             database_name="mast",
             collections=("groups", "services", "sites", "specs", "units", "users"),
         )
