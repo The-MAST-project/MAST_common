@@ -99,3 +99,11 @@ in-progress → canceled
 - `autofocus`, `too` (Target of Opportunity), `approved`, `production`
 - `constraints` — scheduling constraints
 - `events` — audit log appended back into the TOML file as `[[events]]`
+
+## Conventions
+
+### `json_schema_extra` formatting
+In `json_schema_extra` dicts on Pydantic model fields, put one key-value entry per line, and never wrap a `"tooltip": "..."` value across lines — keep the whole tooltip pair on a single line regardless of length (prevents auto-formatter line-wrapping of tooltip content).
+
+### Syncing `common/` across checkouts
+`MAST_common` is checked out in several places — `MAST_control/common/`, `MAST_spec/common/`, `MAST_gui/common/`, and `MAST_unit.*/src/common/`. They are independent checkouts of the same repository, so after changing any file under a `common/`, apply the same change to (or re-sync) the other checkouts so they don't diverge.
