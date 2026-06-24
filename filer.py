@@ -7,10 +7,11 @@ if platform.system() == "Windows":
 import fnmatch
 import os
 import shutil
+import time
 from collections.abc import Callable
 from enum import Enum, auto
 from pathlib import Path
-from threading import Thread
+from threading import Lock, Thread
 
 
 def is_windows_drive_mapped(drive_letter):
@@ -40,6 +41,10 @@ class Location:
 
 
 class Filer:
+    # Serializes all moves across every Filer instance, so concurrent
+    # ram->shared movers never race each other on the same tree.
+    _move_lock = Lock()
+
     def __init__(self, logger=None):
         sys = platform.system()
         if sys == "Windows":
@@ -78,13 +83,37 @@ class Filer:
         else:
             print(msg)
 
-    def move(self, src, dst):
+    @staticmethod
+    def _wait_until_stable(path: Path, timeout: float = 30.0, poll: float = 0.5) -> bool:
         """
-        Moves a source path (either file or folder) to a destination path
+        Wait until a file is fully written (it exists and its size stops
+        changing), i.e. the producer has closed it. This is the single,
+        deterministic write-safety gate, so callers no longer need sleep()
+        guesses. Directories return as soon as they exist. Returns False if the
+        path never appears within `timeout`.
+        """
+        deadline = time.monotonic() + timeout
+        last_size = -1
+        while time.monotonic() < deadline:
+            if path.exists():
+                if path.is_dir():
+                    return True
+                size = path.stat().st_size
+                if size == last_size:
+                    return True
+                last_size = size
+            time.sleep(poll)
+        return path.exists()
+
+    def move(self, src, dst) -> bool:
+        """
+        Moves a source path (either file or folder) to a destination path, but
+        only after the source has finished being written. Logs every successful
+        move (the audit trail) and returns True on success.
 
         :param src: Source
         :param dst: Destination
-        :return:
+        :return: True if the move succeeded
         """
         op = "move"
         if not isinstance(src, Path):
@@ -92,20 +121,25 @@ class Filer:
         if not isinstance(dst, Path):
             dst = Path(dst)
 
-        try:
-            if not src.exists():
-                self.error(f"{op}: path does not exist, ignoring: '{src.as_posix()}'")
-                return
-            if src.is_file() or src.is_dir() or src.is_symlink():
-                dst.parent.mkdir(parents=True, exist_ok=True)
-                shutil.move(src, dst)
-            else:
-                self.error(f"{op}: not a file, folder or symlink, ignoring: '{src.as_posix()}'")
-                return
+        # Write-safety gate is done outside the lock so a slow-to-flush file
+        # does not stall other movers; only the move itself is serialized.
+        if not self._wait_until_stable(src):
+            self.error(f"{op}: path does not exist, ignoring: '{src.as_posix()}'")
+            return False
 
-            # self.info(f"moved '{src.as_posix()}' to '{dst.as_posix()}'")
-        except Exception as e:
-            self.error(f"failed to move '{src.as_posix()} to '{dst.as_posix()}' (exception: {e})")
+        with Filer._move_lock:
+            try:
+                if src.is_file() or src.is_dir() or src.is_symlink():
+                    dst.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.move(src, dst)
+                else:
+                    self.error(f"{op}: not a file, folder or symlink, ignoring: '{src.as_posix()}'")
+                    return False
+                self.info(f"{op}: moved '{src.as_posix()}' -> '{dst.as_posix()}'")
+                return True
+            except Exception as e:
+                self.error(f"failed to move '{src.as_posix()} to '{dst.as_posix()}' (exception: {e})")
+                return False
 
     def change_top_to(self, top: FilerTop, path: str):
         for t in self.tops:
@@ -139,8 +173,14 @@ class Filer:
 
     def move_ram_to_shared(self, paths: str | list[str]):
         """
-        Moves stuff from the 'ram' storage to the 'shared' storage.
-        The path name hierarchy is preserved, only the 'root' is changed from the 'ram' root to the 'shared' root
+        Moves stuff from the 'ram' storage to the 'shared' storage, in the
+        background. The path hierarchy is preserved; only the 'root' changes
+        from the 'ram' root to the 'shared' root.
+
+        All paths in one call are handled by a single worker (sequentially, and
+        serialized against every other mover), so moves never race each other or
+        the producers still writing the files. A reconciliation line is logged
+        for multi-file calls, so a dropped item is detected, not silently lost.
 
         :param paths: Can be one of:
                     - A file name: it will be moved
@@ -151,13 +191,33 @@ class Filer:
         if isinstance(paths, str):
             paths = [paths]
 
-        assert(self.ram is not None)
-        for file in paths:
-            src = Path(file).as_posix()
-            dst = Path(str(src).replace(self.ram.root, self.shared.root))
-            Thread(
-                name="ram-to-shared-mover", target=self.move, args=[str(src), str(dst)]
-            ).start()
+        assert self.ram is not None
+        items = [Path(p).as_posix() for p in paths]
+
+        def _mover():
+            moved = sum(
+                self.move(src, src.replace(self.ram.root, self.shared.root))
+                for src in items
+            )
+            if len(items) > 1:
+                self.info(f"ram->shared: {moved}/{len(items)} item(s) reached '{self.shared.root}'")
+
+        Thread(name="ram-to-shared-mover", target=_mover).start()
+
+    def clean_ram_tmp(self):
+        """
+        Removes plate-solve scratch directories (`<ram>/tmp/tmp_*`) left on the
+        RAM disk by solve-field. Safe to call between solves: it deletes only the
+        solver's own temp dirs, never products.
+        """
+        if not self.ram:
+            return
+        for d in (Path(self.ram.root) / "tmp").glob("tmp_*"):
+            try:
+                shutil.rmtree(d, ignore_errors=True)
+                self.info(f"clean_ram_tmp: removed '{d.as_posix()}'")
+            except Exception as e:
+                self.error(f"clean_ram_tmp: failed on '{d.as_posix()}' ({e})")
 
     def find_latest(
         self,
