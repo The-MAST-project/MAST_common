@@ -69,6 +69,30 @@ Use `init_log(logger)` after getting a logger. Logs rotate daily under:
 
 Rich console output is enabled by default.
 
+## File storage & transfer (`common/filer.py`)
+
+`Filer` manages three storage "tops": `ram` (the volatile RAM disk, `D:` on a unit),
+`shared` (the persistent shared store, `Z:` -> `\\<controller>\mast-share`), and `local`
+(`C:`). Units write acquisition products to `ram` for speed, then persist them with
+`move_ram_to_shared(paths)`, which *moves* (so the RAM disk is emptied as a side effect)
+on a single serialized background worker and logs a `moved X/N` reconciliation.
+
+**Write-safety contract — always create products via `Filer.atomic_path`.** Because the
+RAM disk is volatile and the mover deletes the source, a half-written or missed file is
+lost on the next reboot. A product is therefore written to `<name>.part` and atomically
+renamed to `<name>` only once the writer closes, so a file under its final name is complete
+by construction (existence == done — no size guessing). Use it for *every* product write:
+
+```python
+with filer.atomic_path(path) as tmp:
+    hdu_list.writeto(tmp)        # or open(tmp, "w") / plt.savefig(tmp) / json.dump(...)
+filer.move_ram_to_shared(path)   # path now exists and is complete
+```
+
+`move()` skips `*.part` temps, publishes the destination atomically too, and `clean_ram_tmp()`
+sweeps `<ram>/tmp/tmp_*` solver scratch. The one exception to `atomic_path` is output written
+by an external process (e.g. `solve-field`), which is complete once the process exits.
+
 ## Notifications (`common/notifications.py`)
 
 `Notifier` / `UiUpdateNotifications` push WebSocket events to the Django GUI. The `NotificationInitiator` is auto-detected from hostname convention: `mast-<site>-control`, `mast-<site>-spec`, or `mastXX` (unit).

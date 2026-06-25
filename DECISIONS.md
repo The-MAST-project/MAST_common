@@ -2,6 +2,49 @@
 
 ---
 
+## [2026-06-25] Write-safe, audited RAM-disk -> shared transfer (`Filer`)
+
+**Why:** `Filer.move_ram_to_shared` (the `ram-to-shared-mover`) persists acquisition
+products to the shared store and, because it *moves*, also empties the RAM disk. The
+2026-06-24 unit session exposed three faults (The-MAST-project/MAST_unit.2024-12-12#18):
+fire-and-forget per-path threads raced the producers and each other (`move: path does not
+exist` on every sequence -- a frame missed this way is lost once the volatile RAM disk is
+wiped); the success log was commented out, so there was no positive proof a frame reached
+the share; and `solve-field` scratch dirs were never swept. An interim fix inferred "the
+writer is done" from file-size stability, but operator (Arie) feedback was that a
+size-stability heuristic is not robust enough (a writer that stalls longer than the poll
+interval looks finished).
+
+**What:** Completion is now an **explicit contract**, not a guess.
+- `atomic_path(final)` (context manager) -- producers write to `<final>.part` and it is
+  `os.replace`d to `<final>` only after the writer closes. A file under its final name is
+  therefore complete by construction; the temp is removed on error, so a partial never
+  appears under the final name. `PART_SUFFIX = ".part"`.
+- `move()` -- skips `*.part` sources; waits on **existence** (a sound signal now that
+  publishes are atomic) rather than size; publishes the destination atomically too (stage
+  to `<dst>.part`, then `os.replace`) so a reader on the share never sees a partial during
+  the cross-volume copy; folder moves publish each finished file and skip in-flight
+  `*.part`. Logs every successful move (the audit trail) and returns a bool.
+- `move_ram_to_shared()` -- one serialized background worker per call (class-level
+  `_move_lock`), so movers never race each other; logs a `moved X/N` reconciliation for
+  multi-file calls.
+- `clean_ram_tmp()` -- sweeps `<ram>/tmp/tmp_*` solver scratch.
+- Integration tests in `tests/test_frame_transfer.py` drive the real `Filer` against temp
+  dirs + threads (no hardware) and assert the contract (a reader never sees a partial
+  final, temp cleaned on error, `*.part` skipped, atomic destination, reconciliation).
+
+**Implications:** Robustness now depends on producers writing through `atomic_path` -- a
+raw direct write is no longer size-guarded, so new product writers MUST use it (see the
+File storage section in `CLAUDE.md`). Both atomic renames are intra-volume (the only place
+`os.replace` is atomic); the cross-volume hop is the staged copy, never visible under a
+final name. `solve-field`'s outputs are the one deliberate exception (written by the
+external process, complete once it exits). Backward compatible: a file written the old way
+still moves. Paired consumer-side adoption lives in the MAST_unit PR. Still deferred (not
+addressed here): a reconciler/retry backstop for moves that fail at the destination, and
+replacing the persistent `Z:` mapping with a per-operation UNC connect.
+
+---
+
 ## [2026-05-16] DliPowerSwitch tolerates unresolvable hostname at construction and probe
 
 **Why:** `DliPowerSwitch.__init__` was calling `socket.gethostbyname()` and re-raising
