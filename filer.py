@@ -9,9 +9,16 @@ import os
 import shutil
 import time
 from collections.abc import Callable
+from contextlib import contextmanager
 from enum import Enum, auto
 from pathlib import Path
 from threading import Lock, Thread
+
+# Suffix for in-flight temp files. A product is written to "<name>.part" and
+# atomically renamed to "<name>" only once the writer closes (see
+# Filer.atomic_path), so a file under its final name is complete by construction.
+# *.part files are never moved and never counted as products.
+PART_SUFFIX = ".part"
 
 
 def is_windows_drive_mapped(drive_letter):
@@ -84,32 +91,74 @@ class Filer:
             print(msg)
 
     @staticmethod
-    def _wait_until_stable(path: Path, timeout: float = 30.0, poll: float = 0.5) -> bool:
+    @contextmanager
+    def atomic_path(final):
         """
-        Wait until a file is fully written (it exists and its size stops
-        changing), i.e. the producer has closed it. This is the single,
-        deterministic write-safety gate, so callers no longer need sleep()
-        guesses. Directories return as soon as they exist. Returns False if the
-        path never appears within `timeout`.
+        Context manager for write-safe product creation. Yields a temporary
+        '<final>.part' to write into, then atomically publishes it as `final`
+        (os.replace) once the writer closes. On any error the temp is removed, so
+        a partially written file never appears under the final name. Because the
+        final name only ever appears via this atomic rename, "it exists" means
+        "it is complete" -- which is what makes the move write-safe without
+        guessing from file size.
+
+        Usage::
+
+            with filer.atomic_path(path) as tmp:
+                hdu_list.writeto(tmp)   # or open(tmp, "w") / savefig(tmp) / ...
+            # `path` now exists and is complete
+        """
+        final = Path(final)
+        part = final.with_name(final.name + PART_SUFFIX)
+        final.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            yield str(part)
+            os.replace(part, final)  # atomic within the volume
+        except BaseException:
+            try:
+                part.unlink()
+            except FileNotFoundError:
+                pass
+            raise
+
+    @staticmethod
+    def _wait_for_path(path: Path, timeout: float = 30.0, poll: float = 0.5) -> bool:
+        """
+        Wait (bounded) for `path` to exist. Existence is a sound completion
+        signal because products are published atomically (see atomic_path), so
+        -- unlike size polling -- this never mistakes a mid-write file for a
+        finished one; it only absorbs the small ordering slack between a producer
+        publishing a file and the mover being asked to move it. Returns False if
+        the path never appears within `timeout`.
         """
         deadline = time.monotonic() + timeout
-        last_size = -1
-        while time.monotonic() < deadline:
+        while True:
             if path.exists():
-                if path.is_dir():
-                    return True
-                size = path.stat().st_size
-                if size == last_size:
-                    return True
-                last_size = size
+                return True
+            if time.monotonic() >= deadline:
+                return False
             time.sleep(poll)
-        return path.exists()
+
+    def _publish(self, src: Path, dst: Path):
+        """
+        Move one file/symlink to `dst` atomically: stage to '<dst>.part' (a
+        cross-volume copy when ram and shared differ) then os.replace onto `dst`
+        (atomic within the destination volume), so a reader on the destination
+        never observes a partial file under the final name.
+        """
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        staged = dst.with_name(dst.name + PART_SUFFIX)
+        if staged.exists():
+            staged.unlink()
+        shutil.move(str(src), str(staged))
+        os.replace(staged, dst)
 
     def move(self, src, dst) -> bool:
         """
-        Moves a source path (either file or folder) to a destination path, but
-        only after the source has finished being written. Logs every successful
-        move (the audit trail) and returns True on success.
+        Moves a source path (file or folder) to a destination, publishing it
+        atomically so neither the mover nor a destination reader ever sees a
+        partial file. In-flight '*.part' temps are skipped. Logs every
+        successful move (the audit trail) and returns True on success.
 
         :param src: Source
         :param dst: Destination
@@ -121,17 +170,26 @@ class Filer:
         if not isinstance(dst, Path):
             dst = Path(dst)
 
-        # Write-safety gate is done outside the lock so a slow-to-flush file
-        # does not stall other movers; only the move itself is serialized.
-        if not self._wait_until_stable(src):
+        if src.name.endswith(PART_SUFFIX):
+            return False  # never move an in-flight temp
+
+        # Bounded existence wait (outside the lock so it does not stall other
+        # movers); only the move itself is serialized.
+        if not self._wait_for_path(src):
             self.error(f"{op}: path does not exist, ignoring: '{src.as_posix()}'")
             return False
 
         with Filer._move_lock:
             try:
-                if src.is_file() or src.is_dir() or src.is_symlink():
-                    dst.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.move(src, dst)
+                if src.is_dir():
+                    # Publish each finished file; skip any in-flight '*.part' so an
+                    # end-of-activity folder move never grabs a file mid-write.
+                    for child in sorted(src.rglob("*")):
+                        if child.is_file() and not child.name.endswith(PART_SUFFIX):
+                            self._publish(child, dst / child.relative_to(src))
+                    shutil.rmtree(src, ignore_errors=True)
+                elif src.is_file() or src.is_symlink():
+                    self._publish(src, dst)
                 else:
                     self.error(f"{op}: not a file, folder or symlink, ignoring: '{src.as_posix()}'")
                     return False
