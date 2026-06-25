@@ -93,6 +93,14 @@ filer.move_ram_to_shared(path)   # path now exists and is complete
 sweeps `<ram>/tmp/tmp_*` solver scratch. The one exception to `atomic_path` is output written
 by an external process (e.g. `solve-field`), which is complete once the process exits.
 
+**Observability (`common/transfer.py`).** `atomic_path` and `move_ram_to_shared` route
+through a process-wide `TransferTracker` that logs every transfer, keeps an in-flight
+registry, and offers `wait_for(path)` / `wait_for_tag(tag)` (await persistence instead of
+polling) plus `snapshot()` (for a `/status` view). Pass `tag=` (e.g. an acquisition
+sequence) to group a sequence's products for reconciliation. The tracker is observability
+only -- the `.part`/existence contract on disk stays authoritative, so it is safe to ignore
+for correctness.
+
 ## Notifications (`common/notifications.py`)
 
 `Notifier` / `UiUpdateNotifications` push WebSocket events to the Django GUI. The `NotificationInitiator` is auto-detected from hostname convention: `mast-<site>-control`, `mast-<site>-spec`, or `mastXX` (unit).

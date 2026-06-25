@@ -14,9 +14,9 @@ self-contained (its only platform import is `win32api` on Windows), imported dir
 The write-safety contract (`Filer.atomic_path`: write to `<name>.part`, atomic rename on
 close) and the mover: a reader never sees a partial final, the temp is cleaned on error,
 `*.part` sources are skipped, the destination is published atomically, folder moves skip
-in-flight parts, plus the audit log, `moved X/N` reconciliation, and `clean_ram_tmp`.
-
-Each test fails against the pre-`.part` `Filer` and passes after it.
+in-flight parts, plus `clean_ram_tmp`. They also cover the `TransferTracker` layer:
+per-move audit logging, per-tag reconciliation, `snapshot()` counts, `wait_for`/`wait_for_tag`
+notifications, and that a file's write + move share one lifecycle record.
 
 ## Running
 

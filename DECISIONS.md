@@ -2,6 +2,37 @@
 
 ---
 
+## [2026-06-25] TransferTracker: in-process orchestration/observability over the transfer
+
+**Why:** The `.part`/atomic-rename contract is the correctness foundation, but it is
+also the *only* signal the transfer had -- there was no central place for transfer
+logging, no live view of what is in flight, no per-sequence reconciliation, and the
+existence wait re-derives in-process knowledge (we know when our writes finish) by
+polling the filesystem. We wanted those quality-of-life and observability features
+without making volatile in-memory state authoritative (an in-process registry is lost
+on crash and blind to external/cross-machine writers, so it cannot be the truth).
+
+**What:** New `common/transfer.py` `TransferTracker` (process-wide singleton). It owns
+the move serialization (the lock moved out of `Filer`), a single FIFO background worker
+(replacing the per-call thread in `move_ram_to_shared`), all transfer logging, an
+in-flight registry (states WRITING/READY/MOVING/MOVED/FAILED), `wait_for(path)` /
+`wait_for_tag(tag)` notifications, per-tag reconciliation, and `snapshot()` for a future
+`/status` view. `Filer` keeps the disk mechanics (`atomic_path`, `_publish`, the existence
+gate) and delegates orchestration: `atomic_path` registers begin/commit/abort; `move` and
+`move_ram_to_shared` route through `run_move`/`submit_move`; `move_ram_to_shared` gains an
+optional `tag`. Record keys are normalized (`str(Path)` vs `as_posix()`) so a file's write
+and its later move share one lifecycle record.
+
+**Implications:** Explicitly **not a source of truth** -- `run_move` still confirms the
+source on disk (the existence gate) before publishing; the tracker starts empty after a
+crash (recovery remains a disk scan); a writer that bypasses it still moves correctly
+(self-registered at move time). It is purely a QoL/observability layer (logging, status,
+await, reconciliation). A `/status` HTTP endpoint reading `snapshot()` is a trivial
+follow-up, and the still-deferred reconciler/retry backstop can consume the tracker plus a
+disk scan.
+
+---
+
 ## [2026-06-25] Write-safe, audited RAM-disk -> shared transfer (`Filer`)
 
 **Why:** `Filer.move_ram_to_shared` (the `ram-to-shared-mover`) persists acquisition
