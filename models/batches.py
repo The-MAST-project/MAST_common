@@ -3,7 +3,7 @@ import json
 import logging
 from typing import TYPE_CHECKING, Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from ulid import ULID
 
 from common.activities import Activities, BatchActivities
@@ -19,12 +19,21 @@ logger = logging.Logger("mast." + __name__)
 init_log(logger)
 
 
-class Batch(BaseModel, Activities):
+class BatchData(BaseModel):
+    """Pure data contract for a scheduled batch — no hardware or activity state."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     ulid: ULID | None = None
-    immediate: bool = False  # for immediate execution or merely forecasted
+    immediate: bool = False
     plans: list[Plan]
     spec_assignment: SpectrographModel | None = None
     predicted_duration: float | None = None
+    exposure_duration: float = 0.0
+    number_of_exposures: int = 1
+
+
+class Batch(BatchData, Activities):
     controller: Any | None = None
     spec_api: Any | None = Field(default=None, exclude=True)
     run_folder: str | None = None
