@@ -178,7 +178,7 @@ class Config:
         # for the time being we have only one origin configuration, from mast-ns-control
         self.origin = ConfigOrigin(
             local_config_file,
-            mongo_uri="mongodb://mast-ns-control:27017",
+            mongo_uri="mongodb://mast-ns-control.weizmann.ac.il:27017",
             database_name="mast",
             collections=("groups", "services", "sites", "specs", "units", "users"),
         )
