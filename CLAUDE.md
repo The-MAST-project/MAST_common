@@ -107,3 +107,7 @@ In `json_schema_extra` dicts on Pydantic model fields, put one key-value entry p
 
 ### Syncing `common/` across checkouts
 `MAST_common` is checked out in several places — `MAST_control/common/`, `MAST_spec/common/`, `MAST_gui/common/`, and `MAST_unit.*/src/common/`. They are independent checkouts of the same repository, so after changing any file under a `common/`, apply the same change to (or re-sync) the other checkouts so they don't diverge.
+
+## Project-wide LLM guidance
+
+Cross-repo LLM guidance for MAST lives in the **`mast-claude-config`** repo (`github.com/The-MAST-project/mast-claude-config`) — the overarching home for project-wide instructions (shared coding standards, team working-style, global environment facts), deployed into `~/.claude/` by its `setup.sh`. Keep repo-specific guidance in the per-repo `CLAUDE.md`; put genuinely cross-repo guidance there. See `mast-claude-config/CLAUDE.md` for what belongs where.
