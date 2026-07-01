@@ -94,6 +94,46 @@ class FocuserCalibration(BaseModel):
     timestamp: str
 
 
+class StageCalibrationConfig(BaseModel):
+    """Pick-off stage "spec" position + geometry quality (written by StageCalibrator).
+
+    ``spec_position`` is the 1-DOF stage sweep coordinate that places the
+    folding-mirror shadow centerline on the optical center
+    (:func:`imaging.stage_geometry.find_spec_stage_position`).  It is the *coarse*
+    term of on-fiber placement; the along-centerline residual + the fiber's true
+    acceptance point are taken up later by a mount offset + a flux peak-up, so
+    ``fiber_offset`` stays ``None`` until a commissioning peak-up (v1 = geometry
+    only, carrying an uncharacterized fiber offset).
+
+    A **geometric** calibration: shares ``mechanical_epoch`` with the optical
+    center so servicing the optics invalidates the pair together -- a fresh stage
+    geometry must never pair with a stale optical center (``slope``, the emergent
+    stage->pixel scale, and the fit quality figures back the ``stage-geometry``
+    calibration gate).
+    """
+
+    spec_position: int  # stage steps placing the centerline on the optical center (s*)
+    slope: float | None = None  # B : perp-pixels per stage step (emergent scale)
+    fiber_offset: float | None = None  # along-centerline shadow-center->fiber offset (peak-up; v1 None)
+
+    # provenance / quality
+    optical_center: tuple[float, float]  # OC the solve was referenced to (px)
+    image_shape: tuple[int, int]  # (ny, nx) the frames were measured on
+    n_frames: int
+    residual_rms: float  # d(s) linear-fit residual (px)
+    angle_rms_deg: float  # centerline-orientation spread across frames (deg)
+    bracketed: bool  # frames straddled the optical center (interpolated s*)
+    timestamp: str
+    mechanical_epoch: int = 0
+
+    def matches(self, image_shape: tuple[int, int], mechanical_epoch: int) -> bool:
+        """Whether this stage geometry may be used: in-epoch and same frame size."""
+        return (
+            self.mechanical_epoch == mechanical_epoch
+            and tuple(self.image_shape) == tuple(image_shape)
+        )
+
+
 class CalibrationConfig(BaseModel):
     """The unit's persisted calibration state (extended per calibration concern)."""
 
@@ -105,4 +145,8 @@ class CalibrationConfig(BaseModel):
         default=None,
         description="Best-focus position + V-curve quality + temperature (written by autofocus).",
     )
-    # later: stage_geometry (pick-off fiber), thermal_focus_seed, pointing, ...
+    stage: StageCalibrationConfig | None = Field(
+        default=None,
+        description="Pick-off stage spec position + geometry (written by stage calibration).",
+    )
+    # later: thermal_focus_seed, pointing, ...
