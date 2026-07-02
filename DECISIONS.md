@@ -2,6 +2,39 @@
 
 ---
 
+## [2026-07-02] PHD2 limit frame becomes persisted configuration (`phd2.limit_frame`)
+
+**Why:** Whether PHD2 confines guide-star selection to a limit frame — and which
+rectangle it uses — was controlled by code: an `ImagerSettings.use_set_limit_frame`
+flag whose guiding-time value was effectively hand-edited on the production machine
+(the `# oren` toggles in `MAST_unit`'s `phd2.py`), and a rectangle derived at runtime
+from the fiber position and margins in `guiding.rois`. Operations needs to flip the
+behavior and tune the rectangle without touching code.
+
+**What:** Added `LimitFrameConfig` to `config/phd2.py` and a
+`PHD2Config.limit_frame` field, persisted like every other unit setting in the
+`units` collection ('common' doc + per-unit delta):
+
+- `enabled` (default `True`) — whether to set a limit frame when guiding.
+- `x`, `y`, `width`, `height` (defaults 0) — an explicit rectangle in unbinned
+  camera pixels; `width`/`height` of 0 means "not configured"
+  (`has_roi` is the accessor).
+
+An explicit flat x/y/width/height shape was chosen (Oren offered either that or a
+fiber+margins `SpecROI` shape) because it maps 1:1 onto both `ImagerRoi` and the
+PHD2 `set_limit_frame` RPC, and 0-defaults represent "not configured" without
+nullable nested models. Fields carry the `json_schema_extra` UI metadata
+(per the `FocuserConfig` precedent) with `CAN_CHANGE_CONFIGURATION` capability, so
+the GUI can expose them.
+
+**Implications:** Existing DB documents parse unchanged: absent section ⇒
+`enabled=True` with no rectangle, which consumers treat as "derive the frame from
+`guiding.rois` as before". Consumers (currently `MAST_unit`'s
+`PHD2Connector.start_guiding`) read the section via their `unit_conf` snapshot, so a
+DB change takes effect on the next service restart.
+
+---
+
 ## [2026-05-16] DliPowerSwitch tolerates unresolvable hostname at construction and probe
 
 **Why:** `DliPowerSwitch.__init__` was calling `socket.gethostbyname()` and re-raising
