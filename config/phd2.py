@@ -95,8 +95,94 @@ class LimitFrameConfig(BaseModel):
         return self.width > 0 and self.height > 0
 
 
+class ExcludeRegionConfig(BaseModel):
+    """Persisted configuration for the PHD2 guide-star exclusion region.
+
+    The region (unbinned camera pixels) is excluded from PHD2 guide-star
+    auto-selection, so guiding locks only on stars the FCU fold mirror will not
+    occult and the mirror can be inserted after guiding is locked.  Disabled by
+    default: the rectangle is per-unit geometry (the mirror shadow plus a safety
+    margin) and must be measured before enabling.  Requires the ``set_exclude_region``
+    PHD2 API (MAST build 2.6.14dev1mast04 or later).
+    """
+
+    enabled: bool = Field(
+        default=False,
+        json_schema_extra={
+            "ui": {
+                "editable": True,
+                "widget": "checkbox",
+                "label": "Use exclusion region",
+                "tooltip": "Exclude the configured region (fold-mirror shadow) from PHD2 guide-star selection",
+            },
+            "required_capabilities": [UserCapabilities.CAN_CHANGE_CONFIGURATION.value],
+        },
+    )
+    x: int = Field(
+        default=0,
+        ge=0,
+        json_schema_extra={
+            "ui": {
+                "editable": True,
+                "widget": "number",
+                "unit": "pixels",
+                "label": "X",
+                "tooltip": "Exclusion region origin X (unbinned camera pixels)",
+            },
+            "required_capabilities": [UserCapabilities.CAN_CHANGE_CONFIGURATION.value],
+        },
+    )
+    y: int = Field(
+        default=0,
+        ge=0,
+        json_schema_extra={
+            "ui": {
+                "editable": True,
+                "widget": "number",
+                "unit": "pixels",
+                "label": "Y",
+                "tooltip": "Exclusion region origin Y (unbinned camera pixels)",
+            },
+            "required_capabilities": [UserCapabilities.CAN_CHANGE_CONFIGURATION.value],
+        },
+    )
+    width: int = Field(
+        default=0,
+        ge=0,
+        json_schema_extra={
+            "ui": {
+                "editable": True,
+                "widget": "number",
+                "unit": "pixels",
+                "label": "Width",
+                "tooltip": "Exclusion region width (unbinned camera pixels, 0 means not configured)",
+            },
+            "required_capabilities": [UserCapabilities.CAN_CHANGE_CONFIGURATION.value],
+        },
+    )
+    height: int = Field(
+        default=0,
+        ge=0,
+        json_schema_extra={
+            "ui": {
+                "editable": True,
+                "widget": "number",
+                "unit": "pixels",
+                "label": "Height",
+                "tooltip": "Exclusion region height (unbinned camera pixels, 0 means not configured)",
+            },
+            "required_capabilities": [UserCapabilities.CAN_CHANGE_CONFIGURATION.value],
+        },
+    )
+
+    @property
+    def has_roi(self) -> bool:
+        return self.width > 0 and self.height > 0
+
+
 class PHD2Config(BaseModel):
     profile: str
     settle: PHD2SettleConfig
     validation_interval: float
     limit_frame: LimitFrameConfig = Field(default_factory=LimitFrameConfig)
+    exclude_region: ExcludeRegionConfig = Field(default_factory=ExcludeRegionConfig)
