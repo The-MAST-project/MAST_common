@@ -2,6 +2,37 @@
 
 ---
 
+## [2026-07-03] PHD2 guide-star exclusion region becomes persisted configuration (`phd2.exclude_region`)
+
+**Why:** Guiding must be able to lock *before* the FCU fold mirror is inserted, on
+stars the mirror will not occult. A guide star must pass PHD2's selection
+gates (unsaturated, SNR/mass minimums, HFD window), and MAST's strong coma smears
+the outer field, so surviving candidates cluster in the low-coma center of the
+frame — exactly the zone the mirror covers; selection is quality-biased toward
+the stars guaranteed to be lost. The custom PHD2 `set_exclude_region` API (MAST build
+`2.6.14dev1mast04`) excludes a rectangle from guide-star auto-selection; the
+rectangle (mirror shadow + safety margin) is per-unit geometry and therefore
+belongs in the config DB, not in code.
+
+**What:** Added `ExcludeRegionConfig` to `config/phd2.py` and a
+`PHD2Config.exclude_region` field, shaped exactly like `LimitFrameConfig`
+(flat `enabled`/`x`/`y`/`width`/`height` in unbinned camera pixels, `has_roi`
+accessor, `json_schema_extra` UI metadata with `CAN_CHANGE_CONFIGURATION`).
+One deliberate difference: `enabled` defaults to **False** — unlike the limit frame
+there is no sensible derived fallback rectangle; the mirror shadow must be measured
+per unit before the feature can do anything but harm.
+
+**Implications:** Existing DB documents parse unchanged (absent section ⇒ disabled).
+Consumers (`MAST_unit`'s `PHD2Connector.guide`) send `set_exclude_region` before
+every `guide` RPC — the rect when enabled+configured, an explicit reset otherwise —
+mirroring the limit-frame set-or-reset discipline. The set call requires the mast04
+PHD2 build and fails loudly on older builds; the reset tolerates the method being
+absent (an older build has no exclusion state to reset). Real-sky validation on a
+provisioned unit rig is still pending; until then the safe state is the default
+(disabled).
+
+---
+
 ## [2026-07-02] PHD2 limit frame becomes persisted configuration (`phd2.limit_frame`)
 
 **Why:** Whether PHD2 confines guide-star selection to a limit frame — and which
