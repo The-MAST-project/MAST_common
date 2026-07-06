@@ -174,10 +174,84 @@ class ExcludeRegionConfig(BaseModel):
             "required_capabilities": [UserCapabilities.CAN_CHANGE_CONFIGURATION.value],
         },
     )
+    depth: float | None = Field(
+        default=None,
+        gt=0.0,
+        le=1.0,
+        json_schema_extra={
+            "ui": {
+                "editable": True,
+                "widget": "number",
+                "label": "Penumbra depth",
+                "tooltip": "Shadow-depth fraction at which the exclusion boundary is drawn (per unit)",
+            },
+            "required_capabilities": [UserCapabilities.CAN_CHANGE_CONFIGURATION.value],
+        },
+    )
+    pad_px: int | None = Field(
+        default=None,
+        ge=0,
+        json_schema_extra={
+            "ui": {
+                "editable": True,
+                "widget": "number",
+                "unit": "pixels",
+                "label": "Pad",
+                "tooltip": "Safety margin added around the measured shadow band (unbinned camera pixels)",
+            },
+            "required_capabilities": [UserCapabilities.CAN_CHANGE_CONFIGURATION.value],
+        },
+    )
+    derived_from_depth: float | None = Field(
+        default=None,
+        json_schema_extra={
+            "ui": {
+                "editable": False,
+                "label": "Rect derived at depth",
+                "tooltip": "Depth the stored rectangle was derived at - written by the shadow-measurement tool only",
+            },
+        },
+    )
+    derived_from_pad_px: int | None = Field(
+        default=None,
+        json_schema_extra={
+            "ui": {
+                "editable": False,
+                "label": "Rect derived with pad",
+                "tooltip": "Pad the stored rectangle was derived with - written by the shadow-measurement tool only",
+            },
+        },
+    )
 
     @property
     def has_roi(self) -> bool:
         return self.width > 0 and self.height > 0
+
+    def stale_derivation(self) -> str | None:
+        """How the stored rectangle disagrees with the depth/pad knobs, or None.
+
+        The rectangle is a cached derived value: the shadow-measurement tool is
+        its sole writer and records the depth/pad it derived from.  A hand-edited
+        knob that disagrees with that record means the rectangle is stale and
+        must not be trusted for guiding.
+        """
+        if self.depth is None and self.pad_px is None:
+            return None
+        if self.has_roi and self.derived_from_depth is None and self.derived_from_pad_px is None:
+            return "depth/pad_px are set but the rectangle carries no derivation record"
+        if (
+            self.depth is not None
+            and self.derived_from_depth is not None
+            and abs(self.depth - self.derived_from_depth) > 1e-9
+        ):
+            return f"depth={self.depth} but the rectangle was derived at depth={self.derived_from_depth}"
+        if (
+            self.pad_px is not None
+            and self.derived_from_pad_px is not None
+            and self.pad_px != self.derived_from_pad_px
+        ):
+            return f"pad_px={self.pad_px} but the rectangle was derived with pad_px={self.derived_from_pad_px}"
+        return None
 
 
 class PHD2Config(BaseModel):
