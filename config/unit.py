@@ -4,6 +4,7 @@ from pydantic import BaseModel, model_validator
 
 from common.asi import ASI_294MM_SUPPORTED_BINNINGS_LITERAL
 
+from .calibration import CalibrationConfig
 from .covers import CoversConfig
 from .focuser import FocuserConfig
 from .imager import ImagerConfig
@@ -87,6 +88,7 @@ class UnitConfig(BaseModel):
     guiding: GuidingConfig
     autofocus: AutofocusConfig
     guider: GuiderConfig
+    calibration: CalibrationConfig | None = None
 
     @model_validator(mode="after")
     def validate_unit_config(self):
@@ -101,3 +103,19 @@ class UnitConfig(BaseModel):
             f"Validated UnitConfig for unit '{self.name}', focuser: '{self.focuser}'"
         )
         return self
+
+    def focus_seed_position(self) -> int | None:
+        """Best available focuser seed position, or ``None`` if none exists.
+
+        Prefers the calibration record ``calibration.focuser.best_position``
+        (provenance-carrying, written by the most recent successful autofocus)
+        over the bare operational ``focuser.known_as_good_position``.  A
+        ``known_as_good_position`` of 0 (the unset default) is treated as absent.
+        Autofocus seeds Phase 0 from this; ``None`` means no prior focus exists,
+        so fall through to a full acquisition sweep.
+        """
+        if self.calibration is not None and self.calibration.focuser is not None:
+            return self.calibration.focuser.best_position
+        if self.focuser.known_as_good_position:  # 0 == unset default
+            return self.focuser.known_as_good_position
+        return None

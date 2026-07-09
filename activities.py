@@ -291,6 +291,7 @@ class UnitActivities(IntFlag):
     AutofocusingPWI4 = auto()
     Autofocusing = auto()
     AutofocusAnalysis = auto()
+    Calibrating = auto()  # unit self-calibration (optical center / stage / focus)
     PreGuiding = auto()  # getting ready for guiding
     Guiding = auto()
     StartingUp = auto()
