@@ -2,6 +2,31 @@
 
 ---
 
+## [2026-07-09] Mongo URI composes the DNS domain (FQDN), not the bare controller_host
+
+**Why:** `local.py`'s `mongo_uri` built `mongodb://{controller_host}:{port}` from the
+bare hostname, while every other host in the stack is qualified by appending
+`local.domain` (e.g. `api.py`'s
+`controller_fqdn = f"{site.controller_host}.{load_local_config().domain}"`). The bare
+form does not resolve off the controller's own subnet -- the exact failure a pre-config
+interim fix had patched by hard-coding `mongodb://mast-ns-control.weizmann.ac.il:27017`.
+When the TOML-config epic superseded that hard-coded line (`mongo_uri` now derives from
+the file), the bare-host regression came back.
+
+**What:** `mongo_uri` now returns `mongodb://{controller_host}.{domain}:{mongo_port}`,
+matching the FQDN pattern used throughout the codebase. `controller_host` stays a bare
+hostname in the site TOMLs and the DB `sites` docs; `domain` remains the single source
+of truth for the DNS suffix.
+
+**Implications:** The interim hard-coded-FQDN commit is fully reconciled and can be
+retired. Any deployment must ensure `{controller_host}.{domain}` resolves (production
+DNS already provides this). Verified end-to-end on the dev VM against a local Mongo:
+`mongo_uri` composed to `mongodb://mast-ns-control.weizmann.ac.il:27017`, connected, and
+cross-validated against the DB `sites` doc; the fail-fast paths (missing role/file,
+malformed TOML, DB drift) each raised `ConfigError` and exited non-zero.
+
+---
+
 ## [2026-06-21] Per-machine bootstrap config moves to a TOML file; site never derived from hostname
 
 **Why:** `Config` hard-coded the MongoDB host (`mongodb://mast-wis-control:27017`),
