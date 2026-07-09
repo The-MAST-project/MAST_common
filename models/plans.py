@@ -290,6 +290,7 @@ class Plan(BaseModel, Activities):
     @property
     def remote_spec_assignment(self) -> Manifest | None:
         from common.config import Config
+        from common.config.local import load_local_config
         from common.models.assignments import (
             Initiator,
             Manifest,
@@ -301,7 +302,7 @@ class Plan(BaseModel, Activities):
         spec_hostname = local_site.spec_host
         if spec_hostname is None:
             return
-        fqdn = f"{spec_hostname}.{local_site.domain}"
+        fqdn = f"{spec_hostname}.{load_local_config().domain}"
         try:
             ipaddr = socket.gethostbyname(spec_hostname)
         except socket.gaierror:

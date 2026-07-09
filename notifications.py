@@ -1,15 +1,14 @@
 import asyncio
 import logging
+import os
 import socket
 import threading
 from collections import deque
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-from common.config import Config
 from common.mast_logging import init_log
-from common.utils import function_name
 
 logger = logging.getLogger("mast." + __name__)
 init_log(logger)
@@ -28,47 +27,27 @@ class NotificationInitiator(BaseModel):
     project: str | None = None  # e.g., 'mast', 'past'
 
 
-initiator: NotificationInitiator | None = None
-if not initiator:
-    sites = Config().get_sites()
+def _build_initiator() -> NotificationInitiator:
+    """Identify THIS machine as a notification originator, from the config file.
 
-    local_machine_name = socket.gethostname().split(".")[0]
-    parts = local_machine_name.split("-")
-    if len(parts) == 3:
-        # mast-wis-spec, mast-ns-control, etc.
-        local_project = parts[0]
-        local_machine_type = (
-            "spec"
-            if parts[2] == "spec"
-            else "controller"
-            if parts[2] == "control"
-            else "unknown-machine-type"
-        )
-        local_site_name = parts[1]
-    elif len(parts) == 1:
-        # mastw, mast00, mast12, etc.
-        local_machine_type = "unit"
-        local_site = [s for s in sites if local_machine_name in s.unit_ids]
-        if local_site:
-            local_site_name = local_site[0].name
-            local_project = local_site[0].project
-        else:
-            raise Exception(
-                f"{function_name()}: could not determine local site from hostname '{local_machine_name}'"
-            )
+    Built lazily (never at import time) so that a missing/invalid configuration
+    surfaces at the application's startup fail-fast point rather than as an
+    import error. Site and project come from the config file (the single source
+    of truth); the machine type comes from the MAST_PROJECT role.
+    """
+    from common.config.local import load_local_config
 
-    initiator = NotificationInitiator(
-        site=local_site_name,
-        type=local_machine_type,
-        hostname=local_machine_name,
-        project=local_project,
+    local = load_local_config()
+    role = os.getenv("MAST_PROJECT")  # 'unit' | 'spec' | 'control'
+    machine_type = {"unit": "unit", "spec": "spec", "control": "controller"}.get(
+        role or "", "unknown-machine-type"
     )
-
-    del local_site_name
-    del local_machine_name
-    del local_machine_type
-    del local_project
-    del sites
+    return NotificationInitiator(
+        site=local.site,
+        type=machine_type,
+        hostname=socket.gethostname().split(".")[0],
+        project=local.project,
+    )
 
 #
 # Specifications: allow sepcifying notification message contents
@@ -152,7 +131,9 @@ class UiUpdateNotifications(BaseModel):
     """
 
     type: Literal["ui_notification"] = "ui_notification"
-    initiator: NotificationInitiator = initiator  # The originator of the notification
+    initiator: NotificationInitiator = Field(
+        default_factory=_build_initiator
+    )  # The originator of the notification
     notifications: list[
         UiUpdateNotification
     ] = []  # List of individual notification items
@@ -185,9 +166,8 @@ class Notifier:
             self.notification_event = threading.Event()
             self.stop_event = threading.Event()
 
-            assert initiator is not None
-            self.initiator = initiator
-            self.notification_api = NotificationApi(site_name=initiator.site)
+            self.initiator = _build_initiator()
+            self.notification_api = NotificationApi(site_name=self.initiator.site)
 
             # Start worker thread
             self.worker_thread = threading.Thread(
@@ -320,3 +300,13 @@ class Notifier:
         assert isinstance(notification, AssignmentNotification)
         notification.initiator = self.initiator
         self._enqueue_notification(notification.model_dump_json())
+
+
+def __getattr__(name: str):
+    # PEP 562: lazily expose module-level `initiator` so importing this module never
+    # forces the configuration to load at import time. Callers do
+    # `from common.notifications import initiator` (e.g. models.assignments) and get
+    # a freshly built initiator on demand.
+    if name == "initiator":
+        return _build_initiator()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

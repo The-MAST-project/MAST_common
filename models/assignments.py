@@ -4,7 +4,7 @@ from typing import Literal
 from pydantic import BaseModel, computed_field, model_validator
 
 from common.config import Config
-from common.const import Const
+from common.config.local import load_local_config
 from common.models.batches import Batch
 from common.models.deepspec import DeepspecSettings
 from common.models.highspec import HighspecSettings
@@ -30,7 +30,9 @@ class Initiator(BaseModel):
         hostname = values.get("hostname") or socket.gethostname()
         values["hostname"] = hostname
 
-        values["fqdn"] = values.get("fqdn") or hostname + "." + Const.WEIZMANN_DOMAIN
+        values["fqdn"] = (
+            values.get("fqdn") or hostname + "." + load_local_config().domain
+        )
         try:
             ipaddr = socket.gethostbyname(hostname)
         except socket.gaierror:
@@ -49,7 +51,7 @@ class Initiator(BaseModel):
         :return:
         """
         hostname = socket.gethostname()
-        fqdn = hostname + "." + Const.WEIZMANN_DOMAIN
+        fqdn = hostname + "." + load_local_config().domain
         try:
             ipaddr = socket.gethostbyname(hostname)
         except socket.gaierror:
@@ -114,7 +116,7 @@ class Manifest(BaseModel):
             unit_id = f"{int(unit_id):02}"
 
         hostname = f"{site.project}{unit_id}"
-        fqdn = f"{hostname}.{site.domain}"
+        fqdn = f"{hostname}.{load_local_config().domain}"
         try:
             ipaddr = socket.gethostbyname(hostname)
         except socket.gaierror:

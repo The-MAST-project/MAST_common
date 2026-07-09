@@ -1,14 +1,9 @@
 import io
 import json
 import logging
-import os
-import platform
-import re
 import socket
-import tempfile
 from copy import deepcopy
-from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 import matplotlib.pyplot as plt
 import pymongo
@@ -19,15 +14,18 @@ from pydantic import BaseModel
 from pymongo import MongoClient
 from pymongo.errors import PyMongoError
 
-# from cameras.andor.newton import CoolerMode
-from common.const import Const
 from common.deep import deep_dict_difference, deep_dict_is_empty, deep_dict_update
 from common.mast_logging import init_log
 from common.utils import function_name
 
 from .identification import GroupConfig, UserConfig
+from .local import ConfigError, LocalConfig, load_local_config
 from .site import Site
 from .unit import UnitConfig
+
+# The collections that make up the MAST configuration database. This is the DB
+# schema/layout (not a per-deployment setting), so it stays a module constant.
+DEFAULT_COLLECTIONS = ("groups", "services", "sites", "specs", "units", "users")
 
 logger = logging.getLogger("mast.unit." + __name__)
 init_log(logger)
@@ -46,26 +44,15 @@ class ServiceConfig(BaseModel):
 #
 # configuration caching
 #
-file_cache = TTLCache(maxsize=32, ttl=60)  # 60s TTL
 mongo_cache = TTLCache(maxsize=32, ttl=60)  # 60s TTL
 config_db_cache = TTLCache(maxsize=100, ttl=30)
-DataSource = Literal["file", "mongodb"] | None
 
 
 #
 # Cache management helpers, should be 'manually' called to clear the TTL caches when configuration is changed
 #
-def clear_file_ttl_cache() -> None:
-    file_cache.clear()
-
-
 def clear_mongo_ttl_cache() -> None:
     mongo_cache.clear()
-
-
-def _file_cache_key(resolved_path: str, file_mtime: float) -> tuple[str, float]:
-    # include mtime so updates invalidate immediately (even before TTL expiry)
-    return (resolved_path, file_mtime)
 
 
 def _mongo_cache_key(
@@ -95,15 +82,12 @@ class ConfigOrigin:
 
     def __init__(
         self,
-        local_config_file: str | None = None,
         mongo_uri: str | None = None,
         database_name: str | None = None,
         collections: tuple[str, ...] | None = None,
     ):
         if self._initialized:
             return
-
-        self.local_config_file: str | None = local_config_file
 
         self.mongo_uri = mongo_uri
         self.database_name = database_name
@@ -112,7 +96,6 @@ class ConfigOrigin:
         self.client: MongoClient | None = None
         self.db: pymongo.database.Database | None = None
 
-        self.loaded_from: DataSource = None
         self._initialized = True
 
 
@@ -120,107 +103,75 @@ class Config:
     _instance = None
     _initialized: bool = False
 
-    NUMBER_OF_UNITS = 20
-
     def __new__(cls, *args, **kwargs):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
         return cls._instance
 
-    def __init__(self, site: str | None = None, load_from: DataSource = None):
+    def __init__(self):
         """
-        - Loads the MAST configuration database.  By default:
-          - from local file, if it exists (linux: `~mast/mast-config-db.json`, windows: `C:/MAST/mast-config-db.json`)
-          - from MongoDB server
-        - If `load_from` is provided, enforces loading ONLY from the specified data source
+        Loads the MAST configuration database from MongoDB.
+
+        The bootstrap parameters (which site this machine is, and how to reach the
+        MongoDB server) come from the local TOML configuration file (see
+        `common.config.local`), which is the single source of truth. After loading,
+        `_validate_local_identity()` cross-checks the local config against the DB
+        'sites' document so the two cannot drift silently.
         """
         if self._initialized:
             return
 
-        if not site:
-            """
-            This is a bootstrap issue: We need to determine the site based on the hostname before we can send
-             database queries to a MAST-{site}-control machine.
-            """
-            hostname = socket.gethostname().lower()
-            site = None
-            if hostname.startswith("mast"):
-                if hostname[4:] == "w":
-                    site = "wis"
-                elif hostname[4:] == "00" or (
-                    hostname[4:].isdigit()
-                    and 1 <= int(hostname[4:]) <= Config.NUMBER_OF_UNITS
-                ):
-                    site = "ns"
-                else:
-                    pat = re.compile(r"^mast-([^-]+)-(?:control|spec|\d+)$")
-                    m = pat.match(hostname)
-                    if m:
-                        site = m.group(1)
+        self.local: LocalConfig = load_local_config()
 
-            if site is None:
-                raise ValueError(
-                    "Config: cannot deduce site from {hostname=}, please provide site explicitly"
-                )
-
-        system = platform.system()
-        assert system == "Windows" or system == "Linux"
-        file = "mast-config-db.json"
-        local_config_file = (
-            f"C:/MAST/{file}"
-            if system == "Windows"
-            else os.path.expanduser("~mast") + f"/{file}"
-            if system == "Linux"
-            else None
-        )
-        assert local_config_file is not None
-
-        # for the time being we have only one origin configuration, from mast-ns-control
         self.origin = ConfigOrigin(
-            local_config_file,
-            mongo_uri="mongodb://mast-ns-control.weizmann.ac.il:27017",
-            database_name="mast",
-            collections=("groups", "services", "sites", "specs", "units", "users"),
+            mongo_uri=self.local.mongo_uri,
+            database_name=self.local.database,
+            collections=DEFAULT_COLLECTIONS,
         )
         self.db: dict = self.get_config()
+        self._validate_local_identity()
 
         self._initialized = True
 
-    # ------------ File backend ------------
-    @cached(
-        cache=file_cache,
-        key=lambda resolved_path, file_mtime: _file_cache_key(
-            resolved_path, file_mtime
-        ),
-    )
-    def _load_config_from_file_cached(
-        self, resolved_path: str, file_mtime: float
-    ) -> dict[str, list[dict[str, Any]]]:
-        with open(resolved_path, encoding="utf-8") as fp:
-            raw = json.load(fp)
+    def _validate_local_identity(self) -> None:
+        """Cross-check the local TOML config against the DB 'sites' document.
 
-        if not isinstance(raw, dict):
-            raise ValueError(
-                "Top-level JSON must be an object mapping {collection_name: [documents...]}"
+        `project`, `controller_host` and the geographic location are intentionally
+        duplicated in both the config file and the MongoDB 'sites' collection. They
+        MUST agree; if they don't, raise `ConfigError` with the exact diff so the
+        drift fails the application loudly at startup instead of going unnoticed.
+        """
+        db_site = next(
+            (s for s in self.get_sites() if s.name == self.local.site), None
+        )
+        if db_site is None:
+            raise ConfigError(
+                f"site '{self.local.site}' (from the config file) is not present in "
+                f"the 'sites' collection of database '{self.local.database}' on "
+                f"{self.local.mongo_uri}."
             )
 
-        self.origin.loaded_from = "file"
-        self.origin.local_config_file = resolved_path
-        normalized: dict[str, list[dict[str, Any]]] = {}
-        for collection_name, documents in raw.items():
-            if not isinstance(documents, list):
-                raise ValueError(
-                    f"Collection '{collection_name}' must be a list of documents."
+        mismatches: list[str] = []
+        for field in ("project", "controller_host"):
+            local_value = getattr(self.local, field)
+            db_value = getattr(db_site, field)
+            if local_value != db_value:
+                mismatches.append(
+                    f"  - {field}: config file = {local_value!r}, DB site = {db_value!r}"
                 )
-            normalized[collection_name] = documents
-        return normalized
-
-    def load_config_from_file(
-        self, json_file_path: str
-    ) -> dict[str, list[dict[str, Any]]]:
-        file_path = Path(json_file_path).resolve()
-        stat = file_path.stat()  # raises if missing
-        return self._load_config_from_file_cached(str(file_path), stat.st_mtime)
+        for attr in ("latitude", "longitude", "elevation"):
+            local_value = getattr(self.local.location, attr)
+            db_value = getattr(db_site.location, attr)
+            if local_value != db_value:
+                mismatches.append(
+                    f"  - location.{attr}: config file = {local_value!r}, "
+                    f"DB site = {db_value!r}"
+                )
+        if mismatches:
+            raise ConfigError(
+                f"local configuration for site '{self.local.site}' disagrees with the "
+                "DB 'sites' document (these must match):\n" + "\n".join(mismatches)
+            )
 
     # ------------ MongoDB backend ------------
     @cached(
@@ -256,7 +207,6 @@ class Config:
                 projection=None if not drop_object_id else {"_id": False},
             )
             result[collection_name] = list(cursor)
-        self.origin.loaded_from = "mongodb"
         return result
 
     def load_config_from_mongodb(
@@ -279,25 +229,14 @@ class Config:
             drop_object_id,
         )
 
-    def get_config(
-        self, load_from: DataSource = None
-    ) -> dict[str, list[dict[str, Any]]]:
-        if self.origin.local_config_file is not None:
-            file_path = Path(self.origin.local_config_file)
-            if file_path.exists():
-                return self.load_config_from_file(str(file_path))
-
-        if load_from == "file":  # we were asked to load from local file, but failed
-            return {}
-
-        # fallback to Mongo
+    def get_config(self) -> dict[str, list[dict[str, Any]]]:
         if not (
             self.origin.mongo_uri
             and self.origin.database_name
             and self.origin.collections
         ):
-            raise ValueError(
-                "JSON file not found; provide mongo_uri, database_name, and collections for Mongo fallback."
+            raise ConfigError(
+                "missing mongo_uri, database, or collections; cannot load configuration."
             )
 
         return self.load_config_from_mongodb(
@@ -342,12 +281,19 @@ class Config:
             within the specified site.
         """
 
+        local_unit = unit_name is None
         if unit_name is None:
             unit_name = socket.gethostname().split(".")[0]
         unit_name = unit_name.lower()
 
         if site_name is None:
-            site_name = self.site_name_from_unit_name(unit_name)
+            # For the local machine the site is the config-file site (source of
+            # truth); for an explicitly-named unit, look it up by DB membership.
+            site_name = (
+                self.local.site
+                if local_unit
+                else self.site_name_from_unit_name(unit_name)
+            )
             if site_name is None:
                 logger.error(
                     f"{function_name()}: cannot determine site for unit '{unit_name}'"
@@ -381,7 +327,7 @@ class Config:
         combined_dict["name"] = unit_name
         if combined_dict["power_switch"]["network"]["host"] == "auto":
             switch_host_name = (
-                unit_name.replace("mast", "mastps") + "." + Const.WEIZMANN_DOMAIN
+                unit_name.replace("mast", "mastps") + "." + self.local.domain
             )
             combined_dict["power_switch"]["network"]["host"] = switch_host_name
             if "ipaddr" not in combined_dict["power_switch"]["network"]:
@@ -410,10 +356,16 @@ class Config:
             raise ValueError(f"{function_name()}: unit_conf cannot be None")
         unit_dict = unit_conf.model_dump()
 
+        local_unit = unit_name is None
         if unit_name is None:
             unit_name = socket.gethostname().split(".")[0]
         if site_name is None:
-            site_name = self.site_name_from_unit_name(unit_name)
+            # Local machine -> config-file site; explicit unit -> DB membership.
+            site_name = (
+                self.local.site
+                if local_unit
+                else self.site_name_from_unit_name(unit_name)
+            )
             if site_name is None:
                 raise ValueError(
                     f"{function_name()}: cannot determine site for unit '{unit_name}'"
@@ -451,49 +403,16 @@ class Config:
                     saved_power_switch_network
                 )
 
-            if self.origin.loaded_from == "mongodb":
-                try:
-                    assert self.origin.client and self.origin.database_name
-                    self.origin.client[self.origin.database_name]["units"].update_one(
-                        {"name": unit_name}, {"$set": delta}, upsert=True
-                    )
-                except PyMongoError:
-                    logger.error(
-                        f"{function_name()}: failed to update unit config for {unit_name=} with {delta=}"
-                    )
-                clear_mongo_ttl_cache()
-
-            elif self.origin.loaded_from == "file":
-                assert self.origin.local_config_file
-                config_path = Path(self.origin.local_config_file)
-                if not config_path.exists():
-                    raise FileNotFoundError(f"Config file '{config_path}' not found.")
-
-                with open(config_path, encoding="utf-8") as f:
-                    config_data = json.load(f)
-
-                units = config_data.get("units", [])
-                found = False
-                for idx, unit in enumerate(units):
-                    if unit.get("name") == unit_name:
-                        # Only update the delta fields
-                        deep_dict_update(units[idx], delta)
-                        found = True
-                        break
-                if not found:
-                    units.append(delta)
-                config_data["units"] = units
-
-                # Atomic write: write to temp file, then replace
-                dir_name = config_path.parent
-                with tempfile.NamedTemporaryFile(
-                    "w", dir=dir_name, delete=False, encoding="utf-8"
-                ) as tf:
-                    json.dump(config_data, tf, indent=2)
-                    tempname = tf.name
-                os.replace(tempname, config_path)
-
-                clear_file_ttl_cache()
+            try:
+                assert self.origin.client and self.origin.database_name
+                self.origin.client[self.origin.database_name]["units"].update_one(
+                    {"name": unit_name}, {"$set": delta}, upsert=True
+                )
+            except PyMongoError:
+                logger.error(
+                    f"{function_name()}: failed to update unit config for {unit_name=} with {delta=}"
+                )
+            clear_mongo_ttl_cache()
 
     @cached(config_db_cache)
     def config_db(self):
@@ -613,16 +532,9 @@ class Config:
 
     @property
     def local_site(self) -> Site | None:
-        hostname = socket.gethostname().split(".")[0]
-        found = [
-            s
-            for s in self.sites
-            if (hostname in s.unit_ids)
-            or (hostname == s.controller_host)
-            or (hostname == s.spec_host)
-        ]
-        if len(found) != 0:
-            return found[0]
+        # The local site is whatever the config file declares (source of truth),
+        # resolved against the DB 'sites' collection by name.
+        return next((s for s in self.sites if s.name == self.local.site), None)
 
 
 def test_specs_config():

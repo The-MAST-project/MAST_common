@@ -4,7 +4,7 @@ from typing import List
 import astropy.coordinates
 import astropy.units as u
 
-from common.config import Config, Site
+from common.config import Config
 from common.utils import function_name
 from common.mast_logging import init_log
 import re
@@ -33,7 +33,8 @@ def parse_units(specifiers: List[str] | str) -> List[str]:
         specifiers = [specifiers]
 
     sites = Config().sites
-    local_site: Site = [s for s in sites if s.local][0]
+    local_site = Config().local_site
+    assert local_site is not None, "cannot determine local site from configuration"
     units_spec = None
     building = None
     site = None
