@@ -39,7 +39,11 @@ class LocalConfig(BaseModel):
 
     @property
     def mongo_uri(self) -> str:
-        return f"mongodb://{self.controller_host}:{self.mongo_port}"
+        # controller_host is a bare hostname; the FQDN is formed by appending the
+        # DNS domain (as everywhere else — see api.py's controller_fqdn). The bare
+        # form does not resolve off the controller's own subnet (the reason the
+        # pre-config hard-coded URI was fixed to the FQDN).
+        return f"mongodb://{self.controller_host}.{self.domain}:{self.mongo_port}"
 
     @property
     def data_root(self) -> str:
