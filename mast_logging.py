@@ -78,11 +78,12 @@ class DailyFileHandler(logging.FileHandler):
 def init_log(
     logger_: logging.Logger,
     level: int | None = None,
-    file_name: str = "mast-unit-log.txt",
 ):
     logger_.propagate = False
     level = default_log_level if level is None else level
     logger_.setLevel(level)
+    role = os.getenv("MAST_PROJECT", "unknown_role")
+    file_name = f"mast-{role}-log.txt"
 
     formatter = logging.Formatter(
         "%(asctime)s - %(levelname)-8s - {%(name)s:%(funcName)s:%(threadName)s:%(thread)s} -  %(message)s"
