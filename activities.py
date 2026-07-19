@@ -423,6 +423,7 @@ class GreatEyesActivities(IntFlag):
     ShuttingDown = auto()
     SettingParameters = auto()
     Probing = auto()
+    StoppingMeasurement = auto()
 
 
 class CalibrationLampActivities(IntFlag):
