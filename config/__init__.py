@@ -141,9 +141,7 @@ class Config:
         MUST agree; if they don't, raise `ConfigError` with the exact diff so the
         drift fails the application loudly at startup instead of going unnoticed.
         """
-        db_site = next(
-            (s for s in self.get_sites() if s.name == self.local.site), None
-        )
+        db_site = next((s for s in self.get_sites() if s.name == self.local.site), None)
         if db_site is None:
             raise ConfigError(
                 f"site '{self.local.site}' (from the config file) is not present in "
