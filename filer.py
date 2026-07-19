@@ -26,6 +26,23 @@ def is_windows_drive_mapped(drive_letter):
         return False
 
 
+def is_accessible(path: str, timeout: float = 2.0) -> bool:
+    """True if `path` is a reachable directory within `timeout` seconds.
+    Guards against a hung SMB/NFS mount blocking the caller."""
+    result: dict[str, bool] = {}
+
+    def _check():
+        try:
+            result["ok"] = os.path.isdir(path)
+        except OSError:
+            result["ok"] = False
+
+    t = Thread(target=_check, name="filer-accessible-probe", daemon=True)
+    t.start()
+    t.join(timeout)
+    return result.get("ok", False)
+
+
 class FilerTop(Enum):
     Local = auto()
     Shared = auto()
@@ -65,6 +82,11 @@ class Filer:
             FilerTop.Ram: self.ram,
         }
         self.logger = logger
+
+    def accessible_shared_root(self) -> str:
+        """`shared.root` if the share is reachable, else `local.root`.
+        On Linux the two are identical, so this is a harmless no-op there."""
+        return self.shared.root if is_accessible(self.shared.root) else self.local.root
 
     def info(self, msg):
         if self.logger:
