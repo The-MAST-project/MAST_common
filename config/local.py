@@ -3,11 +3,13 @@ import platform
 import tomllib
 from functools import lru_cache
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, ValidationError, field_validator
 
 from .site import Location
 
-VALID_ROLES = ("unit", "spec", "control")
+# The machine's role in the MAST deployment. Distinct from the USER role
+# concept (UserConfig/GroupConfig capabilities — admin/owner/operator/…).
+VALID_MACHINE_ROLES = ("unit", "spec", "control")
 
 
 class ConfigError(Exception):
@@ -31,11 +33,22 @@ class LocalConfig(BaseModel):
 
     site: str
     project: str
+    machine_role: str  # this machine's role; replaces the MAST_PROJECT env var
     controller_host: str  # also the MongoDB host (controller == DB machine)
     database: str
     domain: str  # DNS domain, e.g. "weizmann.ac.il" — the single source of truth
     location: Location
     mongo_port: int = 27017
+
+    @field_validator("machine_role")
+    @classmethod
+    def _validate_machine_role(cls, v: str) -> str:
+        if v not in VALID_MACHINE_ROLES:
+            raise ValueError(
+                f"machine_role={v!r} is invalid; expected one of "
+                f"{', '.join(VALID_MACHINE_ROLES)}"
+            )
+        return v
 
     @property
     def mongo_uri(self) -> str:
@@ -58,28 +71,17 @@ def _config_file_path() -> str:
 
     Resolution order:
       1. `$MAST_CONFIG` — explicit override (dev / VM / tests).
-      2. Role-based default: `C:\\WIS\\<role>.toml` (Windows) or
-         `/etc/wis/<role>.toml` (*nix), where `<role>` is `$MAST_PROJECT`
-         (one of 'unit', 'spec', 'control').
+      2. Fixed default: `C:\\WIS\\config.toml` (Windows) or
+         `/etc/wis/config.toml` (*nix). The machine's role is a field inside
+         the file (`LocalConfig.machine_role`), not part of the path.
     """
     override = os.getenv("MAST_CONFIG")
     if override:
         return override
 
-    role = os.getenv("MAST_PROJECT")
-    if not role:
-        raise ConfigError(
-            "MAST_PROJECT environment variable is not set (expected one of "
-            f"{', '.join(VALID_ROLES)}), and MAST_CONFIG is not set either."
-        )
-    if role not in VALID_ROLES:
-        raise ConfigError(
-            f"MAST_PROJECT='{role}' is invalid; expected one of {', '.join(VALID_ROLES)}."
-        )
-
     if platform.system() == "Windows":
-        return f"C:/WIS/{role}.toml"
-    return f"/etc/wis/{role}.toml"
+        return r"C:\WIS\config.toml"
+    return "/etc/wis/config.toml"
 
 
 @lru_cache(maxsize=1)

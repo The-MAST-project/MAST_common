@@ -82,7 +82,18 @@ def init_log(
     logger_.propagate = False
     level = default_log_level if level is None else level
     logger_.setLevel(level)
-    role = os.getenv("MAST_PROJECT", "unknown_role")
+    # The machine role comes from the bootstrap config file (single source of
+    # truth). init_log() runs at import time, so this must not force an eager
+    # config load or raise: guard it and fall back to a STARTUP marker. Once the
+    # config is loadable (load_local_config is lru_cached), later init_log calls
+    # resolve the real role. mast-STARTUP-log.txt therefore means "logged before
+    # the config could be read" — not an error value.
+    try:
+        from common.config.local import load_local_config
+
+        role = load_local_config().machine_role
+    except Exception:
+        role = "STARTUP"
     file_name = f"mast-{role}-log.txt"
 
     formatter = logging.Formatter(

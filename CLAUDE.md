@@ -27,12 +27,15 @@ Two layers:
 
 1. **Bootstrap — `common/config/local.py`.** A per-machine TOML file is the single
    source of truth for the machine's identity and how to reach the database. It is
-   read from `C:\WIS\<role>.toml` (Windows) / `/etc/wis/<role>.toml` (*nix), where
-   `<role>` is the `MAST_PROJECT` env var (`unit`, `control`, or `spec`); set
-   `MAST_CONFIG` to override the path (dev/VM/tests). `load_local_config()` parses it
-   into a `LocalConfig` (`site`, `project`, `controller_host`, `database`, `domain`,
-   `location`, `mongo_port`) — cached and MongoDB-free. On any problem it raises
-   `ConfigError` with a detailed reason; apps should fail startup on that.
+   read from the fixed path `C:\WIS\config.toml` (Windows) / `/etc/wis/config.toml`
+   (*nix); set `MAST_CONFIG` to override the path (dev/VM/tests). There is **no**
+   `MAST_PROJECT` / `MAST_ROLE` env var — the machine's role is the required
+   `machine_role` field (`unit`, `spec`, or `control`; distinct from the *user* role
+   in `UserConfig`/`GroupConfig`), validated against `VALID_MACHINE_ROLES`.
+   `load_local_config()` parses it into a `LocalConfig` (`site`, `project`,
+   `machine_role`, `controller_host`, `database`, `domain`, `location`, `mongo_port`)
+   — cached and MongoDB-free. On any problem it raises `ConfigError` with a detailed
+   reason; apps should fail startup on that.
 
 2. **Config DB — `Config` (`common/config/__init__.py`), a singleton.** Loads the
    configuration collections from **MongoDB only** (no local-file fallback), at
@@ -87,7 +90,7 @@ Rich console output is enabled by default.
 
 ## Notifications (`common/notifications.py`)
 
-`Notifier` / `UiUpdateNotifications` push WebSocket events to the Django GUI. The `NotificationInitiator` is built lazily from the config file (`local.site`, `local.project`) plus the `MAST_PROJECT` role for the machine type — not from the hostname. The hostname is used only as the initiator's own machine name.
+`Notifier` / `UiUpdateNotifications` push WebSocket events to the Django GUI. The `NotificationInitiator` is built lazily from the config file (`local.site`, `local.project`, `local.machine_role` for the machine type) — not from the hostname. The hostname is used only as the initiator's own machine name.
 
 ## Plans (`common/models/plans.py`)
 
