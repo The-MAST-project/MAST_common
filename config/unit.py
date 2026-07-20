@@ -104,18 +104,12 @@ class UnitConfig(BaseModel):
         )
         return self
 
-    def focus_seed_position(self) -> int | None:
-        """Best available focuser seed position, or ``None`` if none exists.
-
-        Prefers the calibration record ``calibration.focuser.best_position``
-        (provenance-carrying, written by the most recent successful autofocus)
-        over the bare operational ``focuser.known_as_good_position``.  A
-        ``known_as_good_position`` of 0 (the unset default) is treated as absent.
-        Autofocus seeds Phase 0 from this; ``None`` means no prior focus exists,
-        so fall through to a full acquisition sweep.
-        """
-        if self.calibration is not None and self.calibration.focuser is not None:
-            return self.calibration.focuser.best_position
-        if self.focuser.known_as_good_position:  # 0 == unset default
-            return self.focuser.known_as_good_position
-        return None
+    # NOTE: a ``focus_seed_position()`` helper used to live here, preferring
+    # ``calibration.focuser.best_position`` over the operational
+    # ``focuser.known_as_good_position``.  It was removed deliberately when the
+    # calibration flow was decoupled from the ps3cli path: it had no callers,
+    # but had one been added, writing a calibration product would have silently
+    # changed operational focus seeding through the back door.  The two paths
+    # now share no state -- ps3cli owns ``focuser.known_as_good_position``,
+    # calibration owns ``calibration.products.focuser`` -- and each seeds only
+    # from its own.

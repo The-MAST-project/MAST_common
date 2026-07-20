@@ -16,6 +16,156 @@ the optical-center finder, which prefers the coma-heavy margins).
 
 from pydantic import BaseModel, Field
 
+from common.asi import ASI_294MM_SUPPORTED_BINNINGS_LITERAL
+
+# ---------------------------------------------------------------------------
+# Settings (inputs) -- what the phases READ.
+#
+# Deliberately separated from the products below, which the phases WRITE.  The
+# original design put them on the same keys (``calibration.optical_center.
+# number_of_frames`` alongside the measured centre), which cannot work: the
+# product is ``None`` until the first successful run, so a first calibration
+# would have nowhere to read its own inputs from.  Settings therefore live under
+# ``calibration.settings.*`` and products stay at ``calibration.{focuser,
+# optical_center,stage}`` -- already-written product paths are unaffected.
+#
+# Every default here is chosen to be safe on an uncalibrated unit, so the
+# ``common`` DB entry can carry them for all units and a per-unit entry only
+# needs to record genuine deviations.
+# ---------------------------------------------------------------------------
+
+
+class CalibrationCoordConfig(BaseModel):
+    """Default pointing for a calibration run.
+
+    Resolution order is explicit endpoint parameter -> this -> runtime default.
+    ``None`` means "decide at runtime": ``ra`` becomes the current LST (transit,
+    lowest airmass) and ``dec`` the value below.  Stored as ``None`` rather than
+    a fixed RA because a hardcoded RA is only observable for part of the year.
+    """
+
+    ra: float | None = None  # J2000 hours; None -> LST at run time (transit)
+    dec: float | None = 20.0  # J2000 degrees
+
+
+class FocuserCalibrationSettings(BaseModel):
+    """Inputs for ``POST /calibrate/focuser`` (the HFD sweep).
+
+    Distinct from the operational ``AutofocusConfig`` (the ps3cli path) because
+    the two do not share geometry: ps3cli sweeps the small acquisition sky ROI,
+    while this runs FULL FRAME and restricts the metric to the low-coma disk
+    taken from ``calibration.optical_center``.
+    """
+
+    exposure: float = 5.0  # seconds per sweep frame
+    binning: ASI_294MM_SUPPORTED_BINNINGS_LITERAL = 1
+    images: int = 7  # V-curve points; MUST be odd so a point sits at the centre
+    spacing: int = 50  # focuser ticks between points
+    max_tries: int = 3  # re-centred sweeps before giving up
+    tolerance_frac: float = 0.025  # fitted-diameter rise defining the tolerance
+    fallback_disk_frac: float = 0.6  # of min(nx,ny)/2, when no optical centre exists
+
+    # Travel limits -- every commanded position is clamped to this range, so a
+    # bad seed or a runaway donut jump cannot drive the focuser into its stops.
+    min_position: int = 0
+    max_position: int = 49999  # FocuserConfig constrains positions to < 50000
+
+    # Phase 0 / Phase 2 (regime triage and far-from-focus acquisition)
+    #
+    # near_hfd_max_px is what MAKES the triage work: without a threshold,
+    # "anything extracted" counts as near focus, and a frame full of large
+    # defocus donuts is misclassified as near -- the donut branch never runs and
+    # the V-curve is fitted to annuli.  Above this measured HFD the frame is
+    # treated as far-from-focus and routed to donut acquisition.
+    near_hfd_max_px: float = 20.0
+    #
+    # max_best_hfd_px rejects an implausible "solution".  A sweep over donuts can
+    # produce a spurious interior minimum that passes the bracketing gate and
+    # yields a confident, badly wrong best-focus.  A real in-focus star on this
+    # system is a few px across, so a vertex whose Dmin exceeds this is not
+    # focus: the run keeps acquiring instead of persisting it.
+    max_best_hfd_px: float = 12.0
+    #
+    # NOTE: both thresholds are seeing- and optics-dependent and are ESTIMATES
+    # until measured on sky.  Check them against the first real runs.
+    backlash_ticks: int = 200  # approach every sweep from below by this much
+    donut_probe_ticks: int = 500  # differential move that calibrates the donut slope
+    #                               and resolves inside-vs-outside focus (sign)
+    coarse_step_ticks: int = 1000  # cold-start stepping when nothing extracts at all
+    coarse_max_steps: int = 8  # give up rather than sweep the whole travel
+
+    # Re-centring a sweep that did not bracket focus.  HFD grows ~linearly with
+    # defocus, so the swept arm is extrapolated to its floor rather than stepped
+    # by half a span at a time (which crawls, and burns tries, when the seed is
+    # far out).  Undershoot deliberately: landing short still brackets on the
+    # next sweep, overshooting past focus does not.
+    recentre_undershoot_frac: float = 0.15
+    max_recentre_ticks: int = 2000  # cap on a single extrapolated jump
+
+    @property
+    def note_on_binning(self) -> str:
+        """Why binning is a knob here but fixed at 1 for the other two phases.
+
+        HFD is a *relative* focus index, so a binned sweep still finds the same
+        vertex and costs a quarter of the detection time.  But the low-coma disk
+        is stored in full-detector **bin-1** pixels, so a consumer running at
+        bin 2 must halve ``center`` and ``low_coma_radius`` before passing them
+        to ``frame_hfd``.  Geometry-producing phases (optical_center, stage) have
+        no such freedom -- see their settings.
+        """
+        return "low-coma disk is bin-1; scale by 1/binning when binning > 1"
+
+
+class OpticalCenterCalibrationSettings(BaseModel):
+    """Inputs for ``POST /calibrate/optical_center``.
+
+    No ``binning``: the measured centre *defines* the bin-1 pixel frame that
+    ``OpticalCenterCalibration.image_shape`` and ``.matches()`` guard, and that
+    the stage phase later solves against.  Acquiring it at any other binning
+    would silently poison every downstream geometric calibration, so the phase
+    hardcodes full-frame bin 1 rather than offering a knob that must never move.
+    """
+
+    exposure: float = 5.0
+    number_of_frames: int = 5  # pooled into ONE weighted fit; per-frame centres
+    #                            scatter ~10^2 px, so a single frame is untrustworthy
+    coma_tolerance: float = 0.1  # ellipticity budget (photutils e = 1 - b/a) that
+    #                              sets low_coma_radius = coma_tolerance / coma_slope
+    min_frames_passing: int | None = None  # None -> ceil(number_of_frames / 2)
+
+
+class StageCalibrationSettings(BaseModel):
+    """Inputs for ``POST /calibrate/stage``.
+
+    No ``binning``, for the same reason as the optical centre: the shadow
+    centreline is solved against the stored bin-1 optical centre, and the phase
+    asserts the frame size matches before it starts.
+    """
+
+    exposure: float = 5.0
+    n_positions: int = 5  # >= 3 (backlash / nonlinearity / noise averaging)
+    span_steps: int | None = None  # half-sweep about the spec estimate; None ->
+    #                                max(2000, 5% of travel), computed at run time
+    settle_seconds: float = 1.0  # dwell after the stage stops, before exposing
+    require_bracketed: bool = True  # refuse to extrapolate s* outside the sweep
+    move_to_spec: bool = False  # park at the solved position instead of retracting
+
+
+class CalibrationSettings(BaseModel):
+    """All calibration inputs, one sub-block per phase plus the shared pointing."""
+
+    coord: CalibrationCoordConfig = Field(default_factory=CalibrationCoordConfig)
+    focuser: FocuserCalibrationSettings = Field(default_factory=FocuserCalibrationSettings)
+    optical_center: OpticalCenterCalibrationSettings = Field(
+        default_factory=OpticalCenterCalibrationSettings
+    )
+    stage: StageCalibrationSettings = Field(default_factory=StageCalibrationSettings)
+
+
+# ---------------------------------------------------------------------------
+# Products (outputs) -- what the phases WRITE.
+# ---------------------------------------------------------------------------
+
 
 class OpticalCenterCalibration(BaseModel):
     """Optical center and the derived low-coma zone autofocus should keep within.
@@ -30,7 +180,11 @@ class OpticalCenterCalibration(BaseModel):
 
     center_x: float
     center_y: float
-    low_coma_radius: float  # px @ bin1: disk about the center autofocus stays within
+    # px @ bin1: disk about the center autofocus stays within.  NULLABLE on
+    # purpose: when the coma slope k is too poorly determined to trust, the
+    # radius is stored as None rather than fabricated, and focus falls back to
+    # its geometric disk (settings.focuser.fallback_disk_frac).
+    low_coma_radius: float | None = None
     coma_slope: float | None = None  # measured elongation per px of field radius (k)
     coma_tolerance: float | None = None  # ellipticity budget used to derive the radius
     image_shape: tuple[int, int]  # (ny, nx) the calibration was measured on
@@ -134,19 +288,48 @@ class StageCalibrationConfig(BaseModel):
         )
 
 
-class CalibrationConfig(BaseModel):
-    """The unit's persisted calibration state (extended per calibration concern)."""
+class CalibrationProducts(BaseModel):
+    """What the calibration phases MEASURE and write.
 
-    optical_center: OpticalCenterCalibration | None = Field(
-        default=None,
-        description="Optical center + low-coma zone (written by the optical-center finder).",
-    )
+    Every field is ``None`` until a run produces it, and only a successful run
+    ever writes one -- these are never hand-authored, because each record
+    carries provenance (timestamp, quality figures, temperature) that a
+    hand-written value would not have.  In the ``common`` unit entry they are
+    therefore all ``None``; real values live in per-unit entries.
+    """
+
     focuser: FocuserCalibration | None = Field(
         default=None,
-        description="Best-focus position + V-curve quality + temperature (written by autofocus).",
+        description="Best-focus position + V-curve quality + temperature (written by /calibrate/focuser).",
+    )
+    optical_center: OpticalCenterCalibration | None = Field(
+        default=None,
+        description="Optical center + low-coma zone (written by /calibrate/optical_center).",
     )
     stage: StageCalibrationConfig | None = Field(
         default=None,
-        description="Pick-off stage spec position + geometry (written by stage calibration).",
+        description="Pick-off stage spec position + geometry (written by /calibrate/stage).",
     )
     # later: thermal_focus_seed, pointing, ...
+
+
+class CalibrationConfig(BaseModel):
+    """The unit's calibration block: settings it reads, products it writes.
+
+    The two halves are deliberately symmetric and deliberately separate.
+    ``settings`` is configuration -- edited by people, carried by the ``common``
+    entry, inherited by every unit.  ``products`` is measurement -- written only
+    by a successful phase, per-unit, never inherited.  Keeping them apart is
+    what lets a phase read its own inputs on a unit that has never been
+    calibrated (the original design collapsed them onto one key, which could not
+    work: the product is absent before the first run).
+    """
+
+    settings: CalibrationSettings = Field(
+        default_factory=CalibrationSettings,
+        description="Inputs for the calibration phases (defaults live in the 'common' unit entry).",
+    )
+    products: CalibrationProducts = Field(
+        default_factory=CalibrationProducts,
+        description="Measured calibration products (per-unit; absent until a run writes them).",
+    )

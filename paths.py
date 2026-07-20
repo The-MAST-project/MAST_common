@@ -49,13 +49,32 @@ class PathMaker:
         folder.mkdir(parents=True, exist_ok=True)
         return str(folder)
 
-    def make_autofocus_folder(self, root: str | None = None) -> str:
-        autofocus_folder = (
-            # Path(self.make_daily_folder_name(root=root or Filer().shared.root))
-            Path(self.make_daily_folder_name(root=root or Filer().ram.root))  # type: ignore
-            / "highspec"
-            / "Autofocus"
-        )
+    def make_autofocus_folder(
+        self, root: str | None = None, subfolder: str | None = None
+    ) -> str:
+        """``<daily>/[<subfolder>/]Autofocus/<NNNN>``.
+
+        ``subfolder`` scopes the folder to a particular consumer (e.g. a caller
+        on the spectrograph machine passing ``"highspec"``), the same way
+        :meth:`make_spec_acquisitions_folder` and :meth:`make_spec_exposures_folder`
+        take ``spec_name`` instead of hardcoding one.  Omitted -- the unit case --
+        the path carries no spectrograph name: a unit's autofocus is telescope
+        focus and has nothing to do with a spectrograph.
+
+        INTERIM (branch ``calibration``).  ``"highspec"`` was hardcoded here in
+        e212729 ("moved Autofocus folder to highspec"), which -- because this is
+        shared MAST_common code -- also pushed every *unit's* autofocus FITS under
+        a ``highspec/`` folder.  Making it a parameter that defaults to *absent*
+        restores the unit path, but it MOVES the folder for any caller that relied
+        on the hardcoded value: such a caller must now pass ``subfolder="highspec"``
+        explicitly.  MAST_spec is not checked out alongside this branch, so its
+        callers (if any) have NOT been updated -- resolve that before merging, and
+        re-sync this file across the other ``common/`` checkouts.
+        """
+        base = Path(self.make_daily_folder_name(root=root or Filer().ram.root))  # type: ignore
+        if subfolder:
+            base = base / subfolder
+        autofocus_folder = base / "Autofocus"
         folder = autofocus_folder / self.make_seq(str(autofocus_folder))
         folder.mkdir(parents=True, exist_ok=True)
         return str(folder)

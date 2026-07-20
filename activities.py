@@ -291,7 +291,14 @@ class UnitActivities(IntFlag):
     AutofocusingPWI4 = auto()
     Autofocusing = auto()
     AutofocusAnalysis = auto()
-    Calibrating = auto()  # unit self-calibration (optical center / stage / focus)
+    Calibrating = auto()  # umbrella: a /calibrate run is in progress
+    # The three calibration phases.  Each sets its own flag for its duration; the
+    # umbrella above is set only by the orchestrating /calibrate.  A phase can
+    # therefore tell whether it runs standalone or inside a full calibration, and
+    # the single-flight guard is "any Calibrating* flag is active".
+    CalibratingFocus = auto()
+    CalibratingOpticalCenter = auto()
+    CalibratingStage = auto()
     PreGuiding = auto()  # getting ready for guiding
     Guiding = auto()
     StartingUp = auto()
