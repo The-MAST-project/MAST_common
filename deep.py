@@ -5,9 +5,17 @@ def deep_dict_update(original: dict, update: dict):
     :param update: The dictionary with updates.
     """
     for key, value in update.items():
-        if isinstance(value, dict) and key in original:
-            # If the value is a dict and the key exists in the original dict,
-            # perform a deep update
+        if isinstance(value, dict) and isinstance(original.get(key), dict):
+            # Both sides are dicts -> merge them recursively.
+            #
+            # The original's value must be checked too, not just the key's
+            # presence: a key can exist while holding None (or a scalar), and
+            # recursing into that raises TypeError.  This is exactly the
+            # shape the calibration block has -- the 'common' unit entry carries
+            # ``products.focuser: null`` and a per-unit entry overrides it with a
+            # full product dict -- so without this guard the first successful
+            # calibration would write a delta that then broke get_unit() for
+            # that unit.
             deep_dict_update(original[key], value)
         else:
             # Otherwise, update or add the key-value pair to the original dict
