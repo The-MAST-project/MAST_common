@@ -2,6 +2,39 @@
 
 ---
 
+## [2026-07-20] Machine role moves from the MAST_PROJECT env var into a `machine_role` field; fixed-path config.toml
+
+**Why:** the machine role was carried by the `MAST_PROJECT` environment variable,
+which every launcher (NSSM service, `.bat`, `docker-compose`, manual shell) and
+every host had to set/persist — the friction that made spec/control/gui hard to
+stand up, and the reason two apps on one box (gui + control on the controller)
+could disagree about identity. The name also collided with the *project* concept
+(`MAST_PROJECT=mast` raised `ConfigError`). A separate proposal to rename it to
+`MAST_ROLE` (MAST_common#10) only moved the collision; the topology epic proposed
+yet another `MAST_ROLE`. Epic #15 resolves all of it.
+
+**What:** `local.py` no longer reads any env var for the role. `_config_file_path()`
+returns the **fixed** path `C:\WIS\config.toml` / `/etc/wis/config.toml`
+(`MAST_CONFIG` still overrides for dev/VM/tests). `LocalConfig` gains a **required**
+`machine_role` field validated against `VALID_MACHINE_ROLES = (unit, spec, control)`
+(renamed from `VALID_ROLES`; named `machine_role` to stay distinct from the *user*
+role in `UserConfig`/`GroupConfig`). `notifications._build_initiator` and
+`mast_logging.init_log` now read `local.machine_role` instead of `os.getenv`.
+`init_log` runs at import, so it loads the role through a guarded lazy
+`load_local_config()` and falls back to `mast-STARTUP-log.txt` when the config is
+not yet readable. `machine_role` is deliberately **not** added to the DB `sites`
+cross-check (a site hosts several roles). Supersedes MAST_common#10 (closed).
+
+**Implications:** breaking bootstrap change — a machine on new code with an old
+`<role>.toml` (wrong filename, no `machine_role`) fails fast at startup, by design.
+Provisioning must write `config.toml` with an injected `machine_role` and stop
+setting the env var (epic #15 Stage 2); consumers bump the `common` submodule and
+drop their env-setters (Stage 3); the two on-site Linux hosts get an
+`/etc/wis/config.toml` placed by hand (Stage 4). The env var is fully inert
+afterward. Full plan: `docs/config-toml-role-plan.md`.
+
+---
+
 ## [2026-07-09] Mongo URI composes the DNS domain (FQDN), not the bare controller_host
 
 **Why:** `local.py`'s `mongo_uri` built `mongodb://{controller_host}:{port}` from the
