@@ -36,16 +36,27 @@ from common.asi import ASI_294MM_SUPPORTED_BINNINGS_LITERAL
 
 
 class CalibrationCoordConfig(BaseModel):
-    """Default pointing for a calibration run.
+    """Default pointing for a calibration run: **the zenith**.
 
-    Resolution order is explicit endpoint parameter -> this -> runtime default.
-    ``None`` means "decide at runtime": ``ra`` becomes the current LST (transit,
-    lowest airmass) and ``dec`` the value below.  Stored as ``None`` rather than
-    a fixed RA because a hardcoded RA is only observable for part of the year.
+    Resolution order is explicit endpoint parameter -> this -> runtime default,
+    and ``None`` on either axis means "decide at runtime from the observatory":
+
+    * ``ra = None`` -> the current LST, i.e. transit.  Deferred to slew time
+      because LST advances as the run proceeds (a hardcoded RA would also be
+      unobservable for much of the year).
+    * ``dec = None`` -> the site's **latitude**, which puts the pointing at the
+      zenith.  Constant, so it is resolved as soon as the coordinate is asked
+      for.
+
+    Zenith is minimum airmass, hence the least refraction, extinction and
+    seeing degradation.  That is not cosmetic here: focus, optical-centre coma
+    and stage-shadow geometry are all measured from star *shapes*.  The
+    previous default of ``dec = 20.0`` pointed ~10 degrees off zenith at Neot
+    Smadar (latitude 30.05) and taxed every calibration run for nothing.
     """
 
     ra: float | None = None  # J2000 hours; None -> LST at run time (transit)
-    dec: float | None = 20.0  # J2000 degrees
+    dec: float | None = None  # J2000 degrees; None -> site latitude (zenith)
 
 
 class FocuserCalibrationSettings(BaseModel):
