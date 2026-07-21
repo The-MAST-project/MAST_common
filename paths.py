@@ -5,6 +5,19 @@ from typing import Literal
 
 from common.filer import Filer
 
+#: Calibration phase key -> folder name.
+#:
+#: Explicit rather than derived: the keys are the API's phase names
+#: (``optical_center``), while folders follow this tree's Capitalised convention
+#: (``Autofocus``, ``Exposures``, ``Guidings``) -- and mechanically capitalising
+#: ``optical_center`` would give ``Optical_center``.  The mapping doubles as a
+#: whitelist, so an unrecognised phase cannot become a directory.
+CALIBRATION_PHASE_FOLDERS = {
+    "focuser": "Focuser",
+    "optical_center": "OpticalCenter",
+    "stage": "Stage",
+}
+
 
 class PathMaker:
     @staticmethod
@@ -76,6 +89,44 @@ class PathMaker:
             base = base / subfolder
         autofocus_folder = base / "Autofocus"
         folder = autofocus_folder / self.make_seq(str(autofocus_folder))
+        folder.mkdir(parents=True, exist_ok=True)
+        return str(folder)
+
+    def make_calibration_folder(self, phase: str, root: str | None = None) -> str:
+        """``<daily>/Calibration/<Phase>/<NNNN>`` -- one fresh folder per run.
+
+        Every calibration phase writes here, rather than each phase choosing its
+        own location.  Three reasons:
+
+        * **Calibration frames stop colliding with operational ones.**  The
+          focus phase used to write into ``Autofocus/<NNNN>`` -- the same tree
+          the ps3cli/PWI4 autofocus uses -- so a night that ran both interleaved
+          two different tools in one numbering with nothing in the path to tell
+          them apart.  Replay depends on knowing which run produced a frame.
+        * **A fresh folder per run is what keeps frame names unique.**  A run
+          legitimately exposes the same position twice (re-acquisition,
+          re-centred sweeps), and PHD2 refuses to overwrite; per-run isolation
+          plus the phase's own sequence prefix makes that impossible by
+          construction rather than by each phase remembering.
+        * It fixes the stage phase, which could not run at all -- the
+          orchestrator never gave it a folder, and a file-only imager (PHD2)
+          fails its first precondition without one.
+
+        The sequence is **per phase** (``make_seq`` keeps its ``seq.txt`` in the
+        phase folder), so re-running one phase repeatedly -- the normal
+        commissioning pattern -- numbers cleanly and stays browsable, instead of
+        being scattered through a shared counter.
+        """
+        try:
+            phase_folder = CALIBRATION_PHASE_FOLDERS[phase]
+        except KeyError:
+            raise ValueError(
+                f"unknown calibration phase {phase!r}; "
+                f"expected one of {sorted(CALIBRATION_PHASE_FOLDERS)}"
+            ) from None
+        base = Path(self.make_daily_folder_name(root=root or Filer().ram.root)) / "Calibration"  # type: ignore
+        base = base / phase_folder
+        folder = base / self.make_seq(str(base))
         folder.mkdir(parents=True, exist_ok=True)
         return str(folder)
 
