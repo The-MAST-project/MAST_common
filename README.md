@@ -15,9 +15,10 @@ package from within each host project.
 
 - **Configuration** (`config/`) — Pydantic models for the whole system
   configuration plus the `Config` singleton that loads it. Configuration is
-  persisted in MongoDB at `mast-ns-control` (database `mast`; collections
-  `units`, `sites`, `specs`, `services`, `users`, `groups`), with an optional
-  local JSON snapshot (`mast-config-db.json`) taking precedence when present.
+  persisted in MongoDB at the controller host (database `mast`; collections
+  `units`, `sites`, `specs`, `services`, `users`, `groups`); each machine
+  bootstraps its identity and Mongo connection from a local TOML file
+  (`config/local.py`, see `config/local.toml.example`).
   A unit's effective configuration is the `units` collection's `common`
   document deep-merged with the unit-specific document; `Config.set_unit()`
   writes back only the delta from `common`. Fields tagged with
@@ -32,6 +33,17 @@ package from within each host project.
   wrappers and the `CanonicalResponse` envelope returned by all endpoints.
 - **Infrastructure** — logging (`mast_logging.py`), notifications, process
   watching, filesystem helpers, safety checks.
+
+## Tests
+
+`tests/` holds a pytest suite that drives the real models with no Mongo
+server and no hardware (`tests/conftest.py` makes the repo importable as
+`common` from any clone). Install `requirements-dev.txt` into the consuming
+venv and run:
+
+```
+pytest tests/ -v
+```
 
 ## Conventions
 
