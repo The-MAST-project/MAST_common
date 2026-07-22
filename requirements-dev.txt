@@ -1,0 +1,4 @@
+# Test-only dependencies. Runtime dependencies come from each consuming
+# project's requirements (this repo is embedded as a submodule and has no
+# standalone installation).
+pytest

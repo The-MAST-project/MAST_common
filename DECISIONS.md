@@ -2,6 +2,37 @@
 
 ---
 
+## [2026-07-22] Establish a pytest `tests/` harness; first suite guards `phd2.limit_frame`
+
+**Why:** The PHD2 limit-frame work (#12) was validated by one-off bench scripts on
+labcomp2 (2026-07-07); those runs proved the behavior but protect nothing against
+future regressions. The repo had no test harness at all, so every model change was
+re-verified by hand or not at all.
+
+**What:** `tests/` with a pytest suite that drives the real code with **no Mongo
+server and no hardware**, so it runs on any dev machine and in the unit venv:
+
+- `tests/conftest.py` installs a module alias so the repo root imports as the
+  `common` package from any clone (the directory is named `MAST_common` or
+  `src/common`, never `common`). On **Darwin only**, it also shims
+  `Filer.__init__` to a temp-dir layout — `Filer` supports Windows/Linux only and
+  raises at import time on macOS (module-level `Filer()` in `common.utils`);
+  the shim is a no-op on the deployed platforms and should be retired when real
+  Darwin support lands.
+- `tests/test_limit_frame_config.py` — the `LimitFrameConfig` contract: defaults
+  equal today's deployed behavior, `has_roi` requires both dimensions, negative
+  pixels rejected, GUI capability metadata present, and legacy `units` docs
+  (shape taken from a real backup) parse unchanged without the section.
+- `requirements-dev.txt` declares pytest (runtime deps stay with the consuming
+  projects; this repo has no standalone installation).
+
+**Implications:** New config-model work should add its cases here rather than as
+bench one-offs; the labcomp2 bench remains for what genuinely needs a live PHD2 or
+real camera. The suite is the durable home foreseen by the 2026-07-07 bench's
+TEST-MIGRATION plan.
+
+---
+
 ## [2026-07-09] Mongo URI composes the DNS domain (FQDN), not the bare controller_host
 
 **Why:** `local.py`'s `mongo_uri` built `mongodb://{controller_host}:{port}` from the
