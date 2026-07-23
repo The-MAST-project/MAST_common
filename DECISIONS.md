@@ -2,6 +2,36 @@
 
 ---
 
+## [2026-07-23] `phd2.limit_frame` selects by `mode`, not an enabled-flag
+
+**Why:** The initial shape (`enabled: bool` + zero-sentinel rectangle, entry below)
+encoded three outcomes in two knobs, and read backwards at the operational moment:
+`enabled: false` is the state the fold-mirror units actually want (full-frame star
+selection — today's hand-patch), but it reads like "feature off", while
+`enabled: true` without a rectangle silently *kept* the derived-ROI behavior the fix
+exists to escape. An incomplete rectangle also degraded silently to the derived ROI.
+Caught during deploy planning, before any merge/deploy — a rename, not a migration.
+
+**What:** `LimitFrameMode` StrEnum discriminator replacing `enabled`:
+
+- `mode: derived` (default) — limit frame from the fiber/margin-derived guiding ROI
+  (deployed behavior; absent DB section still means this).
+- `mode: full_frame` — no limit frame, full-sensor star selection.
+- `mode: fixed` — the configured rectangle (unbinned camera pixels).
+
+Validation now has teeth: `fixed` **requires** a complete rectangle (fail-fast at
+parse), and a rectangle configured under any other mode is rejected as a
+contradiction instead of being silently ignored. The `has_roi` sentinel accessor is
+gone. The flat x/y/width/height shape, unbinned-pixel convention, and per-field GUI
+capability metadata stay; `mode` carries a `select` widget with the three options.
+
+**Implications:** Consumers dispatch on `mode` (MAST_unit's `start_guiding()` is a
+three-arm `match`). Existing DB docs without the section parse unchanged. The Mongo
+example in the 2026-07-02 entry below becomes
+`{ "phd2.limit_frame": { mode: "full_frame" } }` (or `mode: "fixed"` + rectangle).
+
+---
+
 ## [2026-07-22] Establish a pytest `tests/` harness; first suite guards `phd2.limit_frame`
 
 **Why:** The PHD2 limit-frame work (#12) was validated by one-off bench scripts on
