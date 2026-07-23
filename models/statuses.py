@@ -212,6 +212,10 @@ class ImagerPixel(BaseModel):
     y: int
 
 
+# validation-context key honored by ImagerRoi.model_post_init (see ImagerRoi.verbatim)
+VERBATIM_ROI_CONTEXT_KEY = "verbatim_roi"
+
+
 class ImagerRoi(BaseModel):
     """
     MAST Region-Of-Interest.  Always conditioned to conform to:
@@ -228,6 +232,10 @@ class ImagerRoi(BaseModel):
     An ImagerRoi can be derived from other ROIs:
     - UnitRoi or SkyRoi: both don't specify center pixel
     - SpecRoi: specifies a center pixel
+
+    Exception: ImagerRoi.verbatim() constructs WITHOUT conditioning, for
+    consumers (PHD2 set_limit_frame) that must receive the rectangle exactly
+    as configured.
     """
 
     x: int = 0  # start.x
@@ -238,6 +246,9 @@ class ImagerRoi(BaseModel):
 
     def model_post_init(self, context: dict[str, Any] | None):
         from common.asi import ASI_294MM_SUPPORTED_BINNINGS_SET
+
+        if context and context.get(VERBATIM_ROI_CONTEXT_KEY):
+            return
 
         if self._center:  # _center was specified, it will govern width and height
             pass
@@ -266,6 +277,22 @@ class ImagerRoi(BaseModel):
         self.y = self._center.y - (self.height // 2)
 
         logger.debug(f"{function_name()}: {self=}")
+
+    @classmethod
+    def verbatim(cls, x: int, y: int, width: int, height: int) -> "ImagerRoi":
+        """
+        An ImagerRoi carrying the rectangle exactly as supplied, skipping the
+        conditioning in model_post_init.
+
+        For PHD2's set_limit_frame the caller-side conditioning is unnecessary
+        (PHD2 applies the camera alignment constraints itself since upstream
+        PRs #1374-#1376) and harmful (any shift defeats a deliberately placed
+        frame).  _center stays unset.
+        """
+        return cls.model_validate(
+            {"x": x, "y": y, "width": width, "height": height},
+            context={VERBATIM_ROI_CONTEXT_KEY: True},
+        )
 
     def __str__(self):
         return f"{self.width}x{self.height}@{self.x},{self.y}"

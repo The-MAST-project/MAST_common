@@ -2,6 +2,32 @@
 
 ---
 
+## [2026-07-23] `ImagerRoi.verbatim()` — an unconditioned construction path
+
+**Why:** `ImagerRoi.model_post_init` conditions every rectangle (center-preserving
+shrink to camera alignment constraints, with the non-idempotence bug tracked in
+#17). For PHD2's `set_limit_frame` that conditioning is both unnecessary — PHD2
+applies the ZWO alignment constraints itself since upstream PRs #1374–#1376, and
+the deployed MAST build (a master snapshot) includes them — and harmful: the limit
+frame is a deliberately placed (possibly one-sided) band near the fiber, and any
+shift or shrink defeats the placement. The interim mitigation (a WARNING naming
+configured vs. applied values, 2026-07-22) made the mutation visible; this removes
+it for the path that matters.
+
+**What:** A `verbatim(x, y, width, height)` classmethod constructing through
+`model_validate` with a validation-context key (`VERBATIM_ROI_CONTEXT_KEY`) that
+`model_post_init` honors by returning before any conditioning. `_center` stays
+unset (nothing reads it on this path). All existing constructors — direct,
+`from_other`, deserialization — condition exactly as before.
+
+**Implications:** MAST_unit's `mode: fixed` limit frame now reaches PHD2 exactly as
+configured in the DB. #17 (conditioning non-idempotence, the −1 center bias)
+remains real but its blast radius no longer includes the limit frame; its remaining
+consumers are the derived/sky/spec ROI paths. New consumers needing an exact
+rectangle should use `verbatim` rather than compensating for conditioning.
+
+---
+
 ## [2026-07-23] `phd2.limit_frame` selects by `mode`, not an enabled-flag
 
 **Why:** The initial shape (`enabled: bool` + zero-sentinel rectangle, entry below)
