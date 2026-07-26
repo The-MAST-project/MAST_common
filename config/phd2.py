@@ -110,10 +110,7 @@ class LimitFrameConfig(BaseModel):
     def _rect_matches_mode(self):
         if self.mode is LimitFrameMode.FIXED:
             if self.width <= 0 or self.height <= 0:
-                raise ValueError(
-                    "phd2.limit_frame: mode 'fixed' requires a complete rectangle "
-                    "(positive width and height)"
-                )
+                raise ValueError("phd2.limit_frame: mode 'fixed' requires a complete rectangle (positive width and height)")
         elif any((self.x, self.y, self.width, self.height)):
             raise ValueError(
                 f"phd2.limit_frame: a rectangle is configured but mode is "

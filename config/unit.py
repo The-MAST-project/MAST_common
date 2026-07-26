@@ -99,9 +99,7 @@ class UnitConfig(BaseModel):
         #         f"if any of {self.imager.imager_type=} or {self.guider.method=} is 'phd2', then BOTH must be 'phd2'"
         #     )
         logger = logging.getLogger("mast.config.unit")
-        logger.debug(
-            f"Validated UnitConfig for unit '{self.name}', focuser: '{self.focuser}'"
-        )
+        logger.debug(f"Validated UnitConfig for unit '{self.name}', focuser: '{self.focuser}'")
         return self
 
     def focus_seed_position(self) -> int | None:

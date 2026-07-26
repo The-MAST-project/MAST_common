@@ -4,9 +4,7 @@ from typing import Annotated
 from fastapi import HTTPException, Query
 
 # Regex for valid hour angle in sexagesimal format with optional fractional seconds
-RA_SEXAGESIMAL_REGEX = (
-    r"^(2[0-3]|1[0-9]|0?[0-9]):([0-5]?[0-9]):([0-5]?[0-9])(\.\d{1,3})?$"
-)
+RA_SEXAGESIMAL_REGEX = r"^(2[0-3]|1[0-9]|0?[0-9]):([0-5]?[0-9]):([0-5]?[0-9])(\.\d{1,3})?$"
 
 # Dependency to validate Right Ascension
 

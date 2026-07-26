@@ -11,7 +11,6 @@ init_log(logger)
 
 
 class MonitoredPosition:
-
     def __init__(self, ra: float, dec: float):
         self.ra = ra
         self.dec = dec
@@ -21,14 +20,10 @@ class MonitoredPosition:
         return f"MonitoredPosition({self.ra}, {self.dec})"
 
     def __eq__(self, other):
-        return (
-            abs(self.ra - other.ra) < self.epsilon
-            and abs(self.dec - other.dec) < self.epsilon
-        )
+        return abs(self.ra - other.ra) < self.epsilon and abs(self.dec - other.dec) < self.epsilon
 
 
 class StoppingMonitor:
-
     def __init__(
         self,
         monitored_entity: str,
@@ -74,9 +69,7 @@ class StoppingMonitor:
             return
 
         if is_moving != self.was_moving:
-            logger.info(
-                f"{self.monitored_entity}: {'started' if is_moving else 'stopped'} moving"
-            )
+            logger.info(f"{self.monitored_entity}: {'started' if is_moving else 'stopped'} moving")
             self.was_moving = is_moving
 
     def fully_stopped(self) -> bool:
@@ -85,16 +78,10 @@ class StoppingMonitor:
         """
         with self.lock:
             if self.monitored_entity == "mount":
-                max_diff_ra = max(x.ra for x in self.queue) - min(
-                    x.ra for x in self.queue
-                )
-                max_diff_dec = max(x.dec for x in self.queue) - min(
-                    x.dec for x in self.queue
-                )
+                max_diff_ra = max(x.ra for x in self.queue) - min(x.ra for x in self.queue)
+                max_diff_dec = max(x.dec for x in self.queue) - min(x.dec for x in self.queue)
                 logger.info(f"fully_stopped {max_diff_ra=}, {max_diff_dec=}")
-            if len(self.queue) != self.queue.maxlen or any(
-                x is None for x in self.queue
-            ):
+            if len(self.queue) != self.queue.maxlen or any(x is None for x in self.queue):
                 return False
             v = self.queue[0]
             return all([(x == v) for x in self.queue])

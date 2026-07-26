@@ -14,6 +14,7 @@ class SolvingConfidenceLevel(StrEnum):
     VeryConfident = "very confident"
     Certain = "certain"
 
+
 class SolvingSolution(BaseModel):
     ra_rads: float | None = None
     dec_rads: float | None = None
@@ -31,7 +32,6 @@ class SolvingSolution(BaseModel):
 
 
 class SolvingResult:
-
     succeeded: bool
     errors: list[str] | None = None
     solution: SolvingSolution | None
@@ -54,9 +54,7 @@ class SolvingResult:
             "succeeded": self.succeeded,
             "errors": self.errors,
             "solution": self.solution.model_dump() if self.solution else None,
-            "native_result": (
-                self.native_result.to_dict() if self.native_result else None
-            ),
+            "native_result": (self.native_result.to_dict() if self.native_result else None),
         }
 
 
@@ -70,7 +68,6 @@ class SolvingTolerance:
 
 
 class SolverInterface(ABC):
-
     @abstractmethod
     def solve(self, unit, settings, target, phase: Const.SolvingPhase) -> SolvingResult:
         pass

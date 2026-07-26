@@ -45,10 +45,7 @@ class ApiResponse:
                 value = ApiResponse(value)
             elif isinstance(value, list):
                 # Convert each item in the list if it's a dictionary
-                value = [
-                    ApiResponse(item) if isinstance(item, dict) else item
-                    for item in value
-                ]
+                value = [ApiResponse(item) if isinstance(item, dict) else item for item in value]
             setattr(self, key, value)
 
     def __repr__(self):
@@ -125,17 +122,13 @@ class BaseApi:
         if ipaddr is None and hostname is not None:
             if socket.gethostname() == hostname:
                 with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-                    s.connect(
-                        ("10.255.255.255", 1)
-                    )  # any routable address, no traffic sent
+                    s.connect(("10.255.255.255", 1))  # any routable address, no traffic sent
                     ipaddr = s.getsockname()[0]
             else:
                 ipaddr = socket.gethostbyname(hostname)
 
         if ipaddr is not None and domain is None:
-            raise ValueError(
-                "if 'ipaddr' is provided a 'domain' must be provided as well"
-            )
+            raise ValueError("if 'ipaddr' is provided a 'domain' must be provided as well")
 
         domain_base = None
 
@@ -174,9 +167,7 @@ class BaseApi:
                 self.ipaddr = socket.gethostbyname(hostname)
             except socket.gaierror:
                 try:
-                    self.ipaddr = socket.gethostbyname(
-                        hostname + "." + load_local_config().domain
-                    )
+                    self.ipaddr = socket.gethostbyname(hostname + "." + load_local_config().domain)
                 except socket.gaierror as err:
                     raise ValueError(f"cannot get 'ipaddr' for {hostname=}") from err
 
@@ -195,9 +186,7 @@ class BaseApi:
             if device in api_devices[self.domain]:
                 self.base_url += f"/{device}"
             else:
-                raise Exception(
-                    f"bad {device=} for domain {self.domain}, allowed: {api_devices[self.domain]}"
-                )
+                raise Exception(f"bad {device=} for domain {self.domain}, allowed: {api_devices[self.domain]}")
 
         self.detected = False
         self.timeout = timeout
@@ -210,9 +199,7 @@ class BaseApi:
     def operational(self) -> bool:
         return len(self.errors) == 0
 
-    async def get(
-        self, method: str, params: dict | None = None, timeout: float | None = None
-    ):
+    async def get(self, method: str, params: dict | None = None, timeout: float | None = None):
         url = f"{self.base_url}/{method}"
         op = f"{self.__class__.__name__}.get(hostname='{self.hostname}', {url=}, params={params})"
         self.errors = []
@@ -274,10 +261,7 @@ class BaseApi:
         # logger.error(err)
 
     def _handle_canonical_response(self, canonical_response, op):
-        if (
-            hasattr(canonical_response, "exception")
-            and canonical_response.exception is not None
-        ):
+        if hasattr(canonical_response, "exception") and canonical_response.exception is not None:
             e = canonical_response.exception
             self.append_error(f"{op}: Remote Exception     type: {e.type}")
             self.append_error(f"{op}: Remote Exception  message: {e.message}")
@@ -288,24 +272,15 @@ class BaseApi:
                     self.append_error(f"{op}: Remote Exception traceback: {line}")
                 return None
 
-        if (
-            hasattr(canonical_response, "errors")
-            and canonical_response.errors is not None
-        ):
+        if hasattr(canonical_response, "errors") and canonical_response.errors is not None:
             for err in canonical_response.errors:
                 self.append_error(err)
             return None
 
-        if (
-            hasattr(canonical_response, "value")
-            and canonical_response.value is not None
-        ):
+        if hasattr(canonical_response, "value") and canonical_response.value is not None:
             return canonical_response.value
 
-        self.append_error(
-            f"{op}: got a canonical response but fields "
-            + "'exception', 'errors' and 'value' are all None"
-        )
+        self.append_error(f"{op}: got a canonical response but fields " + "'exception', 'errors' and 'value' are all None")
         return None
 
     def _common_get_put(self, response: httpx.Response):
@@ -324,14 +299,10 @@ class BaseApi:
                     return CanonicalResponse(errors=self.errors)
             else:
                 value = response_dict
-                logger.warning(
-                    f"{op}: received NON canonical response, returning it as 'value'"
-                )
+                logger.warning(f"{op}: received NON canonical response, returning it as 'value'")
 
         except httpx.HTTPStatusError as e:
-            self.append_error(
-                f"HTTP error (url={e.request.url}): {e.response.status_code} - {e.response.text}"
-            )
+            self.append_error(f"HTTP error (url={e.request.url}): {e.response.status_code} - {e.response.text}")
             return CanonicalResponse(errors=self.errors)
         except httpx.RequestError as e:
             self.append_error(f"{op}: Request error (url={e.request.url}): {e}")
@@ -362,9 +333,7 @@ class UnitApi(BaseApi):
         if self._initialized:
             return
 
-        super().__init__(
-            hostname=hostname, ipaddr=ipaddr, device=device, domain=ApiDomain.Unit
-        )
+        super().__init__(hostname=hostname, ipaddr=ipaddr, device=device, domain=ApiDomain.Unit)
         self._initialized = True
 
 
@@ -420,9 +389,7 @@ class ControllerApi(BaseApi):
             return
         port = service_conf.port
         assert site is not None
-        super().__init__(
-            hostname=site.controller_host, port=port, domain=ApiDomain.Control
-        )
+        super().__init__(hostname=site.controller_host, port=port, domain=ApiDomain.Control)
         self._initialized = True
 
 
@@ -463,12 +430,8 @@ class NotificationApi(BaseApi):
         self.hostname = site.controller_host
         self.ipaddr = None
         self.domain = ApiDomain.Control
-        super().__init__(
-            hostname=site.controller_host, port=port, domain=ApiDomain.Control
-        )
-        self.base_url = (
-            f"https://{controller_fqdn}/mast-backend/{Const.BASE_CONTROL_PATH}"
-        )
+        super().__init__(hostname=site.controller_host, port=port, domain=ApiDomain.Control)
+        self.base_url = f"https://{controller_fqdn}/mast-backend/{Const.BASE_CONTROL_PATH}"
         self._initialized = True
 
 
@@ -513,9 +476,7 @@ class SafetyApi(BaseApi):
             except socket.gaierror as err:
                 raise ValueError(f"cannot get 'ipaddr' for {hostname=}") from err
 
-        super().__init__(
-            ipaddr=ipaddr, port=port, timeout=timeout, domain=ApiDomain.Safety
-        )
+        super().__init__(ipaddr=ipaddr, port=port, timeout=timeout, domain=ApiDomain.Safety)
         self._initialized = True
 
 
@@ -564,9 +525,7 @@ def test_safety_wind_speed():
                     logger.info(f"wind speed tstamp:'{latest_reading['time']}'")
                     age = datetime.now(UTC) - fromisoformat_zulu(latest_reading["time"])
 
-            print(
-                f"{wind_speed=}, age='{humanfriendly.format_timespan(age.total_seconds())}'"
-            )
+            print(f"{wind_speed=}, age='{humanfriendly.format_timespan(age.total_seconds())}'")
 
     except Exception as e:
         logger.error(f"Error accessing safety API: {e}")

@@ -95,9 +95,7 @@ class Activities:
             case "SpecActivities":
                 return "spec"
             case _:
-                logger.error(
-                    f"Unknown activities type '{type(self.activities).__name__}'"
-                )
+                logger.error(f"Unknown activities type '{type(self.activities).__name__}'")
                 return "unknown-component"
 
     @property
@@ -206,17 +204,13 @@ class Activities:
 
         self.timings[activity].end()
 
-        duration = humanfriendly.format_timespan(
-            self.timings[activity].duration.total_seconds()
-        )
+        duration = humanfriendly.format_timespan(self.timings[activity].duration.total_seconds())
 
         label = label + ": " if label else ""
         info = f"{label}ended   activity {activity.__repr__()}"
         end_details = self.details.pop(activity, [])
         if not isinstance(end_details, list):
-            logger.warning(
-                f"Activity details for {activity.name} is not a list: {end_details} (from {caller_name()})"
-            )
+            logger.warning(f"Activity details for {activity.name} is not a list: {end_details} (from {caller_name()})")
             end_details = [str(end_details)]
         end_data = self.data.pop(activity, None)
         if end_details:

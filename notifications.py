@@ -14,9 +14,7 @@ logger = logging.getLogger("mast." + __name__)
 init_log(logger)
 
 NotificationCardType = Literal["info", "warning", "error", "start", "end"]
-NotificationTypes = Literal[
-    "ui_notification", "assignment_notification"
-]  # more to come
+NotificationTypes = Literal["ui_notification", "assignment_notification"]  # more to come
 DomUpdateSpec = Literal["badge", "text"] | None
 
 
@@ -39,15 +37,14 @@ def _build_initiator() -> NotificationInitiator:
 
     local = load_local_config()
     role = os.getenv("MAST_PROJECT")  # 'unit' | 'spec' | 'control'
-    machine_type = {"unit": "unit", "spec": "spec", "control": "controller"}.get(
-        role or "", "unknown-machine-type"
-    )
+    machine_type = {"unit": "unit", "spec": "spec", "control": "controller"}.get(role or "", "unknown-machine-type")
     return NotificationInitiator(
         site=local.site,
         type=machine_type,
         hostname=socket.gethostname().split(".")[0],
         project=local.project,
     )
+
 
 #
 # Specifications: allow sepcifying notification message contents
@@ -131,12 +128,8 @@ class UiUpdateNotifications(BaseModel):
     """
 
     type: Literal["ui_notification"] = "ui_notification"
-    initiator: NotificationInitiator = Field(
-        default_factory=_build_initiator
-    )  # The originator of the notification
-    notifications: list[
-        UiUpdateNotification
-    ] = []  # List of individual notification items
+    initiator: NotificationInitiator = Field(default_factory=_build_initiator)  # The originator of the notification
+    notifications: list[UiUpdateNotification] = []  # List of individual notification items
 
 
 class Notifier:
@@ -201,10 +194,7 @@ class Notifier:
                     asyncio.run(self.notification_api.put("notifications", data=data))
                     # Success - remove from queue
                     with self.lock:
-                        if (
-                            self.notification_queue
-                            and self.notification_queue[0] == data
-                        ):
+                        if self.notification_queue and self.notification_queue[0] == data:
                             self.notification_queue.popleft()
                             # logger.debug("Notification sent successfully")
                 except Exception:
@@ -251,9 +241,7 @@ class Notifier:
         if isinstance(ui_specs, UiUpdateSpec):
             ui_specs = [ui_specs]
 
-        ui_update_request: UiUpdateNotifications = UiUpdateNotifications(
-            type="ui_notification", initiator=self.initiator
-        )
+        ui_update_request: UiUpdateNotifications = UiUpdateNotifications(type="ui_notification", initiator=self.initiator)
 
         for ui_spec in ui_specs:
             message = UiUpdateNotification()

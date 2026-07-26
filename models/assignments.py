@@ -30,9 +30,7 @@ class Initiator(BaseModel):
         hostname = values.get("hostname") or socket.gethostname()
         values["hostname"] = hostname
 
-        values["fqdn"] = (
-            values.get("fqdn") or hostname + "." + load_local_config().domain
-        )
+        values["fqdn"] = values.get("fqdn") or hostname + "." + load_local_config().domain
         try:
             ipaddr = socket.gethostbyname(hostname)
         except socket.gaierror:
@@ -125,16 +123,12 @@ class Manifest(BaseModel):
         return cls(hostname=hostname, fqdn=fqdn, ipaddr=ipaddr, assignment=assignment)
 
     @classmethod
-    def from_units_specifier(
-        cls, units_specifier: str | list[str], assignment
-    ) -> list["Manifest"]:
+    def from_units_specifier(cls, units_specifier: str | list[str], assignment) -> list["Manifest"]:
         if isinstance(units_specifier, str):
             units_specifier = [units_specifier]
         ret: list[Manifest] = []
         for site_colon_unit in parse_units(units_specifier):
-            remote = Manifest.from_site_colon_unit(
-                site_colon_unit, assignment=assignment
-            )
+            remote = Manifest.from_site_colon_unit(site_colon_unit, assignment=assignment)
             if remote:
                 ret.append(remote)
         return ret

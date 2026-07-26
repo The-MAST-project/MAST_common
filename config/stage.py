@@ -37,13 +37,9 @@ class SpecStageConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_spec_stage_config(self):
-        for name in flatten(
-            [list(self.presets.keys()), self.startup_preset, self.shutdown_preset]
-        ):
+        for name in flatten([list(self.presets.keys()), self.startup_preset, self.shutdown_preset]):
             if name is not None and name not in literal_values(StagePresetNames):
-                raise ValueError(
-                    f"validate_spec_stage_config: {name=} not in {StagePresetNames}"
-                )
+                raise ValueError(f"validate_spec_stage_config: {name=} not in {StagePresetNames}")
         return self
 
 
@@ -71,9 +67,7 @@ class FiberStageConfig(BaseModel):
             ]
         ):
             if name is not None and name not in literal_values(StagePresetNames):
-                raise ValueError(
-                    f"validate_spec_stage_config: {name=} not in {StagePresetNames}"
-                )
+                raise ValueError(f"validate_spec_stage_config: {name=} not in {StagePresetNames}")
         return self
 
 

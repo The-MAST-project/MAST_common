@@ -70,9 +70,7 @@ class DailyFileHandler(logging.FileHandler):
         self.path = path
         if "b" not in mode:
             encoding = io.text_encoding(encoding)
-        logging.FileHandler.__init__(
-            self, filename="", delay=delay, mode=mode, encoding=encoding, errors=errors
-        )
+        logging.FileHandler.__init__(self, filename="", delay=delay, mode=mode, encoding=encoding, errors=errors)
 
 
 def init_log(
@@ -88,9 +86,7 @@ def init_log(
     formatter = logging.Formatter(
         "%(asctime)s - %(levelname)-8s - {%(name)s:%(funcName)s:%(threadName)s:%(thread)s} -  %(message)s"
     )
-    stream_handlers = [
-        h for h in logger_.handlers if isinstance(h, logging.StreamHandler)
-    ]
+    stream_handlers = [h for h in logger_.handlers if isinstance(h, logging.StreamHandler)]
     if not stream_handlers:
         # handler = logging.StreamHandler()
         # handler.setLevel(level)
