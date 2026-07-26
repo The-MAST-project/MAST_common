@@ -2,6 +2,93 @@
 
 ---
 
+## [2026-07-23] `ImagerRoi.verbatim()` — an unconditioned construction path
+
+**Why:** `ImagerRoi.model_post_init` conditions every rectangle (center-preserving
+shrink to camera alignment constraints, with the non-idempotence bug tracked in
+#17). For PHD2's `set_limit_frame` that conditioning is both unnecessary — PHD2
+applies the ZWO alignment constraints itself since upstream PRs #1374–#1376, and
+the deployed MAST build (a master snapshot) includes them — and harmful: the limit
+frame is a deliberately placed (possibly one-sided) band near the fiber, and any
+shift or shrink defeats the placement. The interim mitigation (a WARNING naming
+configured vs. applied values, 2026-07-22) made the mutation visible; this removes
+it for the path that matters.
+
+**What:** A `verbatim(x, y, width, height)` classmethod constructing through
+`model_validate` with a validation-context key (`VERBATIM_ROI_CONTEXT_KEY`) that
+`model_post_init` honors by returning before any conditioning. `_center` stays
+unset (nothing reads it on this path). All existing constructors — direct,
+`from_other`, deserialization — condition exactly as before.
+
+**Implications:** MAST_unit's `mode: fixed` limit frame now reaches PHD2 exactly as
+configured in the DB. #17 (conditioning non-idempotence, the −1 center bias)
+remains real but its blast radius no longer includes the limit frame; its remaining
+consumers are the derived/sky/spec ROI paths. New consumers needing an exact
+rectangle should use `verbatim` rather than compensating for conditioning.
+
+---
+
+## [2026-07-23] `phd2.limit_frame` selects by `mode`, not an enabled-flag
+
+**Why:** The initial shape (`enabled: bool` + zero-sentinel rectangle, entry below)
+encoded three outcomes in two knobs, and read backwards at the operational moment:
+`enabled: false` is the state the fold-mirror units actually want (full-frame star
+selection — today's hand-patch), but it reads like "feature off", while
+`enabled: true` without a rectangle silently *kept* the derived-ROI behavior the fix
+exists to escape. An incomplete rectangle also degraded silently to the derived ROI.
+Caught during deploy planning, before any merge/deploy — a rename, not a migration.
+
+**What:** `LimitFrameMode` StrEnum discriminator replacing `enabled`:
+
+- `mode: derived` (default) — limit frame from the fiber/margin-derived guiding ROI
+  (deployed behavior; absent DB section still means this).
+- `mode: full_frame` — no limit frame, full-sensor star selection.
+- `mode: fixed` — the configured rectangle (unbinned camera pixels).
+
+Validation now has teeth: `fixed` **requires** a complete rectangle (fail-fast at
+parse), and a rectangle configured under any other mode is rejected as a
+contradiction instead of being silently ignored. The `has_roi` sentinel accessor is
+gone. The flat x/y/width/height shape, unbinned-pixel convention, and per-field GUI
+capability metadata stay; `mode` carries a `select` widget with the three options.
+
+**Implications:** Consumers dispatch on `mode` (MAST_unit's `start_guiding()` is a
+three-arm `match`). Existing DB docs without the section parse unchanged. The Mongo
+example in the 2026-07-02 entry below becomes
+`{ "phd2.limit_frame": { mode: "full_frame" } }` (or `mode: "fixed"` + rectangle).
+
+---
+
+## [2026-07-22] Establish a pytest `tests/` harness; first suite guards `phd2.limit_frame`
+
+**Why:** The PHD2 limit-frame work (#12) was validated by one-off bench scripts on
+labcomp2 (2026-07-07); those runs proved the behavior but protect nothing against
+future regressions. The repo had no test harness at all, so every model change was
+re-verified by hand or not at all.
+
+**What:** `tests/` with a pytest suite that drives the real code with **no Mongo
+server and no hardware**, so it runs on any dev machine and in the unit venv:
+
+- `tests/conftest.py` installs a module alias so the repo root imports as the
+  `common` package from any clone (the directory is named `MAST_common` or
+  `src/common`, never `common`). On **Darwin only**, it also shims
+  `Filer.__init__` to a temp-dir layout — `Filer` supports Windows/Linux only and
+  raises at import time on macOS (module-level `Filer()` in `common.utils`);
+  the shim is a no-op on the deployed platforms and should be retired when real
+  Darwin support lands.
+- `tests/test_limit_frame_config.py` — the `LimitFrameConfig` contract: defaults
+  equal today's deployed behavior, `has_roi` requires both dimensions, negative
+  pixels rejected, GUI capability metadata present, and legacy `units` docs
+  (shape taken from a real backup) parse unchanged without the section.
+- `requirements-dev.txt` declares pytest (runtime deps stay with the consuming
+  projects; this repo has no standalone installation).
+
+**Implications:** New config-model work should add its cases here rather than as
+bench one-offs; the labcomp2 bench remains for what genuinely needs a live PHD2 or
+real camera. The suite is the durable home foreseen by the 2026-07-07 bench's
+TEST-MIGRATION plan.
+
+---
+
 ## [2026-07-09] Mongo URI composes the DNS domain (FQDN), not the bare controller_host
 
 **Why:** `local.py`'s `mongo_uri` built `mongodb://{controller_host}:{port}` from the
@@ -24,6 +111,39 @@ DNS already provides this). Verified end-to-end on the dev VM against a local Mo
 `mongo_uri` composed to `mongodb://mast-ns-control.weizmann.ac.il:27017`, connected, and
 cross-validated against the DB `sites` doc; the fail-fast paths (missing role/file,
 malformed TOML, DB drift) each raised `ConfigError` and exited non-zero.
+
+---
+
+## [2026-07-02] PHD2 limit frame becomes persisted configuration (`phd2.limit_frame`)
+
+**Why:** Whether PHD2 confines guide-star selection to a limit frame — and which
+rectangle it uses — was controlled by code: an `ImagerSettings.use_set_limit_frame`
+flag whose guiding-time value was effectively hand-edited on the production machine
+(the `# oren` toggles in `MAST_unit`'s `phd2.py`), and a rectangle derived at runtime
+from the fiber position and margins in `guiding.rois`. Operations needs to flip the
+behavior and tune the rectangle without touching code.
+
+**What:** Added `LimitFrameConfig` to `config/phd2.py` and a
+`PHD2Config.limit_frame` field, persisted like every other unit setting in the
+`units` collection ('common' doc + per-unit delta):
+
+- `enabled` (default `True`) — whether to set a limit frame when guiding.
+- `x`, `y`, `width`, `height` (defaults 0) — an explicit rectangle in unbinned
+  camera pixels; `width`/`height` of 0 means "not configured"
+  (`has_roi` is the accessor).
+
+An explicit flat x/y/width/height shape was chosen (Oren offered either that or a
+fiber+margins `SpecROI` shape) because it maps 1:1 onto both `ImagerRoi` and the
+PHD2 `set_limit_frame` RPC, and 0-defaults represent "not configured" without
+nullable nested models. Fields carry the `json_schema_extra` UI metadata
+(per the `FocuserConfig` precedent) with `CAN_CHANGE_CONFIGURATION` capability, so
+the GUI can expose them.
+
+**Implications:** Existing DB documents parse unchanged: absent section ⇒
+`enabled=True` with no rectangle, which consumers treat as "derive the frame from
+`guiding.rois` as before". Consumers (currently `MAST_unit`'s
+`PHD2Connector.start_guiding`) read the section via their `unit_conf` snapshot, so a
+DB change takes effect on the next service restart.
 
 ---
 
