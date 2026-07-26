@@ -67,9 +67,7 @@ def parse_units(specifiers: List[str] | str) -> List[str]:
 
             if site_name:
                 if site_name not in [s.name for s in sites]:
-                    logger.error(
-                        f"{op}: Invalid site: '{site_name}', defined sites: {[s.name for s in sites]}"
-                    )
+                    logger.error(f"{op}: Invalid site: '{site_name}', defined sites: {[s.name for s in sites]}")
                     continue
                 else:
                     site = [s for s in sites if s.name == site_name][0]
@@ -85,9 +83,7 @@ def parse_units(specifiers: List[str] | str) -> List[str]:
 
                 if not building:
                     # a building was specified but it's not valid
-                    logger.error(
-                        f"{op}: Invalid building: '{building_name}' at site '{site.name}'"
-                    )
+                    logger.error(f"{op}: Invalid building: '{building_name}' at site '{site.name}'")
                     continue
 
             for unit in parse_unit_ids(units_spec):
@@ -95,21 +91,12 @@ def parse_units(specifiers: List[str] | str) -> List[str]:
                     if unit not in building.units:
                         logger.error(f"{op}: {unit=} not in {building.units=}")
                         continue
-                    units_numbering_base = sum(
-                        [
-                            len(b.units)
-                            for b in site.buildings[0 : site.buildings.index(building)]
-                        ]
-                    )
+                    units_numbering_base = sum([len(b.units) for b in site.buildings[0 : site.buildings.index(building)]])
                     unit_id = str(int(unit) + units_numbering_base)
                     if unit_id not in site.valid_ids:
-                        logger.error(
-                            f"{op}: {unit_id=} not valid at '{site.name}' ({site.valid_ids=}), skipped."
-                        )
+                        logger.error(f"{op}: {unit_id=} not valid at '{site.name}' ({site.valid_ids=}), skipped.")
                     elif unit_id not in site.deployed_units:
-                        logger.error(
-                            f"{op}: {unit_id=} not deployed at '{site.name}' ({site.deployed_units=}), skipped."
-                        )
+                        logger.error(f"{op}: {unit_id=} not deployed at '{site.name}' ({site.deployed_units=}), skipped.")
                     elif unit_id in site.units_in_maintenance:
                         logger.error(
                             f"{op}: {unit_id=} in maintenance at '{site.name}' ({site.units_in_maintenance=}), skipped."
@@ -120,9 +107,7 @@ def parse_units(specifiers: List[str] | str) -> List[str]:
                 elif unit in site.valid_ids:
                     unit_id = unit
                     if unit_id not in site.deployed_units:
-                        logger.error(
-                            f"{op}: {unit_id=} not deployed at '{site.name}' ({site.deployed_units=}), skipped."
-                        )
+                        logger.error(f"{op}: {unit_id=} not deployed at '{site.name}' ({site.deployed_units=}), skipped.")
                     elif unit_id in site.units_in_maintenance:
                         logger.error(
                             f"{op}: {unit_id=} in maintenance at '{site.name}' ({site.units_in_maintenance=}), skipped."
@@ -130,9 +115,7 @@ def parse_units(specifiers: List[str] | str) -> List[str]:
                     else:
                         ret.append(f"{site_name}:{unit_id}")
                 else:
-                    logger.error(
-                        f"{op}: Invalid unit: '{unit}' at '{site.name=}', known units: {site.valid_ids}"
-                    )
+                    logger.error(f"{op}: Invalid unit: '{unit}' at '{site.name=}', known units: {site.valid_ids}")
 
     return ret
 

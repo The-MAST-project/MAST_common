@@ -14,9 +14,7 @@ from __future__ import annotations
 
 import pytest
 
-phd2_config = pytest.importorskip(
-    "common.config.phd2", reason="config package import chain unavailable"
-)
+phd2_config = pytest.importorskip("common.config.phd2", reason="config package import chain unavailable")
 from pydantic import ValidationError  # noqa: E402
 
 from common.config.identification import UserCapabilities  # noqa: E402

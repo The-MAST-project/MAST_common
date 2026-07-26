@@ -12,6 +12,7 @@ class Correction(BaseModel):
     ra_delta: float
     dec_delta: float
 
+
 class Corrections(BaseModel):
     phase: str
     target_ra: float
@@ -20,6 +21,7 @@ class Corrections(BaseModel):
     tolerance_dec: float
     last_delta: Correction | None = None
     sequence: list[Correction] = []
+
 
 if __name__ == "__main__":
     corrections = Corrections(

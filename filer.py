@@ -75,11 +75,7 @@ class Filer:
                 if is_windows_drive_mapped("Z:")
                 else Location("C:/", "MAST/")
             )
-            self.ram = (
-                Location("D:/", "MAST/")
-                if is_windows_drive_mapped("D:")
-                else Location("C:/", "MAST/")
-            )
+            self.ram = Location("D:/", "MAST/") if is_windows_drive_mapped("D:") else Location("C:/", "MAST/")
         elif sys == "Linux":
             self.local = Location(None, "/Storage/mast-share/MAST")
             self.shared = self.local
@@ -140,16 +136,12 @@ class Filer:
                     dst.parent.mkdir(parents=True, exist_ok=True)
                     shutil.move(src, dst)
                 else:
-                    self.error(
-                        f"{op}: not a file, folder or symlink, ignoring: '{src.as_posix()}'"
-                    )
+                    self.error(f"{op}: not a file, folder or symlink, ignoring: '{src.as_posix()}'")
                     return
 
                 # self.info(f"moved '{src.as_posix()}' to '{dst.as_posix()}'")
             except Exception as e:
-                self.error(
-                    f"failed to move '{src.as_posix()} to '{dst.as_posix()}' (exception: {e})"
-                )
+                self.error(f"failed to move '{src.as_posix()} to '{dst.as_posix()}' (exception: {e})")
 
     def change_top_to(self, top: FilerTop, path: str):
         for t in self.tops:
@@ -208,10 +200,7 @@ class Filer:
             else:
                 # Don't spin up a thread that would only block on / fail against a dead
                 # share: defer the file (it stays safely in ram) for the sweeper to retry.
-                self.info(
-                    f"move_ram_to_shared: shared area '{self.shared.root}' not accessible; "
-                    f"deferring '{src}'"
-                )
+                self.info(f"move_ram_to_shared: shared area '{self.shared.root}' not accessible; deferring '{src}'")
                 self._enqueue_pending(str(src), str(dst))
                 self._ensure_sweeper()
 
@@ -231,9 +220,7 @@ class Filer:
         """Start the single ram->shared sweeper if it isn't already running."""
         with Filer._sweeper_lock:
             if Filer._sweeper_thread is None:
-                Filer._sweeper_thread = Thread(
-                    name="ram-to-shared-sweeper", target=self._sweep_loop, daemon=True
-                )
+                Filer._sweeper_thread = Thread(name="ram-to-shared-sweeper", target=self._sweep_loop, daemon=True)
                 Filer._sweeper_thread.start()
 
     def _drain_pending(self):
@@ -285,8 +272,7 @@ class Filer:
         for top, folders, files in os.walk(root):
             # If name is provided, look for an exact match
             if name and (
-                (qualifier is os.path.isfile and name in files)
-                or (qualifier is os.path.isdir and name in folders)
+                (qualifier is os.path.isfile and name in files) or (qualifier is os.path.isdir and name in folders)
             ):
                 matches.append(os.path.join(top, name))
 
@@ -299,9 +285,7 @@ class Filer:
         # Sort the matched files by creation date
         matches_sorted = sorted(matches, key=os.path.getctime, reverse=True)
 
-        return (
-            matches_sorted[0] if (matches_sorted and len(matches_sorted) > 0) else None
-        )
+        return matches_sorted[0] if (matches_sorted and len(matches_sorted) > 0) else None
 
 
 def _flatten_paths(paths) -> list[str]:
@@ -323,7 +307,7 @@ class MoveGuardian:
     Producers wrap their writes::
 
         with MoveGuardian().protect(fitsfile):
-            fits.writeto(fitsfile)      # protected for the duration of the block
+            fits.writeto(fitsfile)  # protected for the duration of the block
 
     and ``Filer.move`` wraps the move itself in :meth:`moving`. The two are mutually
     exclusive over overlapping paths:
@@ -380,13 +364,7 @@ class MoveGuardian:
     def _conflicts(real: str, registry: dict[str, int]) -> list[str]:
         """Keys in ``registry`` overlapping ``real`` -- equal to it, under it, or an
         ancestor of it (caller holds the lock)."""
-        return [
-            p
-            for p in registry
-            if p == real
-            or p.startswith(real + os.sep)
-            or real.startswith(p + os.sep)
-        ]
+        return [p for p in registry if p == real or p.startswith(real + os.sep) or real.startswith(p + os.sep)]
 
     def wait_until_free(self, path, timeout: float | None = None) -> bool:
         """Block until ``path`` overlaps no path currently being written.
@@ -398,9 +376,7 @@ class MoveGuardian:
         """
         real = os.path.realpath(path)
         with self._condition:
-            return self._condition.wait_for(
-                lambda: not self._conflicts(real, self._protected), timeout=timeout
-            )
+            return self._condition.wait_for(lambda: not self._conflicts(real, self._protected), timeout=timeout)
 
 
 class _Claim:
@@ -419,11 +395,7 @@ class _Claim:
 
     def __enter__(self) -> "_Claim":
         with MoveGuardian._condition:
-            MoveGuardian._condition.wait_for(
-                lambda: not any(
-                    MoveGuardian._conflicts(r, self._other) for r in self._reals
-                )
-            )
+            MoveGuardian._condition.wait_for(lambda: not any(MoveGuardian._conflicts(r, self._other) for r in self._reals))
             for real in self._reals:
                 self._own[real] = self._own.get(real, 0) + 1
         return self

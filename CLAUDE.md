@@ -59,7 +59,7 @@ All API endpoints return a `CanonicalResponse`:
 ```python
 class CanonicalResponse(BaseModel):
     api_version: str = "1.0"
-    value: Any | None = None   # present on success
+    value: Any | None = None  # present on success
     errors: list[str] | None = None  # present on failure
 ```
 Use `response.succeeded` / `response.failed` / `response.is_error`. `CanonicalResponse_Ok` is a convenience constant for `value="ok"`.

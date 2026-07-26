@@ -328,9 +328,7 @@ class Plan(BaseModel, Activities):
                 logger.error(f"ERR:\n  {err}")
             raise
 
-        return Manifest(
-            hostname=spec_hostname, fqdn=fqdn, ipaddr=ipaddr, assignment=spec_assignment
-        )
+        return Manifest(hostname=spec_hostname, fqdn=fqdn, ipaddr=ipaddr, assignment=spec_assignment)
 
     @classmethod
     def from_toml_file(cls, toml_file: str):
@@ -362,11 +360,7 @@ class Plan(BaseModel, Activities):
         real_path = toml_path.resolve()
         folder = real_path.parent
         basename = toml_path.name
-        if (
-            len(basename) == 36
-            and basename.startswith("PLAN_")
-            and basename.endswith(".toml")
-        ):
+        if len(basename) == 36 and basename.startswith("PLAN_") and basename.endswith(".toml"):
             # Filename complies with PLAN_*.toml, extract ULID
             ulid_str = basename[5:-5]
             ulid_from_basename = ulid.ULID.from_str(ulid_str)
@@ -377,9 +371,7 @@ class Plan(BaseModel, Activities):
             new_path = folder / basename
             if not new_path.exists():
                 shutil.copy(toml_file, str(new_path))
-                logger.warning(
-                    f"Copied plan file '{toml_file}' to comply with naming convention: '{new_path}'"
-                )
+                logger.warning(f"Copied plan file '{toml_file}' to comply with naming convention: '{new_path}'")
             real_path = new_path.resolve()
 
         try:
@@ -397,16 +389,12 @@ class Plan(BaseModel, Activities):
             try:
                 with open(real_path, "w") as fp:
                     fp.write(tomlkit.dumps(toml_doc))
-                logger.warning(
-                    f"Updated ULID in plan file '{real_path}' to '{ulid_from_basename}'"
-                )
+                logger.warning(f"Updated ULID in plan file '{real_path}' to '{ulid_from_basename}'")
             except Exception as e:
                 import traceback
 
                 traceback.print_exc()
-                raise Exception(
-                    f"Failed to update ULID in TOML file {real_path}: {str(e)}"
-                ) from e
+                raise Exception(f"Failed to update ULID in TOML file {real_path}: {str(e)}") from e
         new_plan = Plan(**toml_doc)  # type: ignore  — ValidationError propagates to caller
 
         return new_plan
@@ -415,9 +403,7 @@ class Plan(BaseModel, Activities):
         return f"<Plan>(ulid='{self.ulid}')"
 
     @staticmethod
-    async def api_coroutine(
-        api, method: str, sub_url: str, data=None, _json: dict | None = None
-    ):
+    async def api_coroutine(api, method: str, sub_url: str, data=None, _json: dict | None = None):
         response = None
         try:
             if method == "GET":
@@ -433,16 +419,11 @@ class Plan(BaseModel, Activities):
         self, units: list[UnitApi], spec: SpecApi | None = None
     ) -> tuple[list[GatherResponse], Any | None]:
         """Asynchronously fetch status information from multiple units and optionally a spectrograph."""
-        tasks = [
-            self.api_coroutine(api=unit_api, method="GET", sub_url="status")
-            for unit_api in units
-        ]
+        tasks = [self.api_coroutine(api=unit_api, method="GET", sub_url="status") for unit_api in units]
 
         if spec:
             tasks.append(self.api_coroutine(api=spec, method="GET", sub_url="status"))
-        all_status_responses: list[GatherResponse] = await asyncio.gather(
-            *tasks, return_exceptions=True
-        )
+        all_status_responses: list[GatherResponse] = await asyncio.gather(*tasks, return_exceptions=True)
 
         if spec:
             return all_status_responses[:-1], all_status_responses[-1]
@@ -465,9 +446,7 @@ class Plan(BaseModel, Activities):
         self.controller = controller
         self.sites_conf = controller.sites_conf
 
-    async def terminate(
-        self, reason: Literal["failed", "rejected", "completed"], details: list[str]
-    ):
+    async def terminate(self, reason: Literal["failed", "rejected", "completed"], details: list[str]):
         self.controller.task_in_progress = None
 
         logger.error(f"terminating task '{self.ulid}', {reason=}, {details=}")
@@ -482,9 +461,7 @@ class Plan(BaseModel, Activities):
             new_path = current_path.parent.parent / sub_folder / current_path.name
             os.makedirs(new_path.parent, exist_ok=True)
             shutil.move(str(current_path), str(new_path))
-            logger.info(
-                f"moved plan '{self.ulid}' from {str(current_path)} to {str(new_path)}"
-            )
+            logger.info(f"moved plan '{self.ulid}' from {str(current_path)} to {str(new_path)}")
         self.end_activity(PlanActivities.Executing)
         self.terminated = True
 
@@ -518,23 +495,17 @@ class Plan(BaseModel, Activities):
                 details=["no units assigned to this task"],
             )
             return
-        canonical_unit_responses, spec_response = await self.fetch_statuses(
-            self.unit_apis, self.spec_api
-        )
+        canonical_unit_responses, spec_response = await self.fetch_statuses(self.unit_apis, self.spec_api)
 
         # see what units respond at all
-        detected_unit_apis = [
-            unit_api for unit_api in self.unit_apis if unit_api.detected
-        ]
+        detected_unit_apis = [unit_api for unit_api in self.unit_apis if unit_api.detected]
         n_detected = len(detected_unit_apis)
         if self.quorum is not None and n_detected < self.quorum:
             self.end_activity(PlanActivities.Probing)
             if n_detected == 0:
                 await self.terminate(
                     reason="rejected",
-                    details=[
-                        f"no units quorum, no units were detected (required: {self.quorum})"
-                    ],
+                    details=[f"no units quorum, no units were detected (required: {self.quorum})"],
                 )
             else:
                 await self.terminate(
@@ -546,9 +517,7 @@ class Plan(BaseModel, Activities):
                     ],
                 )
             return
-        logger.info(
-            f"'detected_units' quorum achieved ({n_detected} detected out of {self.quorum} required)"
-        )
+        logger.info(f"'detected_units' quorum achieved ({n_detected} detected out of {self.quorum} required)")
 
         if not self.spec_api.detected:
             # spec does not respond
@@ -568,16 +537,12 @@ class Plan(BaseModel, Activities):
                     continue
                 unit_status = cast(UnitStatus, response.value)
                 if unit_status is None:
-                    logger.error(
-                        f"unit '{unit_api.hostname}' ({unit_api.ipaddr}) returned None, ignoring"
-                    )
+                    logger.error(f"unit '{unit_api.hostname}' ({unit_api.ipaddr}) returned None, ignoring")
                     continue
 
                 if unit_status.operational:
                     self.operational_unit_apis.append(self.unit_apis[i])
-                    logger.info(
-                        f"unit '{unit_api.hostname}' ({unit_api.ipaddr}), operational"
-                    )
+                    logger.info(f"unit '{unit_api.hostname}' ({unit_api.ipaddr}), operational")
                 else:
                     logger.info(
                         f"unit '{unit_api.hostname}' ({unit_api.ipaddr}), "
@@ -596,16 +561,11 @@ class Plan(BaseModel, Activities):
                 self.end_activity(PlanActivities.Probing)
                 await self.terminate(
                     reason="rejected",
-                    details=[
-                        f"only {len(self.operational_unit_apis)} operational "
-                        + f"units (quorum: {self.quorum})"
-                    ],
+                    details=[f"only {len(self.operational_unit_apis)} operational " + f"units (quorum: {self.quorum})"],
                 )
                 return
 
-        logger.info(
-            f"continuing with {len(self.operational_unit_apis)} unit(s) (quorum: {self.quorum})"
-        )
+        logger.info(f"continuing with {len(self.operational_unit_apis)} unit(s) (quorum: {self.quorum})")
 
         if isinstance(spec_response, CanonicalResponse):
             if spec_response and spec_response.failed:
@@ -625,9 +585,7 @@ class Plan(BaseModel, Activities):
                 self.end_activity(PlanActivities.Probing)
                 await self.terminate(
                     reason="rejected",
-                    details=[
-                        f"spec is not operational {spec_status.why_not_operational}"
-                    ],
+                    details=[f"spec is not operational {spec_status.why_not_operational}"],
                 )
                 return
 
@@ -649,9 +607,7 @@ class Plan(BaseModel, Activities):
         for operational_unit_api in self.operational_unit_apis:
             for unit_assignment in self.remote_unit_assignments:
                 if unit_assignment.assignment is None:
-                    logger.error(
-                        f"unit_assignment.assignment is None for unit '{unit_assignment.hostname}'"
-                    )
+                    logger.error(f"unit_assignment.assignment is None for unit '{unit_assignment.hostname}'")
                     continue
                 if operational_unit_api.ipaddr == unit_assignment.ipaddr:
                     assignment_tasks.append(
@@ -663,9 +619,7 @@ class Plan(BaseModel, Activities):
                         )
                     )
                     break
-        canonical_unit_responses: list[GatherResponse] = await asyncio.gather(
-            *assignment_tasks, return_exceptions=True
-        )
+        canonical_unit_responses: list[GatherResponse] = await asyncio.gather(*assignment_tasks, return_exceptions=True)
         self.end_activity(PlanActivities.Dispatching)
 
         for i, canonical_response in enumerate(canonical_unit_responses):
@@ -676,8 +630,7 @@ class Plan(BaseModel, Activities):
                     else:
                         canonical_response.log(
                             _logger=logger,
-                            label=f"{self.operational_unit_apis[i].hostname} "
-                            + f"({self.operational_unit_apis[i].ipaddr})",
+                            label=f"{self.operational_unit_apis[i].hostname} " + f"({self.operational_unit_apis[i].ipaddr})",
                         )
                 elif isinstance(canonical_response, BaseException):
                     logger.error(
@@ -709,9 +662,7 @@ class Plan(BaseModel, Activities):
         self.add_event(
             EventModel(
                 what="dispatched",
-                details=[
-                    f"committed_units: {[api.hostname for api in self.committed_unit_apis]}"
-                ],
+                details=[f"committed_units: {[api.hostname for api in self.committed_unit_apis]}"],
             )
         )
 
@@ -734,15 +685,11 @@ class Plan(BaseModel, Activities):
         if spec_status.activities != Activities.Idle:
             await self.terminate(
                 reason="failed",
-                details=[
-                    f"spectrograph is busy (activities={spec_status.activities}), aborting!"
-                ],
+                details=[f"spectrograph is busy (activities={spec_status.activities}), aborting!"],
             )
             return
 
-        assert self.remote_spec_assignment is not None, (
-            "spec_assignment should not be None"
-        )
+        assert self.remote_spec_assignment is not None, "spec_assignment should not be None"
 
         assert self.spec_api is not None, "spec_api should not be None"
         canonical_response = await self.spec_api.put(
@@ -752,9 +699,7 @@ class Plan(BaseModel, Activities):
         if not canonical_response.succeeded:
             await self.terminate(
                 reason="failed",
-                details=[
-                    f"failed to send assignment to spectrograph: {canonical_response.errors}"
-                ],
+                details=[f"failed to send assignment to spectrograph: {canonical_response.errors}"],
             )
             return
 
@@ -766,8 +711,7 @@ class Plan(BaseModel, Activities):
         self.start_activity(PlanActivities.WaitingForGuiding)
 
         assert self.timeout_to_guiding is not None, (
-            "task.timeout_to_guiding should not be None, "
-            "it should be set in the task definition"
+            "task.timeout_to_guiding should not be None, it should be set in the task definition"
         )
 
         while (datetime.datetime.now() - start).seconds < self.timeout_to_guiding:
@@ -775,21 +719,16 @@ class Plan(BaseModel, Activities):
             responses = await self.fetch_statuses(self.committed_unit_apis)
 
             canonical_responses: list[CanonicalResponse] = [
-                response
-                for response in responses
-                if isinstance(response, CanonicalResponse)
+                response for response in responses if isinstance(response, CanonicalResponse)
             ]
 
             statuses: list[ComponentStatus] = [
                 response.value
                 for response in canonical_responses
-                if response.value is not None
-                and isinstance(response.value, ComponentStatus)
+                if response.value is not None and isinstance(response.value, ComponentStatus)
             ]
 
-            if all(
-                [(status.activities & UnitActivities.Guiding) for status in statuses]
-            ):
+            if all([(status.activities & UnitActivities.Guiding) for status in statuses]):
                 logger.info(
                     f"all committed units ({[f'{u.hostname} ({u.ipaddr})' for u in self.committed_unit_apis]}) "
                     + "have reached 'Guiding'"
@@ -801,9 +740,7 @@ class Plan(BaseModel, Activities):
         if not reached_guiding:
             await self.terminate(
                 reason="failed",
-                details=[
-                    f"did not reach 'guiding' within {self.timeout_to_guiding} seconds"
-                ],
+                details=[f"did not reach 'guiding' within {self.timeout_to_guiding} seconds"],
             )
             return
 
@@ -823,9 +760,7 @@ class Plan(BaseModel, Activities):
                 self.end_activity(PlanActivities.WaitingForSpecDone)
                 await self.terminate(
                     reason="failed",
-                    details=[
-                        f"spec not operational: {spec_status.why_not_operational}"
-                    ],
+                    details=[f"spec not operational: {spec_status.why_not_operational}"],
                 )
                 return
 
@@ -863,37 +798,27 @@ class Plan(BaseModel, Activities):
 
         await self.probe()
         if self.terminated:
-            logger.debug(
-                f"{function_name()}: terminated after probing, exiting execute()"
-            )
+            logger.debug(f"{function_name()}: terminated after probing, exiting execute()")
             return
 
         await self.dispatch()
         if self.terminated:
-            logger.debug(
-                f"{function_name()}: terminated after dispatching, exiting execute()"
-            )
+            logger.debug(f"{function_name()}: terminated after dispatching, exiting execute()")
             return
 
         await self.wait_for_guiding()
         if self.terminated:
-            logger.debug(
-                f"{function_name()}: terminated while waiting for guiding, exiting execute()"
-            )
+            logger.debug(f"{function_name()}: terminated while waiting for guiding, exiting execute()")
             return
 
         await self.expose()
         if self.terminated:
-            logger.debug(
-                f"{function_name()}: terminated while exposing, exiting execute()"
-            )
+            logger.debug(f"{function_name()}: terminated while exposing, exiting execute()")
             return
 
         await self.wait_for_spec_done()
         if self.terminated:
-            logger.debug(
-                f"{function_name()}: terminated while waiting for spec done, exiting execute()"
-            )
+            logger.debug(f"{function_name()}: terminated while waiting for spec done, exiting execute()")
             return
 
         await self.terminate(reason="completed", details=["plan executed successfully"])
@@ -902,10 +827,7 @@ class Plan(BaseModel, Activities):
         from common.activities import PlanActivities
 
         self.start_activity(PlanActivities.Aborting)
-        tasks = [
-            self.api_coroutine(unit_api, method="GET", sub_url="abort")
-            for unit_api in self.committed_unit_apis
-        ]
+        tasks = [self.api_coroutine(unit_api, method="GET", sub_url="abort") for unit_api in self.committed_unit_apis]
         tasks.append(self.api_coroutine(self.spec_api, method="GET", sub_url="abort"))
         self.end_activity(PlanActivities.Aborting)
 

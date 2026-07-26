@@ -20,9 +20,7 @@ logger = logging.Logger("mast.unit." + __name__)
 init_log(logger)
 
 
-def find_process(
-    name: str | None = None, patt: str | None = None, pid: int | None = None
-) -> psutil.Process | None:
+def find_process(name: str | None = None, patt: str | None = None, pid: int | None = None) -> psutil.Process | None:
     """
     Searches for a running process either by a pattern in the command line or by pid
 
@@ -109,9 +107,7 @@ def ensure_process_is_running(
         # Convert backslashes to forward slashes for display/matching, but preserve the
         # original string for shell quoting (cmd.exe needs the path quoted if it has spaces)
         cmd_posix = Path(cmd).as_posix()
-        executable = (
-            cmd_posix.split("/")[-1].replace('"', "") if "/" in cmd_posix else cmd_posix.split(" ")[0]
-        )
+        executable = cmd_posix.split("/")[-1].replace('"', "") if "/" in cmd_posix else cmd_posix.split(" ")[0]
 
         # Suppress the cmd.exe console window that would otherwise flash on Windows.
         if sys.platform == "win32":
@@ -122,22 +118,32 @@ def ensure_process_is_running(
         if shell:
             # cmd.exe splits on spaces, so paths containing spaces must be quoted.
             # Quote the .exe portion if it's not already quoted.
-            m = re.match(r'^(.*?\.exe)(.*)', cmd_posix, re.IGNORECASE)
+            m = re.match(r"^(.*?\.exe)(.*)", cmd_posix, re.IGNORECASE)
             if m:
                 exe_path, exe_args = m.group(1), m.group(2).strip()
-                if ' ' in exe_path and not exe_path.startswith('"'):
+                if " " in exe_path and not exe_path.startswith('"'):
                     exe_path = f'"{exe_path}"'
-                cmd_for_shell = f'{exe_path} {exe_args}'.strip() if exe_args else exe_path
+                cmd_for_shell = f"{exe_path} {exe_args}".strip() if exe_args else exe_path
             else:
                 cmd_for_shell = cmd_posix
             process = subprocess.Popen(
-                args=cmd_for_shell, env=env, shell=True, cwd=cwd, stderr=stderr, stdout=stdout,
+                args=cmd_for_shell,
+                env=env,
+                shell=True,
+                cwd=cwd,
+                stderr=stderr,
+                stdout=stdout,
                 creationflags=creation_flags,
             )
         else:
             args = cmd.split()
             process = subprocess.Popen(
-                args, env=env, executable=args[0], cwd=cwd, stderr=stderr, stdout=stdout,
+                args,
+                env=env,
+                executable=args[0],
+                cwd=cwd,
+                stderr=stderr,
+                stdout=stdout,
                 creationflags=creation_flags,
             )
         if log_stdout_and_stderr:
@@ -153,9 +159,7 @@ def ensure_process_is_running(
             ).start()
 
         if logger:
-            logger.info(
-                f"started process (pid={process.pid}) with cmd: '{cmd_for_shell if shell else cmd}' in {cwd=}"
-            )
+            logger.info(f"started process (pid={process.pid}) with cmd: '{cmd_for_shell if shell else cmd}' in {cwd=}")
     except Exception as e:
         if logger:
             logger.error(f"ensure_process_is_running: failed to start '{cmd}': {e}")
@@ -176,10 +180,7 @@ def ensure_process_is_running(
             return None
         if time.monotonic() >= deadline:
             if logger:
-                logger.error(
-                    f"ensure_process_is_running: timed out after {startup_wait_s}s "
-                    f"waiting for '{name or pattern}'"
-                )
+                logger.error(f"ensure_process_is_running: timed out after {startup_wait_s}s waiting for '{name or pattern}'")
             return None
         if logger:
             logger.info(f"Waiting for process to start: {name or pattern}")
@@ -188,7 +189,6 @@ def ensure_process_is_running(
 
 
 class WatchedProcess:
-
     def __init__(
         self,
         command_pattern: str | None = None,
@@ -217,9 +217,7 @@ class WatchedProcess:
     def start(self):
         if not self.command:
             if not self.command_pattern:
-                raise ValueError(
-                    "WatchedProcess: command or command_pattern must be set"
-                )
+                raise ValueError("WatchedProcess: command or command_pattern must be set")
             self.command = self.command_pattern
         #
         # First kill previous instances, if existent.
@@ -258,7 +256,7 @@ class WatchedProcess:
                     stderr=stderr,
                     stdout=stdout,
                 )
-                logger.info(f"{function_name()}: started '{" ".join(args)}'")
+                logger.info(f"{function_name()}: started '{' '.join(args)}'")
         except FileNotFoundError as ex:
             print(f"WatchedProcess.start: exception: {ex}")
             return
@@ -290,9 +288,7 @@ class WatchedProcess:
         self._terminate = True
         if self.process is not None:
             if self.logger:
-                self.logger.info(
-                    f"{function_name()}: terminating process {self.process.pid}"
-                )
+                self.logger.info(f"{function_name()}: terminating process {self.process.pid}")
             self.process.kill()
 
     def watcher(self):
@@ -300,9 +296,7 @@ class WatchedProcess:
             if self.process is not None:
                 exit_code = self.process.wait()
                 if self.logger:
-                    self.logger.info(
-                        f"Process {self.process.pid} exited with {exit_code=}"
-                    )
+                    self.logger.info(f"Process {self.process.pid} exited with {exit_code=}")
                 self.process = None
 
             if self._terminate:
@@ -336,11 +330,7 @@ def kill_process_by_name(name):
 
     # Wait for processes to die
     while True:
-        still_alive = [
-            p
-            for p in psutil.process_iter(["name"])
-            if p.info["name"] and name.lower() in p.info["name"].lower()
-        ]
+        still_alive = [p for p in psutil.process_iter(["name"]) if p.info["name"] and name.lower() in p.info["name"].lower()]
         if not still_alive:
             # print(f"All '{name.lower()}' processes terminated.")
             return
@@ -348,8 +338,6 @@ def kill_process_by_name(name):
 
 
 if __name__ == "__main__":
-    WatchedProcess(
-        command='"C:/Program Files (x86)/PHDGuiding2/phd2.exe"', shell=True
-    ).start()
+    WatchedProcess(command='"C:/Program Files (x86)/PHDGuiding2/phd2.exe"', shell=True).start()
     while True:
         pass

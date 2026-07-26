@@ -28,9 +28,11 @@ class GreateyesProbingConfig(BaseModel):
     boot_delay: int = 25  # seconds to wait after booting the camera
     interval: int = 60  # seconds to check the camera status
 
+
 class GreateyesBinningConfig(BaseModel):
     x: int
     y: int
+
 
 class GreateyesSettingConfig(BaseModel):
     """Configuration for Greateyes settings."""

@@ -8,12 +8,9 @@ init_log(logger)
 
 
 class Target:
-
     DEFAULT_PRIORITY = 0
 
-    def __init__(
-        self, name: str, ra: float, dec: float, priority: float = DEFAULT_PRIORITY
-    ):
+    def __init__(self, name: str, ra: float, dec: float, priority: float = DEFAULT_PRIORITY):
         self.name: str = name
         self.ra: float = ra
         self.dec: float = dec

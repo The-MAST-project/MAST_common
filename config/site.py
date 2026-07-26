@@ -67,11 +67,7 @@ class Site(BaseModel):
                 ret.append(f"{self.project}{specifier:02}")
             else:
                 if not specifier.startswith(self.project):
-                    ret.append(
-                        f"{self.project}{int(specifier):02}"
-                        if specifier.isdigit()
-                        else f"{self.project}{specifier}"
-                    )
+                    ret.append(f"{self.project}{int(specifier):02}" if specifier.isdigit() else f"{self.project}{specifier}")
                 else:
                     ret.append(specifier)
         return ret
@@ -80,9 +76,7 @@ class Site(BaseModel):
     def validate_site(self):
         self.deployed_units = self.normalize_unit_specifier(self.deployed_units)
         self.planned_units = self.normalize_unit_specifier(self.planned_units)
-        self.units_in_maintenance = self.normalize_unit_specifier(
-            self.units_in_maintenance
-        )
+        self.units_in_maintenance = self.normalize_unit_specifier(self.units_in_maintenance)
         self.unit_ids = self.normalize_unit_specifier(self.unit_ids)
         for building in self.buildings:
             building.units = self.normalize_unit_specifier(building.unit_ids)
@@ -112,9 +106,7 @@ class Site(BaseModel):
             )
         )
 
-        noon = Time(
-            datetime(day.year, day.month, day.day, 12, 0, 0, tzinfo=timezone.utc)
-        )
+        noon = Time(datetime(day.year, day.month, day.day, 12, 0, 0, tzinfo=timezone.utc))
 
         dusk = observer.sun_set_time(
             noon,

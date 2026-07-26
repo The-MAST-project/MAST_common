@@ -12,7 +12,9 @@ class SolverId(IntFlag):
     MastrometryDotNet = auto()
     # Astap = auto()
 
+
 SolverIdNames = Literal["PlaneWaveCli", "PlaneWaveShm", "AstrometryDotNet", "MastrometryDotNet"]
+
 
 class SolvingSolution(BaseModel):
     ra_rads: float | None = None

@@ -21,22 +21,22 @@ from urllib.parse import urlparse, urlunparse
 
 class ProxyContext:
     # Nginx header names (lowercase, as FastAPI/Starlette exposes them)
-    _HDR_IP   = "x-proxy-external-ip"
+    _HDR_IP = "x-proxy-external-ip"
     _HDR_PORT = "x-proxy-port"
     _HDR_BASE = "x-proxy-base"
     _HDR_HOST = "x-forwarded-host"
 
     # Django META equivalents (uppercase, HTTP_ prefix)
-    _META_IP   = "HTTP_X_PROXY_EXTERNAL_IP"
+    _META_IP = "HTTP_X_PROXY_EXTERNAL_IP"
     _META_PORT = "HTTP_X_PROXY_PORT"
     _META_BASE = "HTTP_X_PROXY_BASE"
     _META_HOST = "HTTP_X_FORWARDED_HOST"
 
     def __init__(self, scheme: str, external_ip: str, port: str, base: str, forwarded_host: str = ""):
-        self.scheme      = scheme or "http"
+        self.scheme = scheme or "http"
         self.external_ip = (external_ip or "").strip()
         self.forwarded_host = (forwarded_host or "").strip()
-        self.port        = str(port).strip() if port else ""
+        self.port = str(port).strip() if port else ""
         # Normalise base: always starts with '/', never ends with '/'
         b = (base or "").strip().strip("/")
         self.base = f"/{b}" if b else ""
@@ -102,11 +102,13 @@ class ProxyContext:
             from decouple import config
         except ImportError:
             import os
+
             def config(key, default=""):  # type: ignore[misc]
                 return os.environ.get(key, default)
 
         try:
             from django.conf import settings as dj
+
             scheme = "https" if getattr(dj, "SECURE_SSL_REDIRECT", False) else "http"
         except Exception:
             scheme = "http"
@@ -192,6 +194,7 @@ class ProxyContext:
         Falls back to the internal path when not proxied.
         """
         from django.urls import reverse
+
         path = reverse(viewname, args=args, kwargs=kwargs)
         return self.absolute_url(path)
 
@@ -201,6 +204,7 @@ class ProxyContext:
         static_path — relative path, e.g. 'css/style.css'
         """
         from django.conf import settings
+
         static_root = getattr(settings, "STATIC_URL", "/static/").rstrip("/")
         path = f"{static_root}/{static_path.lstrip('/')}"
         return self.absolute_url(path)

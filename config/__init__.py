@@ -154,17 +154,12 @@ class Config:
             local_value = getattr(self.local, field)
             db_value = getattr(db_site, field)
             if local_value != db_value:
-                mismatches.append(
-                    f"  - {field}: config file = {local_value!r}, DB site = {db_value!r}"
-                )
+                mismatches.append(f"  - {field}: config file = {local_value!r}, DB site = {db_value!r}")
         for attr in ("latitude", "longitude", "elevation"):
             local_value = getattr(self.local.location, attr)
             db_value = getattr(db_site.location, attr)
             if local_value != db_value:
-                mismatches.append(
-                    f"  - location.{attr}: config file = {local_value!r}, "
-                    f"DB site = {db_value!r}"
-                )
+                mismatches.append(f"  - location.{attr}: config file = {local_value!r}, DB site = {db_value!r}")
         if mismatches:
             raise ConfigError(
                 f"local configuration for site '{self.local.site}' disagrees with the "
@@ -189,15 +184,11 @@ class Config:
         self.origin.mongo_uri = mongo_uri
 
         if MongoClient is None:
-            raise RuntimeError(
-                "pymongo is not installed but MongoDB source was requested."
-            )
+            raise RuntimeError("pymongo is not installed but MongoDB source was requested.")
         client = MongoClient(mongo_uri)
         self.origin.client = client
         self.origin.db = self.origin.client[database_name]
-        self.origin.query_filter = (
-            json.loads(query_filter_json) if query_filter_json else {}
-        )
+        self.origin.query_filter = json.loads(query_filter_json) if query_filter_json else {}
         result: dict[str, list[dict[str, Any]]] = {}
         for collection_name in collections_tuple:
             cursor = self.origin.db[collection_name].find(
@@ -216,9 +207,7 @@ class Config:
         drop_object_id: bool = True,
     ) -> dict[str, list[dict[str, Any]]]:
         collections_tuple = tuple(collections)
-        query_filter_json = (
-            json.dumps(query_filter, sort_keys=True) if query_filter else None
-        )
+        query_filter_json = json.dumps(query_filter, sort_keys=True) if query_filter else None
         return self._load_config_from_mongodb_cached(
             mongo_uri,
             database_name,
@@ -228,14 +217,8 @@ class Config:
         )
 
     def get_config(self) -> dict[str, list[dict[str, Any]]]:
-        if not (
-            self.origin.mongo_uri
-            and self.origin.database_name
-            and self.origin.collections
-        ):
-            raise ConfigError(
-                "missing mongo_uri, database, or collections; cannot load configuration."
-            )
+        if not (self.origin.mongo_uri and self.origin.database_name and self.origin.collections):
+            raise ConfigError("missing mongo_uri, database, or collections; cannot load configuration.")
 
         return self.load_config_from_mongodb(
             mongo_uri=self.origin.mongo_uri,
@@ -253,9 +236,7 @@ class Config:
             logger.error(f"{function_name()}: no site named '{site_name}'")
             return False
         if unit_name not in site[0].unit_ids:
-            logger.error(
-                f"{function_name()}: site '{site_name}' has no unit named '{unit_name}'"
-            )
+            logger.error(f"{function_name()}: site '{site_name}' has no unit named '{unit_name}'")
             return False
         return True
 
@@ -267,9 +248,7 @@ class Config:
                 return site.name
         return None
 
-    def get_unit(
-        self, site_name: str | None = None, unit_name: str | None = None
-    ) -> UnitConfig | None:
+    def get_unit(self, site_name: str | None = None, unit_name: str | None = None) -> UnitConfig | None:
         """
         Gets a unit's configuration.  By default, this is the ['config']['units']['common']
          entry. If a unit-specific entry exists it overrides the 'common' entry.
@@ -287,15 +266,9 @@ class Config:
         if site_name is None:
             # For the local machine the site is the config-file site (source of
             # truth); for an explicitly-named unit, look it up by DB membership.
-            site_name = (
-                self.local.site
-                if local_unit
-                else self.site_name_from_unit_name(unit_name)
-            )
+            site_name = self.local.site if local_unit else self.site_name_from_unit_name(unit_name)
             if site_name is None:
-                logger.error(
-                    f"{function_name()}: cannot determine site for unit '{unit_name}'"
-                )
+                logger.error(f"{function_name()}: cannot determine site for unit '{unit_name}'")
                 return None
 
         if not self._verify_unit_site_membership(site_name, unit_name or ""):
@@ -324,9 +297,7 @@ class Config:
         # resolve power-switch name and ipaddr
         combined_dict["name"] = unit_name
         if combined_dict["power_switch"]["network"]["host"] == "auto":
-            switch_host_name = (
-                unit_name.replace("mast", "mastps") + "." + self.local.domain
-            )
+            switch_host_name = unit_name.replace("mast", "mastps") + "." + self.local.domain
             combined_dict["power_switch"]["network"]["host"] = switch_host_name
             if "ipaddr" not in combined_dict["power_switch"]["network"]:
                 try:
@@ -338,9 +309,7 @@ class Config:
         try:
             ret = UnitConfig(**combined_dict)
         except Exception as ex:
-            logger.error(
-                f"get_unit: failed to parse unit configuration for {unit_name=}: {ex}"
-            )
+            logger.error(f"get_unit: failed to parse unit configuration for {unit_name=}: {ex}")
             raise ex
         return ret
 
@@ -359,30 +328,18 @@ class Config:
             unit_name = socket.gethostname().split(".")[0]
         if site_name is None:
             # Local machine -> config-file site; explicit unit -> DB membership.
-            site_name = (
-                self.local.site
-                if local_unit
-                else self.site_name_from_unit_name(unit_name)
-            )
+            site_name = self.local.site if local_unit else self.site_name_from_unit_name(unit_name)
             if site_name is None:
-                raise ValueError(
-                    f"{function_name()}: cannot determine site for unit '{unit_name}'"
-                )
+                raise ValueError(f"{function_name()}: cannot determine site for unit '{unit_name}'")
         if not self._verify_unit_site_membership(site_name, unit_name):
-            raise ValueError(
-                f"{function_name()}: cannot set unit config, invalid site/unit membership"
-            )
+            raise ValueError(f"{function_name()}: cannot set unit config, invalid site/unit membership")
 
         # Find the 'common' unit config for diffing
         try:
-            common_conf_dict = [
-                unit for unit in self.db["units"] if unit["name"] == "common"
-            ][0]
+            common_conf_dict = [unit for unit in self.db["units"] if unit["name"] == "common"][0]
         except Exception:
             logger.error(f"{function_name()}: 'common' unit configuration not found")
-            raise ValueError(
-                f"{function_name()}: 'common' unit configuration not found"
-            )
+            raise ValueError(f"{function_name()}: 'common' unit configuration not found")
 
         # Only store the delta from 'common'
         delta = deep_dict_difference(common_conf_dict, unit_dict) or {}
@@ -397,9 +354,7 @@ class Config:
         if not deep_dict_is_empty(delta):
             delta["name"] = unit_name
             if saved_power_switch_network is not None:
-                delta.setdefault("power_switch", {})["network"] = (
-                    saved_power_switch_network
-                )
+                delta.setdefault("power_switch", {})["network"] = saved_power_switch_network
 
             try:
                 assert self.origin.client and self.origin.database_name
@@ -407,9 +362,7 @@ class Config:
                     {"name": unit_name}, {"$set": delta}, upsert=True
                 )
             except PyMongoError:
-                logger.error(
-                    f"{function_name()}: failed to update unit config for {unit_name=} with {delta=}"
-                )
+                logger.error(f"{function_name()}: failed to update unit config for {unit_name=} with {delta=}")
             clear_mongo_ttl_cache()
 
     @cached(config_db_cache)
@@ -436,11 +389,7 @@ class Config:
 
     def get_thar_filters(self) -> list[str]:
         doc = self.fetch_config_section("specs")[0]
-        return [
-            v
-            for k, v in doc["wheels"]["ThAr"]["filters"].items()
-            if isinstance(v, str) and k != "default"
-        ]
+        return [v for k, v in doc["wheels"]["ThAr"]["filters"].items() if isinstance(v, str) and k != "default"]
 
     def get_specs(self) -> "SpecsConfig":  # type: ignore # noqa: F821
         from .specs import SpecsConfig
@@ -483,9 +432,7 @@ class Config:
         all_user_dicts = self.fetch_config_section("users")
         user_configs: list[UserConfig] = []
 
-        all_group_configs: list[GroupConfig] = [
-            GroupConfig(**group) for group in self.fetch_config_section("groups")
-        ]
+        all_group_configs: list[GroupConfig] = [GroupConfig(**group) for group in self.fetch_config_section("groups")]
         all_group_names = [group.name for group in all_group_configs]
 
         for user_dict in all_user_dicts:
@@ -497,21 +444,13 @@ class Config:
 
             for group_name in user_config.groups:
                 if group_name not in all_group_names:
-                    logger.warning(
-                        f"unknown group '{group_name}' for user '{user_config.name}', ignored!"
-                    )
+                    logger.warning(f"unknown group '{group_name}' for user '{user_config.name}', ignored!")
                     continue
-                grp = [
-                    group_config
-                    for group_config in all_group_configs
-                    if group_config.name == group_name
-                ][0]
+                grp = [group_config for group_config in all_group_configs if group_config.name == group_name][0]
                 for cap in grp.capabilities or []:
                     user_config.capabilities.append(cap)
 
-            user_config.capabilities = sorted(
-                set(user_config.capabilities)
-            )  # set() makes unique
+            user_config.capabilities = sorted(set(user_config.capabilities))  # set() makes unique
             user_configs.append(user_config)
 
         return user_configs
@@ -559,11 +498,7 @@ def test_services_config():
 def test_service_config(service_name: str | None):
     result = Config().get_services()
     assert result is not None
-    [
-        print(json.dumps(service.model_dump(), indent=2))
-        for service in result
-        if service.name == service_name
-    ]
+    [print(json.dumps(service.model_dump(), indent=2)) for service in result if service.name == service_name]
 
 
 def test_users():

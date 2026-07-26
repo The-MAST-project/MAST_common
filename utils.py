@@ -86,9 +86,7 @@ def parse_params(memory: shared_memory.SharedMemory, logger_: logging.Logger) ->
     data = string_array[: string_array.find("\x00")]
     logger_.info(f"data: '{data}'")
 
-    matches = re.findall(
-        r"(\w+(?:\(\d+\))?)\s*=\s*(.*?)(?=(!|$|\w+(\(\d+\))?\s*=))", data
-    )
+    matches = re.findall(r"(\w+(?:\(\d+\))?)\s*=\s*(.*?)(?=(!|$|\w+(\(\d+\))?\s*=))", data)
     d = {}
     for match in matches:
         key = match[0]
@@ -142,11 +140,7 @@ def caller_name() -> str:
     Gets the name of the calling function's caller
     """
     current_frame = inspect.currentframe()
-    if (
-        current_frame is None
-        or current_frame.f_back is None
-        or current_frame.f_back.f_back is None
-    ):
+    if current_frame is None or current_frame.f_back is None or current_frame.f_back.f_back is None:
         return "UnknownCaller"
 
     return current_frame.f_back.f_back.f_code.co_name
@@ -233,9 +227,7 @@ def cached(timeout_seconds):
             current_time = time.time()
 
             # If the cache is valid (not expired), return the cached value
-            if cached_value is not None and (
-                current_time - cache_time < timeout_seconds
-            ):
+            if cached_value is not None and (current_time - cache_time < timeout_seconds):
                 return cached_value
 
             # Otherwise, call the function and update the cache
@@ -293,9 +285,7 @@ def generate_random_string(prefix="tmp_", length=15) -> str:
         raise ValueError("Length must be greater than the length of the prefix.")
 
     # Generate random characters
-    random_part = "".join(
-        random.choices(string.ascii_uppercase + string.digits, k=random_part_length)
-    )
+    random_part = "".join(random.choices(string.ascii_uppercase + string.digits, k=random_part_length))
 
     # Combine prefix and random part
     return prefix + random_part.upper()
@@ -436,9 +426,7 @@ class Timeout(AbstractContextManager):
             return future.result(timeout=self.timeout)
         except FuturesTimeout as exc:
             future.cancel()
-            raise TimeoutError(
-                f"Function call '{func.__name__}' exceeded timeout of {self.timeout:.2f} seconds"
-            ) from exc
+            raise TimeoutError(f"Function call '{func.__name__}' exceeded timeout of {self.timeout:.2f} seconds") from exc
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.executor.shutdown(wait=False)
