@@ -124,6 +124,19 @@ In `json_schema_extra` dicts on Pydantic model fields, put one key-value entry p
 ### Syncing `common/` across checkouts
 `MAST_common` is checked out in several places — `MAST_control/common/`, `MAST_spec/common/`, `MAST_gui/common/`, and `MAST_unit.*/src/common/`. They are independent checkouts of the same repository, so after changing any file under a `common/`, apply the same change to (or re-sync) the other checkouts so they don't diverge.
 
+### Updating the `common/` submodule — use `--remote`
+Always update with:
+
+```bash
+git submodule update --remote
+```
+
+A bare `git submodule update` checks out the **commit recorded in the parent's gitlink**, which leaves `common/` on a **detached HEAD** — commits made there belong to no branch and are easy to lose. Every parent's `.gitmodules` sets `branch = master` for its `common` submodule, and `--remote` follows that branch instead.
+
+If a `common/` checkout is already detached, reattach with `git -C <parent>/common checkout master` (verify nothing is stranded first: `git -C <parent>/common branch -a --contains HEAD`).
+
+Note that `--remote` moves the checkout to the branch tip, which will usually be **ahead of the parent's gitlink** — the parent then reports `modified: common (new commits)`. That is a pointer difference, not a file change; resolve it by committing the bumped gitlink in the parent.
+
 ## Project-wide LLM guidance
 
 Cross-repo LLM guidance for MAST lives in the **`mast-claude-config`** repo (`github.com/The-MAST-project/mast-claude-config`) — the overarching home for project-wide instructions (shared coding standards, team working-style, global environment facts), deployed into `~/.claude/` by its `setup.sh`. Keep repo-specific guidance in the per-repo `CLAUDE.md`; put genuinely cross-repo guidance there. See `mast-claude-config/CLAUDE.md` for what belongs where.
