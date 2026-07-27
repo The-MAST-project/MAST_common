@@ -1,10 +1,8 @@
-dlipower/package_metadata.json
 .pyc
 .idea
 dist
 build
 .tox
-dlipower.egg-info
 .coverage
 cobertura.xml
 nosetests.xml
