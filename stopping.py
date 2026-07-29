@@ -1,15 +1,11 @@
-import logging
 from collections import deque
 from threading import Lock
 from typing import Callable
 
-from common.mast_logging import init_log
+from common.mast_logging import get_logger
 from common.utils import RepeatTimer
 
-logger = logging.Logger("stopping-monitor")
-init_log(logger)
-
-
+logger = get_logger(__name__)
 class MonitoredPosition:
     def __init__(self, ra: float, dec: float):
         self.ra = ra

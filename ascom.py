@@ -1,4 +1,3 @@
-import logging
 import re
 from abc import ABC, abstractmethod
 
@@ -6,13 +5,10 @@ import pywintypes
 import win32com.client
 
 from common.canonical import CanonicalResponse, CanonicalResponse_Ok
-from common.mast_logging import init_log
+from common.mast_logging import get_logger
 from common.models.statuses import AscomDriverInfoModel, AscomStatus
 
-logger = logging.getLogger("mast.unit." + __name__)
-init_log(logger)
-
-
+logger = get_logger(__name__)
 def ascom_driver_info(driver):
     return {
         "name": driver.Name,

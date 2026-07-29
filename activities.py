@@ -1,20 +1,17 @@
 import datetime
-import logging
 import socket
 import threading
 from enum import IntFlag, auto
 
 import humanfriendly
 
-from common.mast_logging import init_log
+from common.mast_logging import get_logger
 from common.notifications import CardUpdateSpec, Notifier, UiUpdateSpec
 from common.utils import caller_name
 
 # from src.common.utils import function_name
 
-logger = logging.getLogger("mast." + __name__)
-init_log(logger)
-
+logger = get_logger(__name__)
 hostname = socket.gethostname()
 
 ActivitiesVerbal = list[str] | None

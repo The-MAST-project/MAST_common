@@ -1,6 +1,5 @@
 import io
 import json
-import logging
 import socket
 from copy import deepcopy
 from typing import Any
@@ -15,7 +14,7 @@ from pymongo import MongoClient
 from pymongo.errors import PyMongoError
 
 from common.deep import deep_dict_difference, deep_dict_is_empty, deep_dict_update
-from common.mast_logging import init_log
+from common.mast_logging import get_logger
 from common.utils import function_name
 
 from .identification import GroupConfig, UserConfig
@@ -27,14 +26,8 @@ from .unit import UnitConfig
 # schema/layout (not a per-deployment setting), so it stays a module constant.
 DEFAULT_COLLECTIONS = ("groups", "services", "sites", "specs", "units", "users")
 
-logger = logging.getLogger("mast.unit." + __name__)
-init_log(logger)
-
-
+logger = get_logger(__name__)
 # Enable warning logging for PyMongo
-logging.getLogger("pymongo").setLevel(logging.WARNING)
-
-
 class ServiceConfig(BaseModel):
     name: str
     listen_on: str = "0.0.0.0"

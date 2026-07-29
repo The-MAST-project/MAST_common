@@ -13,13 +13,10 @@ from threading import Event, Thread
 
 import psutil
 
-from common.mast_logging import init_log
+from common.mast_logging import get_logger
 from common.utils import function_name
 
-logger = logging.Logger("mast.unit." + __name__)
-init_log(logger)
-
-
+logger = get_logger(__name__)
 def find_process(name: str | None = None, patt: str | None = None, pid: int | None = None) -> psutil.Process | None:
     """
     Searches for a running process either by a pattern in the command line or by pid

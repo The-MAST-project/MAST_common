@@ -22,12 +22,11 @@ from cachetools import cached  # type: ignore
 
 from common.filer import Filer
 from common.paths import PathMaker
+from common.mast_logging import get_logger
 
 default_encoding = "utf-8"
 
-logger = logging.getLogger("mast.unit." + __name__)
-
-
+logger = get_logger(__name__)
 class RepeatTimer(Timer):
     def run(self):
         self.function(*self.args, **self.kwargs)

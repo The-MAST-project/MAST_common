@@ -1,15 +1,11 @@
 import ipaddress
-import logging
 import socket
 
 from common.config.local import load_local_config
-from common.mast_logging import init_log
+from common.mast_logging import get_logger
 from common.utils import function_name
 
-logger = logging.getLogger("networking")
-init_log(logger, logging.DEBUG)
-
-
+logger = get_logger(__name__)
 class NetworkDestination:
     def __init__(self, addr: str, port: int):
         """
