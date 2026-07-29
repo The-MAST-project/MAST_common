@@ -1,4 +1,3 @@
-import logging
 from typing import List
 
 import astropy.coordinates
@@ -6,13 +5,10 @@ import astropy.units as u
 
 from common.config import Config
 from common.utils import function_name
-from common.mast_logging import init_log
+from common.mast_logging import get_logger
 import re
 
-logger = logging.Logger("parsers")
-init_log(logger)
-
-
+logger = get_logger(__name__)
 def parse_units(specifiers: List[str] | str) -> List[str]:
     """
     The ultimate unit-specifier parser

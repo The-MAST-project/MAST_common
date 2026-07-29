@@ -1,5 +1,4 @@
 import datetime
-import logging
 from enum import Enum, StrEnum
 from pathlib import Path
 from typing import Any
@@ -8,7 +7,7 @@ from pydantic import BaseModel, Field
 
 import common.asi as asi
 from common.activities import ActivitiesVerbal
-from common.mast_logging import init_log
+from common.mast_logging import get_logger
 from common.rois import SkyRoi, SpecRoi, UnitRoi
 from common.spec import (
     FilterPositions,
@@ -20,10 +19,7 @@ from common.spec import (
 )
 from common.utils import PathMaker, function_name
 
-logger = logging.Logger(__name__)
-init_log(logger)
-
-
+logger = get_logger(__name__)
 class StatusType(StrEnum):
     BASIC = "basic"
     FULL = "full"

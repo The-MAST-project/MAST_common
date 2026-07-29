@@ -1,4 +1,3 @@
-import logging
 
 from pydantic import BaseModel, model_validator
 
@@ -13,6 +12,7 @@ from .phd2 import PHD2Config
 from .power import PowerSwitchConfig
 from .rois import RoisConfig
 from .stage import StageConfig
+from common.mast_logging import get_logger
 
 
 class ToleranceConfig(BaseModel):
@@ -98,7 +98,7 @@ class UnitConfig(BaseModel):
         #     raise ValueError(
         #         f"if any of {self.imager.imager_type=} or {self.guider.method=} is 'phd2', then BOTH must be 'phd2'"
         #     )
-        logger = logging.getLogger("mast.config.unit")
+        logger = get_logger(__name__)
         logger.debug(f"Validated UnitConfig for unit '{self.name}', focuser: '{self.focuser}'")
         return self
 

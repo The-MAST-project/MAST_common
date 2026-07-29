@@ -1,13 +1,12 @@
 import asyncio
 import datetime
-from logging import Logger
 
 import humanfriendly
 from pydantic import BaseModel
 
 from common.api import SafetyApi
 from common.config import Config
-from common.mast_logging import init_log
+from common.mast_logging import get_logger
 from common.utils import fromisoformat_zulu
 
 
@@ -57,10 +56,7 @@ class SafetySensorModel(BaseModel):
     interval: float
 
 
-logger = Logger("mast-common-safety")
-init_log(logger)
-
-
+logger = get_logger(__name__)
 def safety_get_sensor(
     sensor_name: str,
     project_name: str | None = None,

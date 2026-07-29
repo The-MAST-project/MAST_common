@@ -1,14 +1,10 @@
 import socket
-from logging import Logger
 
 from pydantic import BaseModel, model_validator
 
-from common.mast_logging import init_log
+from common.mast_logging import get_logger
 
-logger = Logger("mast-config-network")
-init_log(logger)
-
-
+logger = get_logger(__name__)
 host_to_ipaddr: dict[str, str | None] = {}  # remembers resolved ipaddrs
 ipaddr_to_host: dict[str, str | None] = {}  # remembers resolved hosts
 

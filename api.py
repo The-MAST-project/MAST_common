@@ -1,5 +1,4 @@
 import asyncio
-import logging
 import re
 import socket
 import ssl
@@ -14,13 +13,10 @@ from common.config import Config
 from common.config.local import load_local_config
 from common.config.site import Site
 from common.const import Const
-from common.mast_logging import init_log
+from common.mast_logging import get_logger
 from common.utils import function_name
 
-logger = logging.getLogger("api")
-init_log(logger)
-
-
+logger = get_logger(__name__)
 class ApiDomain(Enum):
     Unit = auto()
     Spec = auto()

@@ -1,5 +1,4 @@
 import asyncio
-import logging
 import os
 import socket
 import threading
@@ -8,11 +7,9 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from common.mast_logging import init_log
+from common.mast_logging import get_logger
 
-logger = logging.getLogger("mast." + __name__)
-init_log(logger)
-
+logger = get_logger(__name__)
 NotificationCardType = Literal["info", "warning", "error", "start", "end"]
 NotificationTypes = Literal["ui_notification", "assignment_notification"]  # more to come
 DomUpdateSpec = Literal["badge", "text"] | None

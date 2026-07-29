@@ -1,13 +1,12 @@
 import asyncio
 import json
-import logging
 from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, Field
 from ulid import ULID
 
 from common.activities import Activities, BatchActivities
-from common.mast_logging import init_log
+from common.mast_logging import get_logger
 from common.models.calibration import CalibrationSettings
 from common.models.plans import Plan
 from common.models.spectrographs import SpectrographModel
@@ -15,10 +14,7 @@ from common.models.spectrographs import SpectrographModel
 if TYPE_CHECKING:
     from common.interfaces.components import ComponentStatus
 
-logger = logging.Logger("mast." + __name__)
-init_log(logger)
-
-
+logger = get_logger(__name__)
 class Batch(BaseModel, Activities):
     ulid: ULID | None = None
     immediate: bool = False  # for immediate execution or merely forecasted

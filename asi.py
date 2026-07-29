@@ -1,10 +1,9 @@
 import ctypes
-import logging
 from enum import IntEnum, auto
 from typing import Literal, get_args
+from common.mast_logging import get_logger
 
-logger = logging.Logger("asi")
-
+logger = get_logger(__name__)
 ASI_294MM_SUPPORTED_BINNINGS_LITERAL = Literal[1, 2]  # the binnings implemented by the camera firmware
 ASI_294MM_SUPPORTED_BINNINGS_SET = set(get_args(ASI_294MM_SUPPORTED_BINNINGS_LITERAL))
 ASI_294MM_WIDTH = 8288

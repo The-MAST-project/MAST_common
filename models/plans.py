@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import datetime
 import json
-import logging
 import os
 import shutil
 import socket
@@ -17,7 +16,7 @@ from pydantic import BaseModel, Field, ValidationError
 from pydantic.config import ConfigDict
 
 from common.activities import Activities, PlanActivities, UnitActivities
-from common.mast_logging import init_log
+from common.mast_logging import get_logger
 from common.models.constraints import ConstraintsModel
 from common.models.events import EventModel
 from common.models.spectrographs import SpectrographModel
@@ -31,10 +30,7 @@ if TYPE_CHECKING:
     from common.models.assignments import Manifest
     from common.tasks.models import GatherResponse
 
-logger = logging.Logger("mast." + __name__)
-init_log(logger)
-
-
+logger = get_logger(__name__)
 class Plan(BaseModel, Activities):
     target: Target
     model_config = ConfigDict(
