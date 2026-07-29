@@ -3,6 +3,7 @@ import io
 import logging
 import os
 import platform
+import time
 
 from rich.logging import RichHandler
 
@@ -12,6 +13,20 @@ from common.filer import Filer
 # from typing import List
 
 default_log_level = logging.DEBUG
+
+
+class UtcFormatter(logging.Formatter):
+    """
+    Formatter whose %(asctime)s is UTC, marked with a trailing 'Z'.
+
+    An observatory's logs are correlated with observations, which are recorded
+    in UTC; a local-time stamp that does not say so is worse than useless when
+    the two are read side by side. Rollover is UTC as well, so a file's name and
+    the lines inside it agree.
+    """
+
+    converter = time.gmtime
+    default_msec_format = "%s.%03dZ"
 
 
 class DailyFileHandler(logging.FileHandler):
@@ -48,9 +63,12 @@ class DailyFileHandler(logging.FileHandler):
         return "/var/log/mast"
 
     def make_file_name(self) -> str:
-        # Plain calendar date, matching PathMaker.make_daily_folder_name so log
-        # files land beside the other artefacts of the same day.
-        return os.path.join(self.base_dir, f"{datetime.datetime.now():%Y-%m-%d}", self.leaf)
+        # UTC, matching the timestamps written inside the file. The day turns at
+        # 00:00 UTC everywhere, so units at different sites agree on which file a
+        # record belongs to.
+        return os.path.join(
+            self.base_dir, f"{datetime.datetime.now(datetime.UTC):%Y-%m-%d}", self.leaf
+        )
 
     @property
     def path(self) -> str:
@@ -58,6 +76,14 @@ class DailyFileHandler(logging.FileHandler):
         return self.make_file_name()
 
     def emit(self, record: logging.LogRecord):
+        try:
+            self._emit(record)
+        except Exception:
+            # A full disk or a revoked permission must not take the service down
+            # with it; logging's own error path reports it instead.
+            self.handleError(record)
+
+    def _emit(self, record: logging.LogRecord):
         filename = self.make_file_name()
         if filename != self.current_path:
             if self.stream is not None:
@@ -180,7 +206,7 @@ def init_log(
     role = os.getenv("MAST_PROJECT", "unknown_role")
     file_name = f"mast-{role}-log.txt"
 
-    formatter = logging.Formatter(
+    formatter = UtcFormatter(
         "%(asctime)s - %(levelname)-8s - {%(name)s:%(funcName)s:%(threadName)s:%(thread)s} -  %(message)s"
     )
     stream_handlers = [h for h in logger_.handlers if isinstance(h, logging.StreamHandler)]
@@ -190,8 +216,12 @@ def init_log(
         # handler.setFormatter(formatter)
         # logger_.addHandler(handler)
 
-        rich_handler = RichHandler(rich_tracebacks=True)
+        # show_time=False: rich renders its own timestamp from the local clock,
+        # which would contradict the UTC stamp the formatter writes. One clock,
+        # one timezone, on both sinks.
+        rich_handler = RichHandler(rich_tracebacks=True, show_time=False)
         rich_handler.setLevel(level)
+        rich_handler.setFormatter(formatter)
         logger_.addHandler(rich_handler)
 
     daily_handlers = [h for h in logger_.handlers if isinstance(h, DailyFileHandler)]
