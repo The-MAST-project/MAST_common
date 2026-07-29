@@ -11,9 +11,6 @@
 line-length = 125
 target-version = "py312"
 
-# Automatically fix on save (when the editor is configured to do so).
-fix = true
-
 [lint]
 # Enable rules from common linters.
 extend-select = [
