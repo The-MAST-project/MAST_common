@@ -7,7 +7,6 @@ import platform
 from rich.logging import RichHandler
 
 from common.filer import Filer
-from common.paths import PathMaker
 
 # from common.utils import boxed_lines
 # from typing import List
@@ -16,61 +15,60 @@ default_log_level = logging.DEBUG
 
 
 class DailyFileHandler(logging.FileHandler):
-    filename: str = ""
-    path: str
+    """
+    A file handler that writes to <base_dir>/<yyyy-mm-dd>/<filename> and follows
+    the date, reopening under the new directory when the day turns.
 
-    def make_file_name(self):
-        """
-        Produces file names for the DailyFileHandler, which rotates them daily at noon (UT).
-        The filename has the format <top><daily><bottom> and includes:
-        * A top section (either /var/log/mast on Linux or %LOCALAPPDATA%/mast on Windows
-        * The daily section (current date as %Y-%m-%d)
-        * The bottom path, supplied by the user
-        Examples:
-        * /var/log/mast/2022-02-17/server/app.log
-        * c:\\User\\User\\LocalAppData\\mast\\2022-02-17\\main.log
-        :return:
-        """
-        top = ""
-        if platform.platform() == "Linux":
-            top = "/var/log/mast"
-        elif platform.platform().startswith("Windows"):
-            top = os.path.join(os.path.expandvars("%LOCALAPPDATA%"), "mast")
-        now = datetime.datetime.now()
-        if now.hour < 12:
-            now = now - datetime.timedelta(days=1)
-        return os.path.join(top, f"{now:%Y-%m-%d}", self.path)
+    The date is resolved on every emit rather than baked in at construction, so
+    a long-running service keeps rotating instead of writing to its start-up
+    day forever.
+    """
+
+    def __init__(
+        self,
+        filename: str,
+        base_dir: str | None = None,
+        mode="a",
+        encoding=None,
+        delay=True,
+        errors=None,
+    ):
+        self.leaf = filename
+        self.base_dir = base_dir or self.default_base_dir()
+        self.current_path: str | None = None
+        if "b" not in mode:
+            encoding = io.text_encoding(encoding)
+        logging.FileHandler.__init__(self, filename="", delay=delay, mode=mode, encoding=encoding, errors=errors)
+
+    @staticmethod
+    def default_base_dir() -> str:
+        """Used only when no base_dir is supplied; init_log passes Filer's root."""
+        if platform.system() == "Windows":
+            return os.path.join(os.path.expandvars("%LOCALAPPDATA%"), "mast")
+        return "/var/log/mast"
+
+    def make_file_name(self) -> str:
+        # Plain calendar date, matching PathMaker.make_daily_folder_name so log
+        # files land beside the other artefacts of the same day.
+        return os.path.join(self.base_dir, f"{datetime.datetime.now():%Y-%m-%d}", self.leaf)
+
+    @property
+    def path(self) -> str:
+        """The file currently being written to."""
+        return self.make_file_name()
 
     def emit(self, record: logging.LogRecord):
-        """
-        Overrides the logging.FileHandler's emit method.  It is called every time a log record is to be emitted.
-        This function checks whether the handler's filename includes the current date segment.
-        If not:
-        * A new file name is produced
-        * The handler's stream is closed
-        * A new stream is opened for the new file
-        The record is emitted.
-        :param record:
-        :return:
-        """
         filename = self.make_file_name()
-        if filename != self.filename:
+        if filename != self.current_path:
             if self.stream is not None:
-                # we have an open file handle, clean it up
                 self.stream.flush()
                 self.stream.close()
-                self.stream = None  # type: ignore # See Issue #21742: _open () might fail.
-
+                self.stream = None  # type: ignore # See Issue #21742: _open() might fail.
+            self.current_path = filename
             self.baseFilename = filename
             os.makedirs(os.path.dirname(self.baseFilename), exist_ok=True)
             self.stream = self._open()
         logging.StreamHandler.emit(self, record=record)
-
-    def __init__(self, path: str, mode="a", encoding=None, delay=True, errors=None):
-        self.path = path
-        if "b" not in mode:
-            encoding = io.text_encoding(encoding)
-        logging.FileHandler.__init__(self, filename="", delay=delay, mode=mode, encoding=encoding, errors=errors)
 
 
 def get_logger(name: str) -> logging.Logger:
@@ -198,12 +196,9 @@ def init_log(
 
     daily_handlers = [h for h in logger_.handlers if isinstance(h, DailyFileHandler)]
     if not daily_handlers:
-        root = Filer().accessible_shared_root()
         handler = DailyFileHandler(
-            path=os.path.join(
-                PathMaker().make_daily_folder_name(root=root),
-                file_name,
-            ),
+            filename=file_name,
+            base_dir=Filer().accessible_shared_root(),
             mode="a",
         )
 
