@@ -1,3 +1,4 @@
+import copy
 import datetime
 import io
 import logging
@@ -6,6 +7,7 @@ import platform
 import time
 
 from rich.logging import RichHandler
+from rich.text import Text
 
 from common.filer import Filer
 
@@ -29,6 +31,61 @@ class UtcFormatter(logging.Formatter):
     default_msec_format = "%s.%03dZ"
 
 
+class ConsoleFormatter(UtcFormatter):
+    """
+    UtcFormatter that drops the 'mast.' prefix from %(name)s.
+
+    Every logger in the application carries it (get_logger enforces that), so on
+    the console it is five columns of noise on every line. The file keeps the full
+    name: there the prefix is what distinguishes our records from a library's.
+
+    The record is copied rather than renamed in place -- it is the same object the
+    file handler is about to format, and handlers run in registration order.
+    formatMessage() is the hook rather than format() because RichHandler calls it
+    directly when it renders a traceback itself.
+    """
+
+    def formatMessage(self, record: logging.LogRecord) -> str:
+        if record.name.startswith("mast."):
+            record = copy.copy(record)
+            record.name = record.name.removeprefix("mast.")
+        return super().formatMessage(record)
+
+
+def utc_log_time(when: datetime.datetime) -> Text:
+    """Rich's console timestamp, matching UtcFormatter's: milliseconds and a 'Z'."""
+    return Text(f"{when:%Y-%m-%d %H:%M:%S}.{when.microsecond // 1000:03d}Z")
+
+
+class UtcRichHandler(RichHandler):
+    """
+    RichHandler that renders its time column in UTC.
+
+    The timestamp belongs in Rich's own column rather than in the format string.
+    The column is drawn with a single 'log.time' style, whereas anything inside the
+    message is passed through ReprHighlighter, which colours each date group as a
+    number and reads '15:51:51' as an IPv6 address -- one timestamp in three
+    colours. The highlighter stays on for the message body, where it is useful.
+
+    Rich builds the column from `datetime.fromtimestamp(record.created)`, i.e. local
+    time, which would contradict the UTC stamp going to the file; one clock, one
+    timezone, on both sinks. render() is therefore Rich's own, with that single
+    conversion made UTC-aware.
+    """
+
+    def render(self, *, record: logging.LogRecord, traceback, message_renderable):
+        return self._log_render(
+            self.console,
+            [message_renderable] if not traceback else [message_renderable, traceback],
+            log_time=datetime.datetime.fromtimestamp(record.created, datetime.UTC),
+            time_format=None if self.formatter is None else self.formatter.datefmt,
+            level=self.get_level_text(record),
+            path=os.path.basename(record.pathname),
+            line_no=record.lineno,
+            link_path=record.pathname if self.enable_link_path else None,
+        )
+
+
 class DailyFileHandler(logging.FileHandler):
     """
     A file handler that writes to <base_dir>/<yyyy-mm-dd>/<filename> and follows
@@ -38,6 +95,11 @@ class DailyFileHandler(logging.FileHandler):
     a long-running service keeps rotating instead of writing to its start-up
     day forever.
     """
+
+    # After a failed open the share is not probed again for this long. Retrying on
+    # every record would block the whole service inside SMB timeouts once the
+    # shared drive hangs -- the console handler still carries those records.
+    REOPEN_RETRY_INTERVAL_SEC = 30.0
 
     def __init__(
         self,
@@ -51,6 +113,7 @@ class DailyFileHandler(logging.FileHandler):
         self.leaf = filename
         self.base_dir = base_dir or self.default_base_dir()
         self.current_path: str | None = None
+        self._next_open_attempt: float = 0.0
         if "b" not in mode:
             encoding = io.text_encoding(encoding)
         logging.FileHandler.__init__(self, filename="", delay=delay, mode=mode, encoding=encoding, errors=errors)
@@ -85,16 +148,47 @@ class DailyFileHandler(logging.FileHandler):
 
     def _emit(self, record: logging.LogRecord):
         filename = self.make_file_name()
-        if filename != self.current_path:
-            if self.stream is not None:
+        # `self.stream is None` is not only the delay=True first record: an earlier
+        # open may have failed (unreachable share), or close() may have dropped the
+        # stream. Without this test such a handler would take the "nothing changed"
+        # path forever and write to None on every record.
+        if self.stream is None or filename != self.current_path:
+            if not self._reopen(filename):
+                return  # share still unreachable; the console handler keeps the record
+        logging.StreamHandler.emit(self, record=record)
+
+    def _reopen(self, filename: str) -> bool:
+        """
+        Point the handler at `filename`, returning False when the attempt is being
+        held off after a recent failure.
+
+        State is committed only once the file is actually open: recording the new
+        path first would leave a failed open looking like a successful one, and
+        every later record would then take the fast path onto a None stream.
+        """
+        if self.stream is not None:
+            try:
                 self.stream.flush()
                 self.stream.close()
+            except OSError:
+                pass  # the file we are leaving behind; nothing useful to do
+            finally:
                 self.stream = None  # type: ignore # See Issue #21742: _open() might fail.
-            self.current_path = filename
+
+        now = time.monotonic()
+        if now < self._next_open_attempt:
+            return False
+        try:
             self.baseFilename = filename
-            os.makedirs(os.path.dirname(self.baseFilename), exist_ok=True)
+            os.makedirs(os.path.dirname(filename), exist_ok=True)
             self.stream = self._open()
-        logging.StreamHandler.emit(self, record=record)
+        except OSError:
+            self.stream = None  # type: ignore
+            self._next_open_attempt = now + self.REOPEN_RETRY_INTERVAL_SEC
+            raise  # emit() reports it through handleError, at most once per interval
+        self.current_path = filename
+        self._next_open_attempt = 0.0
+        return True
 
 
 def get_logger(name: str) -> logging.Logger:
@@ -209,6 +303,13 @@ def init_log(
     formatter = UtcFormatter(
         "%(asctime)s - %(levelname)-8s - {%(name)s:%(funcName)s:%(threadName)s:%(thread)s} -  %(message)s"
     )
+    # The console omits %(levelname)s and %(asctime)s: RichHandler renders its own
+    # colour-coded level column, and its own time column -- leaving either in the
+    # format string printed the level twice and handed the timestamp to the message
+    # highlighter, which painted it in three colours (see UtcRichHandler).
+    console_formatter = ConsoleFormatter(
+        "{%(name)s:%(funcName)s:%(threadName)s:%(thread)s} -  %(message)s"
+    )
     stream_handlers = [h for h in logger_.handlers if isinstance(h, logging.StreamHandler)]
     if not stream_handlers:
         # handler = logging.StreamHandler()
@@ -216,12 +317,18 @@ def init_log(
         # handler.setFormatter(formatter)
         # logger_.addHandler(handler)
 
-        # show_time=False: rich renders its own timestamp from the local clock,
-        # which would contradict the UTC stamp the formatter writes. One clock,
-        # one timezone, on both sinks.
-        rich_handler = RichHandler(rich_tracebacks=True, show_time=False)
+        # omit_repeated_times=False: Rich blanks a timestamp identical to the
+        # previous line's by default, which at millisecond resolution mostly does
+        # not trigger -- and when it does, a line with no time at all is worse than
+        # a repeated one in a log read out of order.
+        rich_handler = UtcRichHandler(
+            rich_tracebacks=True,
+            show_time=True,
+            omit_repeated_times=False,
+            log_time_format=utc_log_time,
+        )
         rich_handler.setLevel(level)
-        rich_handler.setFormatter(formatter)
+        rich_handler.setFormatter(console_formatter)
         logger_.addHandler(rich_handler)
 
     daily_handlers = [h for h in logger_.handlers if isinstance(h, DailyFileHandler)]
