@@ -138,6 +138,25 @@ def resolve_log_level(cli_level: str | None = None) -> int:
     return default_log_level
 
 
+def configure_logging(cli_level: str | None = None) -> int:
+    """
+    Configure logging for a process.  Call once, from the application entry
+    point, BEFORE anything logs.
+
+    Attaches the MAST handlers to the root logger and holds third-party
+    libraries at WARNING. Every 'mast.*' logger then inherits both handlers and
+    level by propagation, so this is the single place a process decides how
+    loudly it talks.
+
+    `cli_level` is whatever a --log-level flag produced (None if absent);
+    precedence is CLI > MAST_LOG_LEVEL > default. Returns the level applied.
+    """
+    level = resolve_log_level(cli_level)
+    init_log(level=level)
+    quiet_libraries()
+    return level
+
+
 def init_log(
     logger_: logging.Logger | None = None,
     level: int | None = None,
