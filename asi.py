@@ -1,15 +1,15 @@
 import ctypes
-import logging
 from enum import IntEnum, auto
 from typing import Literal, get_args
+from common.mast_logging import get_logger
 
-logger = logging.Logger("asi")
-
-ASI_294MM_SUPPORTED_BINNINGS_LITERAL = Literal[1, 2] # the binnings implemented by the camera firmware
+logger = get_logger(__name__)
+ASI_294MM_SUPPORTED_BINNINGS_LITERAL = Literal[1, 2]  # the binnings implemented by the camera firmware
 ASI_294MM_SUPPORTED_BINNINGS_SET = set(get_args(ASI_294MM_SUPPORTED_BINNINGS_LITERAL))
 ASI_294MM_WIDTH = 8288
 ASI_294MM_HEIGHT = 5644
 ASI_294MM_DEFAULT_GAIN = 170
+
 
 #
 # Extracted at runtime from the ZWO asi SDK for camera model: ZWO ASI294MM Pro
@@ -28,6 +28,7 @@ class Control(IntEnum):
     CoolPowerPerc = 15  # Cooler power percent,
     TargetTemp = 16  # Target temperature(cool camera only),
     CoolerOn = 17  # turn on/off cooler(cool camera only),
+
 
 class ControlEntry:
     def __init__(
@@ -49,6 +50,7 @@ class ControlEntry:
         self.is_auto_supported = is_auto_supported
         self.control_type = control_type
         self.auto = auto
+
 
 ControlDict: dict[Control, ControlEntry] = {
     Control.Gain: ControlEntry(
@@ -203,6 +205,7 @@ class OutputFormat(IntEnum):
         else:
             raise ValueError(f"OutputFormat.from_string: '{s}' not in {get_args(ValidOutputFormats)}")
 
+
 ValidOutputFormats = Literal["raw8", "raw16"]
 
 
@@ -303,9 +306,7 @@ def make_pythonian_classes():
         cap = asi.getControlCaps(cam_id, controlIndex=control)
         val, auto = asi.getControlValue(cam_id, controlType=cap.ControlType)
         line = f"{cap.Name.decode()} = {cap.ControlType}"
-        enum_lines.append(
-            f"    {line}{' ' * (30 - len(line))}# {cap.Description.decode()}, "
-        )
+        enum_lines.append(f"    {line}{' ' * (30 - len(line))}# {cap.Description.decode()}, ")
         entry_lines.append(f"    Control.{cap.Name.decode()}: {{ControlEntry(")
         entry_lines.append(f"        description='{cap.Description.decode()}',")
         entry_lines.append(f"        min_value={cap.MinValue},")
@@ -318,9 +319,7 @@ def make_pythonian_classes():
         entry_lines.append("    ),")
     entry_lines.append("}")
 
-    print(
-        f"#\n# Extracted at runtime from the ZWO asi SDK for camera model: {model}\n#"
-    )
+    print(f"#\n# Extracted at runtime from the ZWO asi SDK for camera model: {model}\n#")
     for line in enum_lines:
         print(line)
     print()

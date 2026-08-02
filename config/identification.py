@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 class UserCapabilities(StrEnum):
     """MAST user capability enumeration for type safety and IDE autocomplete"""
+
     CAN_VIEW = "canView"
     CAN_CHANGE_CONFIGURATION = "canChangeConfiguration"
     CAN_USE_CONTROLS = "canUseControls"

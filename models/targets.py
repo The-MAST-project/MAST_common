@@ -5,7 +5,7 @@ from common.models.science import ScienceModel
 
 
 class Target(BaseModel):
-    name : str | None = Field(
+    name: str | None = Field(
         default=None,
         json_schema_extra={
             "ui": {

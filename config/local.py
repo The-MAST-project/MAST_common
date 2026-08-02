@@ -73,9 +73,7 @@ def _config_file_path() -> str:
             f"{', '.join(VALID_ROLES)}), and MAST_CONFIG is not set either."
         )
     if role not in VALID_ROLES:
-        raise ConfigError(
-            f"MAST_PROJECT='{role}' is invalid; expected one of {', '.join(VALID_ROLES)}."
-        )
+        raise ConfigError(f"MAST_PROJECT='{role}' is invalid; expected one of {', '.join(VALID_ROLES)}.")
 
     if platform.system() == "Windows":
         return f"C:/WIS/{role}.toml"
@@ -92,10 +90,7 @@ def load_local_config() -> "LocalConfig":
     """
     path = _config_file_path()
     if not os.path.exists(path):
-        raise ConfigError(
-            f"configuration file '{path}' does not exist "
-            "(set MAST_CONFIG to override the location)."
-        )
+        raise ConfigError(f"configuration file '{path}' does not exist (set MAST_CONFIG to override the location).")
 
     try:
         # Read as utf-8-sig so a leading BOM is stripped: PowerShell's
@@ -104,15 +99,10 @@ def load_local_config() -> "LocalConfig":
         with open(path, encoding="utf-8-sig") as fp:
             raw = tomllib.loads(fp.read())
     except (OSError, tomllib.TOMLDecodeError) as ex:
-        raise ConfigError(
-            f"cannot read/parse configuration file '{path}': {ex}"
-        ) from ex
+        raise ConfigError(f"cannot read/parse configuration file '{path}': {ex}") from ex
 
     try:
         return LocalConfig(**raw)
     except ValidationError as ex:
-        details = "\n".join(
-            f"  - {'.'.join(str(p) for p in err['loc'])}: {err['msg']}"
-            for err in ex.errors()
-        )
+        details = "\n".join(f"  - {'.'.join(str(p) for p in err['loc'])}: {err['msg']}" for err in ex.errors())
         raise ConfigError(f"invalid configuration in '{path}':\n{details}") from ex

@@ -1,4 +1,3 @@
-import logging
 import re
 from abc import ABC, abstractmethod
 
@@ -6,13 +5,10 @@ import pywintypes
 import win32com.client
 
 from common.canonical import CanonicalResponse, CanonicalResponse_Ok
-from common.mast_logging import init_log
+from common.mast_logging import get_logger
 from common.models.statuses import AscomDriverInfoModel, AscomStatus
 
-logger = logging.getLogger("mast.unit." + __name__)
-init_log(logger)
-
-
+logger = get_logger(__name__)
 def ascom_driver_info(driver):
     return {
         "name": driver.Name,
@@ -30,7 +26,7 @@ class AscomDispatcher(ABC):
 
     @property
     @abstractmethod
-    def ascom(self) -> win32com.client.Dispatch: # type: ignore
+    def ascom(self) -> win32com.client.Dispatch:  # type: ignore
         pass
 
     def ascom_status(self) -> AscomStatus:
@@ -40,9 +36,7 @@ class AscomDispatcher(ABC):
         return AscomStatus(ascom=AscomDriverInfoModel(**info))
 
 
-def ascom_run(
-    o: AscomDispatcher, sentence: str, no_entry_log=True
-) -> CanonicalResponse:
+def ascom_run(o: AscomDispatcher, sentence: str, no_entry_log=True) -> CanonicalResponse:
     ascom_dispatcher = f"{o.ascom}"
     ascom_dispatcher = re.sub("COMObject ", "", ascom_dispatcher)
     label = f"{ascom_dispatcher}.{sentence}"
@@ -63,8 +57,8 @@ def ascom_run(
 
     except pywintypes.com_error as e:
         logger.debug(f"{label}: ASCOM error: cmd='{cmd.removeprefix('o.ascom.')}'")
-        logger.debug(f"{label}:     Message: '{e.excepinfo[2]}'") # type: ignore
-        logger.debug(f"{label}:        Code: 0x{(e.hresult & 0xffffffff):08X}") # type: ignore
+        logger.debug(f"{label}:     Message: '{e.excepinfo[2]}'")  # type: ignore
+        logger.debug(f"{label}:        Code: 0x{(e.hresult & 0xFFFFFFFF):08X}")  # type: ignore
         return CanonicalResponse(errors=[f"{e}"])
 
     except Exception as e:

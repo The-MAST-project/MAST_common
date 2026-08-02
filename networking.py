@@ -1,17 +1,12 @@
 import ipaddress
-import logging
 import socket
 
 from common.config.local import load_local_config
-from common.mast_logging import init_log
+from common.mast_logging import get_logger
 from common.utils import function_name
 
-logger = logging.getLogger("networking")
-init_log(logger, logging.DEBUG)
-
-
+logger = get_logger(__name__)
 class NetworkDestination:
-
     def __init__(self, addr: str, port: int):
         """
 
@@ -81,11 +76,7 @@ class NetworkedDevice:
         if "network" not in conf:
             raise ValueError(f"{op}: no 'network' in {conf=}")
         network_conf = conf["network"]
-        address = (
-            network_conf["ipaddr"]
-            if "ipaddr" in network_conf
-            else network_conf.get("host", None)
-        )
+        address = network_conf["ipaddr"] if "ipaddr" in network_conf else network_conf.get("host", None)
         if not address:
             raise Exception(f"both 'ipaddr' and 'host' missing in {network_conf=}")
         port = network_conf.get("port", 80)

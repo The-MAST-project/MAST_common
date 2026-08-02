@@ -10,13 +10,7 @@ class ExtendedBaseModel(BaseModel):
     class Config:
         json_encoders = {
             float: lambda x: (
-                "NaN"
-                if math.isnan(x)
-                else (
-                    "Infinity"
-                    if x == float("inf")
-                    else "-Infinity" if x == -float("inf") else x
-                )
+                "NaN" if math.isnan(x) else ("Infinity" if x == float("inf") else "-Infinity" if x == -float("inf") else x)
             )
         }
 

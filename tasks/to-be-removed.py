@@ -1,19 +1,13 @@
 from common.utils import init_log
 from common.api import UnitApi
-import logging
 from typing import List
+from common.mast_logging import get_logger
 
-logger = logging.getLogger("tasks")
-init_log(logger)
-
-
+logger = get_logger(__name__)
 class Target:
-
     DEFAULT_PRIORITY = 0
 
-    def __init__(
-        self, name: str, ra: float, dec: float, priority: float = DEFAULT_PRIORITY
-    ):
+    def __init__(self, name: str, ra: float, dec: float, priority: float = DEFAULT_PRIORITY):
         self.name: str = name
         self.ra: float = ra
         self.dec: float = dec

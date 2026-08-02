@@ -29,8 +29,10 @@ class RoiConfig(BaseModel):
     width: int
     height: int
 
+
 class FcuVersion(StrEnum):
     v1 = "fcu_v1"
     v2 = "fcu_v2"
+
 
 RoisConfig = dict[FcuVersion, RoiConfig | SkyRoiConfig | SpecRoiConfig]

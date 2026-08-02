@@ -21,9 +21,7 @@ CALIBRATION_PHASE_FOLDERS = {
 
 class PathMaker:
     @staticmethod
-    def make_seq(
-        folder: str, start_with: int | None = None, dont_bump: bool = False
-    ) -> str:
+    def make_seq(folder: str, start_with: int | None = None, dont_bump: bool = False) -> str:
         """
         Creates a sequence number by maintaining a '.seq' file.
         The sequence may be camera specific or camera agnostic.
@@ -34,13 +32,7 @@ class PathMaker:
         seq_file = Path(folder) / "seq.txt"
         seq_file.parent.mkdir(parents=True, exist_ok=True)
 
-        seq = (
-            int(seq_file.read_text())
-            if seq_file.exists()
-            else start_with
-            if start_with is not None
-            else 0
-        )
+        seq = int(seq_file.read_text()) if seq_file.exists() else start_with if start_with is not None else 0
         if not dont_bump:
             seq += 1
             seq_file.write_text(str(seq))
@@ -130,9 +122,7 @@ class PathMaker:
         folder.mkdir(parents=True, exist_ok=True)
         return str(folder)
 
-    def make_acquisition_folder(
-        self, phase: str | None = None, tags: dict | None = None
-    ) -> str:
+    def make_acquisition_folder(self, phase: str | None = None, tags: dict | None = None) -> str:
         acquisitions_folder = Path(self.make_daily_folder_name()) / "Acquisitions"
         acquisitions_folder.mkdir(parents=True, exist_ok=True)
         parts: list[str] = [
@@ -149,9 +139,7 @@ class PathMaker:
             folder.mkdir(parents=True, exist_ok=True)
         return str(folder)
 
-    def make_guidings_folder(
-        self, root: str | None = None, base_folder: str | None = None
-    ) -> str:
+    def make_guidings_folder(self, root: str | None = None, base_folder: str | None = None) -> str:
         if base_folder is not None:
             guiding_folder = Path(base_folder) / "Guidings"
         else:
@@ -164,9 +152,7 @@ class PathMaker:
         guiding_folder.mkdir(parents=True, exist_ok=True)
         return str(guiding_folder)
 
-    def make_spirals_folder(
-        self, root: str | None = None, base_folder: str | None = None
-    ) -> str:
+    def make_spirals_folder(self, root: str | None = None, base_folder: str | None = None) -> str:
         if base_folder is not None:
             spirals_folder = Path(base_folder) / "Spirals"
         else:
@@ -213,37 +199,25 @@ class PathMaker:
 
     @staticmethod
     def make_run_folder():
-        daily_run_folder = PathMaker().make_daily_folder_name(
-            root=os.path.join(Filer().shared.root, "runs")
-        )
-        return os.path.join(
-            daily_run_folder, "run-" + PathMaker().make_seq(folder=daily_run_folder)
-        )
+        daily_run_folder = PathMaker().make_daily_folder_name(root=os.path.join(Filer().shared.root, "runs"))
+        return os.path.join(daily_run_folder, "run-" + PathMaker().make_seq(folder=daily_run_folder))
 
     @staticmethod
     def make_spec_acquisitions_folder(spec_name: Literal["highspec", "deepspec"]):
         if spec_name not in ["highspec", "deepspec"]:
-            raise Exception(
-                f"bad {spec_name=}, should be one of ['highspec', 'deepspec']"
-            )
+            raise Exception(f"bad {spec_name=}, should be one of ['highspec', 'deepspec']")
         location = Filer().ram
         assert location is not None
         folder = PathMaker().make_daily_folder_name(os.path.join(location.root))
         folder = os.path.join(folder, spec_name)
-        folder = os.path.join(
-            folder, "acquisition-" + PathMaker().make_seq(folder, None)
-        )
+        folder = os.path.join(folder, "acquisition-" + PathMaker().make_seq(folder, None))
         os.makedirs(folder, exist_ok=True)
         return folder
 
     @staticmethod
-    def make_spec_exposures_folder(
-        spec_name: Literal["highspec", "deepspec"], band: str | None = None
-    ):
+    def make_spec_exposures_folder(spec_name: Literal["highspec", "deepspec"], band: str | None = None):
         if spec_name not in ["highspec", "deepspec"]:
-            raise Exception(
-                f"bad {spec_name=}, should be one of ['highspec', 'deepspec']"
-            )
+            raise Exception(f"bad {spec_name=}, should be one of ['highspec', 'deepspec']")
 
         location = Filer().ram
         assert location is not None

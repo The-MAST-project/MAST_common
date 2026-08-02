@@ -37,7 +37,5 @@ class CalibrationSettings(BaseModel):
                 model.filter = EmptyFilter
             filters = Config().get_thar_filters()
             if model.filter is not None and model.filter not in filters:
-                raise ValidationError(
-                    f"filter '{model.filter}' not in {filters}"
-                )
+                raise ValidationError(f"filter '{model.filter}' not in {filters}")
         return model

@@ -1,16 +1,12 @@
-import logging
 import time
 
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-from common.mast_logging import init_log
+from common.mast_logging import get_logger
 from common.utils import path_maker
 
-logger = logging.getLogger("fswatcher")
-init_log(logger)
-
-
+logger = get_logger(__name__)
 class FsWatcher:
     def __init__(self, folder: str, handlers: dict):
         self.folder = folder

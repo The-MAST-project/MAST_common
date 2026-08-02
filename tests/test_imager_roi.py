@@ -15,9 +15,7 @@ from __future__ import annotations
 
 import pytest
 
-statuses = pytest.importorskip(
-    "common.models.statuses", reason="models package import chain unavailable"
-)
+statuses = pytest.importorskip("common.models.statuses", reason="models package import chain unavailable")
 from common.models.statuses import ImagerRoi  # noqa: E402
 
 # The PR #29 deployment-example rect: conditioning demonstrably mutates it.
@@ -42,9 +40,7 @@ class TestVerbatim:
 
     def test_is_idempotent_through_round_trip(self):
         first = ImagerRoi.verbatim(**RECT)
-        second = ImagerRoi.verbatim(
-            x=first.x, y=first.y, width=first.width, height=first.height
-        )
+        second = ImagerRoi.verbatim(x=first.x, y=first.y, width=first.width, height=first.height)
         assert as_tuple(second) == as_tuple(first)
 
 

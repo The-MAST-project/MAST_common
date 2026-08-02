@@ -5,7 +5,6 @@ from common.activities import Activities
 
 
 class GuiderInterface(ABC, Activities):
-
     @abstractmethod
     def start_guiding(self):
         """

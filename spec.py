@@ -73,9 +73,7 @@ class SpecAcquisitionSettings:
         y_binning: Optional[int] = 2,
         output_folder: Optional[str] = None,
     ):
-        self.spec: SpecId = (
-            SpecId.Deepspec if spec_name == "Deepspec" else SpecId.Highspec
-        )
+        self.spec: SpecId = SpecId.Deepspec if spec_name == "Deepspec" else SpecId.Highspec
         self.grating = grating
         self.lamp_on = lamp_on
         self.filter_name = filter_name

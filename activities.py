@@ -1,20 +1,17 @@
 import datetime
-import logging
 import socket
 import threading
 from enum import IntFlag, auto
 
 import humanfriendly
 
-from common.mast_logging import init_log
+from common.mast_logging import get_logger
 from common.notifications import CardUpdateSpec, Notifier, UiUpdateSpec
 from common.utils import caller_name
 
 # from src.common.utils import function_name
 
-logger = logging.getLogger("mast." + __name__)
-init_log(logger)
-
+logger = get_logger(__name__)
 hostname = socket.gethostname()
 
 ActivitiesVerbal = list[str] | None
@@ -95,9 +92,7 @@ class Activities:
             case "SpecActivities":
                 return "spec"
             case _:
-                logger.error(
-                    f"Unknown activities type '{type(self.activities).__name__}'"
-                )
+                logger.error(f"Unknown activities type '{type(self.activities).__name__}'")
                 return "unknown-component"
 
     @property
@@ -206,17 +201,13 @@ class Activities:
 
         self.timings[activity].end()
 
-        duration = humanfriendly.format_timespan(
-            self.timings[activity].duration.total_seconds()
-        )
+        duration = humanfriendly.format_timespan(self.timings[activity].duration.total_seconds())
 
         label = label + ": " if label else ""
         info = f"{label}ended   activity {activity.__repr__()}"
         end_details = self.details.pop(activity, [])
         if not isinstance(end_details, list):
-            logger.warning(
-                f"Activity details for {activity.name} is not a list: {end_details} (from {caller_name()})"
-            )
+            logger.warning(f"Activity details for {activity.name} is not a list: {end_details} (from {caller_name()})")
             end_details = [str(end_details)]
         end_data = self.data.pop(activity, None)
         if end_details:

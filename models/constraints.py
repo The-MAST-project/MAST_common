@@ -141,7 +141,10 @@ class RepeatsModel(BaseModel):
                 "summary": True,
                 "options": [m.value for m in WhenToRepeat],
                 "default_options": WhenToRepeat.only_once.value,
-                "section": {"label": "Reschedule", "tooltip": "When and for how many nights should the exposure series be rescheduled?"},
+                "section": {
+                    "label": "Reschedule",
+                    "tooltip": "When and for how many nights should the exposure series be rescheduled?",
+                },
             },
         },
     )

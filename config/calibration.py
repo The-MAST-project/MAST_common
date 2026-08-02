@@ -218,10 +218,7 @@ class OpticalCenterCalibration(BaseModel):
         in the current mechanical epoch and was measured on the same frame size;
         otherwise the caller falls back to the geometric center.
         """
-        return (
-            self.mechanical_epoch == mechanical_epoch
-            and tuple(self.image_shape) == tuple(image_shape)
-        )
+        return self.mechanical_epoch == mechanical_epoch and tuple(self.image_shape) == tuple(image_shape)
 
     def local_center(self, roi_x: int, roi_y: int) -> tuple[float, float]:
         """The optical center in the coordinates of an ROI sub-frame.
@@ -293,10 +290,7 @@ class StageCalibrationConfig(BaseModel):
 
     def matches(self, image_shape: tuple[int, int], mechanical_epoch: int) -> bool:
         """Whether this stage geometry may be used: in-epoch and same frame size."""
-        return (
-            self.mechanical_epoch == mechanical_epoch
-            and tuple(self.image_shape) == tuple(image_shape)
-        )
+        return self.mechanical_epoch == mechanical_epoch and tuple(self.image_shape) == tuple(image_shape)
 
 
 class CalibrationProducts(BaseModel):
