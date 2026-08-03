@@ -28,6 +28,14 @@ extend-select = [
 # Optionally ignore some rules:
 # ignore = ["E501"]  # example: disable line-length enforcement
 
+[lint.isort]
+# This repo's own modules are imported absolutely as `from common.X import Y`
+# (it is consumed as a submodule named `common/`), so `common` must be
+# first-party. Without this, ruff's resolver splits the package across the
+# third-party and first-party blocks and every isort run reshuffles it.
+# Kept identical to the consumers' ruff.toml so the fleet sorts the same way.
+known-first-party = ["common"]
+
 [format]
 # Ruff's Black-compatible formatter.
 quote-style = "double"
