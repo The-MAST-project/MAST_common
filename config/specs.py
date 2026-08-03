@@ -38,9 +38,7 @@ class WheelConfig(BaseModel):
         if "default" not in self.filters:
             self.filters["default"] = "Empty"
         elif self.filters["default"] not in valid_filter_names:
-            raise ValueError(
-                f"Default filter '{self.filters['default']}' must be one of the defined filters."
-            )
+            raise ValueError(f"Default filter '{self.filters['default']}' must be one of the defined filters.")
         return self
 
 
@@ -94,24 +92,18 @@ class SpecsConfig(BaseModel):
         valid_wheel_names = ["ThAr", "qTh"]
         for name in list(self.wheels.keys()):
             if name not in valid_wheel_names:
-                raise ValueError(
-                    f"validate_specs_config: invalid wheel name '{name}', '{valid_wheel_names=}'"
-                )
+                raise ValueError(f"validate_specs_config: invalid wheel name '{name}', '{valid_wheel_names=}'")
 
         # gratings
         valid_grating_names = ["Halpha", "Mg", "Ca", "Future"]
         for name in list(self.gratings.keys()):
             if name not in valid_grating_names:
-                raise ValueError(
-                    f"validate_specs_config: invalid grating name '{name}', {valid_grating_names=}"
-                )
+                raise ValueError(f"validate_specs_config: invalid grating name '{name}', {valid_grating_names=}")
 
         valid_lamp_names = valid_wheel_names
         for name in list(self.lamps.keys()):
             if name not in valid_lamp_names:
-                raise ValueError(
-                    f"validate_specs_config: invalid lamp name '{name}', '{valid_lamp_names=}'"
-                )
+                raise ValueError(f"validate_specs_config: invalid lamp name '{name}', '{valid_lamp_names=}'")
 
         valid_deepspec_camera_names = ["G", "I", "U", "R", "common"]
         for name in list(self.deepspec.keys()):
@@ -121,24 +113,18 @@ class SpecsConfig(BaseModel):
                 )
 
         if "common" not in self.deepspec:
-            raise ValueError(
-                "validate_specs_config: 'common' deepspec configuration not found"
-            )
+            raise ValueError("validate_specs_config: 'common' deepspec configuration not found")
 
         common_cfg = self.deepspec.get("common")
         if not common_cfg:
-            raise ValueError(
-                "validate_specs_config: 'common' deepspec configuration is None"
-            )
+            raise ValueError("validate_specs_config: 'common' deepspec configuration is None")
 
         if any([common_cfg.network, common_cfg.power, common_cfg.device]):
             raise ValueError(
                 "validate_specs_config: 'common' deepspec configuration should not have network, power or device set"
             )
         if not common_cfg.settings:
-            raise ValueError(
-                "validate_specs_config: 'common' deepspec configuration must have settings set"
-            )
+            raise ValueError("validate_specs_config: 'common' deepspec configuration must have settings set")
 
         for band in self.deepspec:
             if band == "common":
@@ -146,9 +132,7 @@ class SpecsConfig(BaseModel):
 
             band_cfg = self.deepspec[band]
             if not band_cfg:
-                raise ValueError(
-                    f"validate_specs_config: '{band}' deepspec configuration not found"
-                )
+                raise ValueError(f"validate_specs_config: '{band}' deepspec configuration not found")
 
             if not band_cfg.network or not band_cfg.power or band_cfg.device is None:
                 raise ValueError(
@@ -159,8 +143,6 @@ class SpecsConfig(BaseModel):
             if not band_cfg.settings:
                 band_cfg.settings = deepcopy(common_cfg.settings)
             else:
-                deep_dict_update(
-                    band_cfg.settings.model_dump(), common_cfg.settings.model_dump()
-                )
+                deep_dict_update(band_cfg.settings.model_dump(), common_cfg.settings.model_dump())
             pass
         return self

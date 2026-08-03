@@ -8,7 +8,6 @@ fixed config-file path (no MAST_PROJECT env var), and the fail-fast behavior of
 import textwrap
 
 import pytest
-
 from common.config.local import (
     VALID_MACHINE_ROLES,
     ConfigError,
@@ -47,9 +46,7 @@ def test_valid_config_loads_machine_role(tmp_path, monkeypatch):
 
 
 def test_missing_machine_role_field_fails(tmp_path, monkeypatch):
-    toml = "\n".join(
-        line for line in VALID_TOML.splitlines() if "machine_role" not in line
-    )
+    toml = "\n".join(line for line in VALID_TOML.splitlines() if "machine_role" not in line)
     _point_at(tmp_path, toml, monkeypatch)
     with pytest.raises(ConfigError) as excinfo:
         load_local_config()

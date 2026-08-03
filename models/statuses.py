@@ -1,5 +1,4 @@
 import datetime
-import logging
 from enum import Enum, StrEnum
 from pathlib import Path
 from typing import Any
@@ -8,7 +7,7 @@ from pydantic import BaseModel, Field
 
 import common.asi as asi
 from common.activities import ActivitiesVerbal
-from common.mast_logging import init_log
+from common.mast_logging import get_logger
 from common.rois import SkyRoi, SpecRoi, UnitRoi
 from common.spec import (
     FilterPositions,
@@ -20,10 +19,7 @@ from common.spec import (
 )
 from common.utils import PathMaker, function_name
 
-logger = logging.Logger(__name__)
-init_log(logger)
-
-
+logger = get_logger(__name__)
 class StatusType(StrEnum):
     BASIC = "basic"
     FULL = "full"
@@ -212,6 +208,10 @@ class ImagerPixel(BaseModel):
     y: int
 
 
+# validation-context key honored by ImagerRoi.model_post_init (see ImagerRoi.verbatim)
+VERBATIM_ROI_CONTEXT_KEY = "verbatim_roi"
+
+
 class ImagerRoi(BaseModel):
     """
     MAST Region-Of-Interest.  Always conditioned to conform to:
@@ -228,6 +228,10 @@ class ImagerRoi(BaseModel):
     An ImagerRoi can be derived from other ROIs:
     - UnitRoi or SkyRoi: both don't specify center pixel
     - SpecRoi: specifies a center pixel
+
+    Exception: ImagerRoi.verbatim() constructs WITHOUT conditioning, for
+    consumers (PHD2 set_limit_frame) that must receive the rectangle exactly
+    as configured.
     """
 
     x: int = 0  # start.x
@@ -239,12 +243,13 @@ class ImagerRoi(BaseModel):
     def model_post_init(self, context: dict[str, Any] | None):
         from common.asi import ASI_294MM_SUPPORTED_BINNINGS_SET
 
+        if context and context.get(VERBATIM_ROI_CONTEXT_KEY):
+            return
+
         if self._center:  # _center was specified, it will govern width and height
             pass
         else:  # no _center was specified, it will be governed by width/height
-            self._center = ImagerPixel(
-                x=self.x + (self.width // 2) - 1, y=self.y + (self.height // 2) - 1
-            )
+            self._center = ImagerPixel(x=self.x + (self.width // 2) - 1, y=self.y + (self.height // 2) - 1)
 
         # adjust width/height according to _center and start point
         half_width = min(
@@ -267,6 +272,22 @@ class ImagerRoi(BaseModel):
 
         logger.debug(f"{function_name()}: {self=}")
 
+    @classmethod
+    def verbatim(cls, x: int, y: int, width: int, height: int) -> "ImagerRoi":
+        """
+        An ImagerRoi carrying the rectangle exactly as supplied, skipping the
+        conditioning in model_post_init.
+
+        For PHD2's set_limit_frame the caller-side conditioning is unnecessary
+        (PHD2 applies the camera alignment constraints itself since upstream
+        PRs #1374-#1376) and harmful (any shift defeats a deliberately placed
+        frame).  _center stays unset.
+        """
+        return cls.model_validate(
+            {"x": x, "y": y, "width": width, "height": height},
+            context={VERBATIM_ROI_CONTEXT_KEY: True},
+        )
+
     def __str__(self):
         return f"{self.width}x{self.height}@{self.x},{self.y}"
 
@@ -284,19 +305,13 @@ class ImagerRoi(BaseModel):
         height: int = roi.height
 
         if isinstance(roi, SkyRoi):
-            start = ImagerPixel(
-                x=roi.sky_x - (roi.width // 2), y=roi.sky_y - (roi.height // 2)
-            )
+            start = ImagerPixel(x=roi.sky_x - (roi.width // 2), y=roi.sky_y - (roi.height // 2))
             center = ImagerPixel(x=roi.sky_x, y=roi.sky_y)
         elif isinstance(roi, SpecRoi):
-            start = ImagerPixel(
-                x=roi.fiber_x - (roi.width // 2), y=roi.fiber_y - (roi.height // 2)
-            )
+            start = ImagerPixel(x=roi.fiber_x - (roi.width // 2), y=roi.fiber_y - (roi.height // 2))
             center = ImagerPixel(x=roi.fiber_x, y=roi.fiber_y)
         elif isinstance(roi, UnitRoi):
-            start = ImagerPixel(
-                x=roi.center_x - (roi.width // 2), y=roi.center_y - (roi.height // 2)
-            )
+            start = ImagerPixel(x=roi.center_x - (roi.width // 2), y=roi.center_y - (roi.height // 2))
             center = ImagerPixel(x=roi.center_x, y=roi.center_y)
         else:
             raise ValueError(f"ImagerRoi.from_other(): unknown type {type(roi)}")
@@ -311,18 +326,14 @@ class ImagerRoi(BaseModel):
         start.x = max(0, center.x - (width // 2))
         start.y = max(0, center.y - (height // 2))
 
-        ret = ImagerRoi(
-            x=start.x, y=start.y, width=width, height=height, _center=center
-        )
+        ret = ImagerRoi(x=start.x, y=start.y, width=width, height=height, _center=center)
         logger.debug(msg + f"{ret=}")
         return ret
 
     def binned(self, binning: int | None):
         b = binning or 1
 
-        return ImagerRoi(
-            x=self.x // b, y=self.y // b, width=self.width // b, height=self.height // b
-        )
+        return ImagerRoi(x=self.x // b, y=self.y // b, width=self.width // b, height=self.height // b)
 
 
 class ImagerSettings(BaseModel):
@@ -376,9 +387,7 @@ class ImagerSettings(BaseModel):
 
         if self.save:
             if self.image_path is None and self.base_folder is None:
-                raise ValueError(
-                    "ImagerSettings: either 'image_path' or 'base_folder' MUST be supplied when save=True"
-                )
+                raise ValueError("ImagerSettings: either 'image_path' or 'base_folder' MUST be supplied when save=True")
 
             if self.image_path is not None:
                 self.image_path = Path(self.image_path).as_posix()
@@ -396,9 +405,7 @@ class ImagerSettings(BaseModel):
         base["image_path"] = Path(base["image_path"]).as_posix()
         return base
 
-    def make_file_name(
-        self, additional_tags: dict | None = None, dont_bump_sequence: bool = False
-    ):
+    def make_file_name(self, additional_tags: dict | None = None, dont_bump_sequence: bool = False):
         """
         Makes the file part of the image path.  This will:
         - generate current seq= and time= file name parts
@@ -408,14 +415,10 @@ class ImagerSettings(BaseModel):
         :return:
         """
         if not self.folder:
-            raise ValueError(
-                "ImagerSettings: 'folder' must be set before making file name"
-            )
+            raise ValueError("ImagerSettings: 'folder' must be set before making file name")
 
         self.file_name_parts = []
-        self.file_name_parts.append(
-            f"seq={PathMaker().make_seq(self.folder, start_with=-1, dont_bump=dont_bump_sequence)}"
-        )
+        self.file_name_parts.append(f"seq={PathMaker().make_seq(self.folder, start_with=-1, dont_bump=dont_bump_sequence)}")
         self.file_name_parts.append(f"time={PathMaker().current_utc()}")
 
         tags = {}
@@ -432,9 +435,7 @@ class ImagerSettings(BaseModel):
         if self.roi:
             self.file_name_parts.append(f"binned_roi={self.roi.binned(self.binning)}")
 
-        self.image_path = str(
-            Path(self.folder, ",".join(self.file_name_parts) + ".fits").as_posix()
-        )
+        self.image_path = str(Path(self.folder, ",".join(self.file_name_parts) + ".fits").as_posix())
         pass
 
 
@@ -442,9 +443,7 @@ class ImagerExposure(BaseModel):
     file: str | None = None
     seconds: float | None = None
     date: str | None = None
-    start: datetime.datetime = Field(
-        default_factory=datetime.datetime.now, exclude=True
-    )
+    start: datetime.datetime = Field(default_factory=datetime.datetime.now, exclude=True)
 
 
 class ImagerStatus(PowerStatus, ComponentStatus):

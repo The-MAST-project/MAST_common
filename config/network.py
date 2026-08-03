@@ -1,14 +1,10 @@
 import socket
-from logging import Logger
 
 from pydantic import BaseModel, model_validator
 
-from common.mast_logging import init_log
+from common.mast_logging import get_logger
 
-logger = Logger("mast-config-network")
-init_log(logger)
-
-
+logger = get_logger(__name__)
 host_to_ipaddr: dict[str, str | None] = {}  # remembers resolved ipaddrs
 ipaddr_to_host: dict[str, str | None] = {}  # remembers resolved hosts
 
@@ -39,9 +35,7 @@ class NetworkConfig(BaseModel):
                 try:
                     self.host, _, _ = socket.gethostbyaddr(self.ipaddr)
                 except socket.herror:
-                    logger.info(
-                        f"validate_network: could not resolve IP address {self.ipaddr}, host will be None"
-                    )
+                    logger.info(f"validate_network: could not resolve IP address {self.ipaddr}, host will be None")
                     self.host = None
                 ipaddr_to_host[self.ipaddr] = self.host
 
@@ -52,9 +46,7 @@ class NetworkConfig(BaseModel):
                 try:
                     self.ipaddr = socket.gethostbyname(self.host)
                 except socket.gaierror:
-                    logger.info(
-                        f"validate_network: could not resolve host {self.host}, ipaddr will be None"
-                    )
+                    logger.info(f"validate_network: could not resolve host {self.host}, ipaddr will be None")
                     self.ipaddr = None
                 host_to_ipaddr[self.host] = self.ipaddr
         return self

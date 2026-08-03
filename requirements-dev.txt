@@ -1,0 +1,6 @@
+# Test-only dependencies. Runtime dependencies come from each consuming
+# project's requirements (this repo is embedded as a submodule and has no
+# standalone installation).
+pytest
+# Pinned so every machine/CI formats and lints identically (rules in ruff.toml).
+ruff==0.16.0

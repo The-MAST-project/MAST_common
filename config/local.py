@@ -44,10 +44,7 @@ class LocalConfig(BaseModel):
     @classmethod
     def _validate_machine_role(cls, v: str) -> str:
         if v not in VALID_MACHINE_ROLES:
-            raise ValueError(
-                f"machine_role={v!r} is invalid; expected one of "
-                f"{', '.join(VALID_MACHINE_ROLES)}"
-            )
+            raise ValueError(f"machine_role={v!r} is invalid; expected one of {', '.join(VALID_MACHINE_ROLES)}")
         return v
 
     @property
@@ -94,10 +91,7 @@ def load_local_config() -> "LocalConfig":
     """
     path = _config_file_path()
     if not os.path.exists(path):
-        raise ConfigError(
-            f"configuration file '{path}' does not exist "
-            "(set MAST_CONFIG to override the location)."
-        )
+        raise ConfigError(f"configuration file '{path}' does not exist (set MAST_CONFIG to override the location).")
 
     try:
         # Read as utf-8-sig so a leading BOM is stripped: PowerShell's
@@ -106,15 +100,10 @@ def load_local_config() -> "LocalConfig":
         with open(path, encoding="utf-8-sig") as fp:
             raw = tomllib.loads(fp.read())
     except (OSError, tomllib.TOMLDecodeError) as ex:
-        raise ConfigError(
-            f"cannot read/parse configuration file '{path}': {ex}"
-        ) from ex
+        raise ConfigError(f"cannot read/parse configuration file '{path}': {ex}") from ex
 
     try:
         return LocalConfig(**raw)
     except ValidationError as ex:
-        details = "\n".join(
-            f"  - {'.'.join(str(p) for p in err['loc'])}: {err['msg']}"
-            for err in ex.errors()
-        )
+        details = "\n".join(f"  - {'.'.join(str(p) for p in err['loc'])}: {err['msg']}" for err in ex.errors())
         raise ConfigError(f"invalid configuration in '{path}':\n{details}") from ex

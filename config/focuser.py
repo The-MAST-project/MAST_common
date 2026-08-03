@@ -12,7 +12,7 @@ class FocuserConfig(BaseModel):
             "ui": {
                 "hidden": True,
             }
-        }
+        },
     )
     known_as_good_position: int = Field(
         default=0,

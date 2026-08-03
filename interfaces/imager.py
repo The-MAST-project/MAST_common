@@ -1,4 +1,3 @@
-import logging
 from abc import ABC, abstractmethod
 from enum import StrEnum
 from typing import Literal
@@ -9,13 +8,10 @@ from pydantic import BaseModel, Field
 
 from common.activities import ImagerActivities
 from common.interfaces.components import Component
-from common.mast_logging import init_log
+from common.mast_logging import get_logger
 from common.models.statuses import ImagerSettings, ImagerRoi
 
-logger = logging.Logger(__name__)
-init_log(logger)
-
-
+logger = get_logger(__name__)
 class ImagerTypes(StrEnum):
     Ascom = "ascom"
     Phd2 = "phd2"
@@ -132,13 +128,9 @@ class ImagerInterface(Component, ABC):
         This method is called after the exposure series is completed.
         """
         if series is None:
-            raise ValueError(
-                "ImagerInterface.end_exposure_series(): series cannot be None"
-            )
+            raise ValueError("ImagerInterface.end_exposure_series(): series cannot be None")
         if self.current_exposure_series is None:
-            raise ValueError(
-                "ImagerInterface.end_exposure_series(): no self.current_exposure_series to end"
-            )
+            raise ValueError("ImagerInterface.end_exposure_series(): no self.current_exposure_series to end")
         if series.series_id != self.current_exposure_series.series_id:
             raise ValueError(
                 f"ImagerInterface.end_exposure_series(): series_id mismatch {series.series_id=} != "
@@ -218,8 +210,6 @@ class ImagerInterface(Component, ABC):
         Get the full frame ROI of the imager.
         """
         if self.camera_x_size is None or self.camera_y_size is None:
-            raise ValueError(
-                "Camera X and Y sizes must be set before getting full frame ROI"
-            )
+            raise ValueError("Camera X and Y sizes must be set before getting full frame ROI")
 
         return ImagerRoi(x=0, y=0, width=self.camera_x_size, height=self.camera_y_size)

@@ -1,13 +1,12 @@
 import asyncio
 import datetime
-from logging import Logger
 
 import humanfriendly
 from pydantic import BaseModel
 
 from common.api import SafetyApi
 from common.config import Config
-from common.mast_logging import init_log
+from common.mast_logging import get_logger
 from common.utils import fromisoformat_zulu
 
 
@@ -44,12 +43,7 @@ class SensorModel(BaseModel):
     name: str
     station: str | None = None
     safe: bool
-    settings: (
-        SunElevationSettingsModel
-        | MinMaxSettingsModel
-        | HumanInterventionSettingsModel
-        | None
-    ) = None
+    settings: SunElevationSettingsModel | MinMaxSettingsModel | HumanInterventionSettingsModel | None = None
     last_update: str | None = None  # ISO-8601 Zulu
     readings: list[SensorReadingModel] = []
     reasons_for_not_safe: list[str] | None = None
@@ -62,10 +56,7 @@ class SafetySensorModel(BaseModel):
     interval: float
 
 
-logger = Logger("mast-common-safety")
-init_log(logger)
-
-
+logger = get_logger(__name__)
 def safety_get_sensor(
     sensor_name: str,
     project_name: str | None = None,
@@ -99,9 +90,7 @@ def safety_get_sensor(
                 sensor.readings = [sensor.readings]
 
             latest_reading = sensor.readings[-1]
-            age = datetime.datetime.now(datetime.UTC) - fromisoformat_zulu(
-                latest_reading.time
-            )
+            age = datetime.datetime.now(datetime.UTC) - fromisoformat_zulu(latest_reading.time)
             if age > max_age:
                 logger.warning(
                     f"safety_get_sensor: ignoring '{sensor.name}' reading, too old '{humanfriendly.format_timespan(age)}' > '{humanfriendly.format_timespan(max_age)}'"
@@ -119,9 +108,7 @@ def safety_get_sensor(
 
 if __name__ == "__main__":
     for sensor_name in ["wind-speed", "humidity", "dew-point", "sun"]:
-        result = safety_get_sensor(
-            sensor_name, timeout=60, max_age=datetime.timedelta(minutes=10)
-        )
+        result = safety_get_sensor(sensor_name, timeout=60, max_age=datetime.timedelta(minutes=10))
 
         if result is not None:
             value, is_safe, reasons = result
