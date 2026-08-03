@@ -119,25 +119,49 @@ class LimitFrameConfig(BaseModel):
         return self
 
 
+class ExcludeRegionMode(StrEnum):
+    """Whether PHD2 guide-star selection avoids the configured region."""
+
+    OFF = "off"  # no exclusion region: PHD2 selects anywhere it is otherwise allowed
+    FIXED = "fixed"  # the configured rectangle (unbinned camera pixels)
+
+
 class ExcludeRegionConfig(BaseModel):
     """Persisted configuration for the PHD2 guide-star exclusion region.
 
     The region (unbinned camera pixels) is excluded from PHD2 guide-star
     auto-selection, so guiding locks only on stars the FCU fold mirror will not
-    occult and the mirror can be inserted after guiding is locked.  Disabled by
-    default: the rectangle is per-unit geometry (the mirror shadow plus a safety
-    margin) and must be measured before enabling.  Requires the ``set_exclude_region``
-    PHD2 API (MAST build 2.6.14dev1mast04 or later).
+    occult and the mirror can be inserted after guiding is locked.
+
+    ``mode`` names the outcome directly, as in :class:`LimitFrameConfig`:
+
+    - ``off`` (default) -- no exclusion region; it is reset before guiding. The
+      only safe default: unlike the limit frame there is no derived fallback
+      rectangle, and the mirror shadow must be measured per unit before the
+      feature can do anything but suppress guide stars for no reason.
+    - ``fixed`` -- the rectangle below. Requires a complete rectangle.
+
+    One deliberate asymmetry with ``limit_frame``: a rectangle configured under
+    ``off`` is legal here rather than a contradiction. The shadow-measurement tool
+    writes each unit's band (with its derivation record) as soon as it is measured
+    and the region is switched on later, per unit; rejecting the pair would force
+    an operator to delete a measurement in order to disable the feature, and would
+    make "measured but not yet enabled" inexpressible.
+
+    Requires the ``set_exclude_region`` PHD2 API (MAST build
+    ``2.6.14dev1mastbuild4`` or later).
     """
 
-    enabled: bool = Field(
-        default=False,
+    mode: ExcludeRegionMode = Field(
+        default=ExcludeRegionMode.OFF,
         json_schema_extra={
             "ui": {
                 "editable": True,
-                "widget": "checkbox",
-                "label": "Use exclusion region",
-                "tooltip": "Exclude the configured region (fold-mirror shadow) from PHD2 guide-star selection",
+                "widget": "select",
+                "options": ["off", "fixed"],
+                "label": "Exclusion region",
+                "tooltip": "off: no exclusion region; fixed: exclude the rectangle below "
+                "(the fold-mirror shadow) from PHD2 guide-star selection",
             },
             "required_capabilities": [UserCapabilities.CAN_CHANGE_CONFIGURATION.value],
         },
@@ -246,6 +270,12 @@ class ExcludeRegionConfig(BaseModel):
             },
         },
     )
+
+    @model_validator(mode="after")
+    def _rect_matches_mode(self):
+        if self.mode is ExcludeRegionMode.FIXED and (self.width <= 0 or self.height <= 0):
+            raise ValueError("phd2.exclude_region: mode 'fixed' requires a complete rectangle (positive width and height)")
+        return self
 
     @property
     def has_roi(self) -> bool:
