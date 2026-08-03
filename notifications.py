@@ -1,5 +1,4 @@
 import asyncio
-import os
 import socket
 import threading
 from collections import deque
@@ -28,13 +27,13 @@ def _build_initiator() -> NotificationInitiator:
     Built lazily (never at import time) so that a missing/invalid configuration
     surfaces at the application's startup fail-fast point rather than as an
     import error. Site and project come from the config file (the single source
-    of truth); the machine type comes from the MAST_PROJECT role.
+    of truth); the machine type comes from the config file's `machine_role`.
     """
     from common.config.local import load_local_config
 
     local = load_local_config()
-    role = os.getenv("MAST_PROJECT")  # 'unit' | 'spec' | 'control'
-    machine_type = {"unit": "unit", "spec": "spec", "control": "controller"}.get(role or "", "unknown-machine-type")
+    role = local.machine_role  # validated to one of 'unit' | 'spec' | 'control'
+    machine_type = {"unit": "unit", "spec": "spec", "control": "controller"}.get(role, "unknown-machine-type")
     return NotificationInitiator(
         site=local.site,
         type=machine_type,
