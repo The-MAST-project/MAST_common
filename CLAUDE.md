@@ -1,6 +1,6 @@
 # MAST Common — Shared Claude Guidance
 
-This file is part of `MAST_common` (submoduled into each MAST project). It is imported by each project's own `CLAUDE.md` via `@common/CLAUDE.md` (or `@src/common/CLAUDE.md` in MAST_unit).
+This file is part of `MAST_common`, which each MAST project consumes. It is imported by each project's own `CLAUDE.md` via `@common/CLAUDE.md` (or `@../common/CLAUDE.md` in MAST_unit, which no longer submodules it — see below).
 
 ## What is MAST?
 
@@ -10,16 +10,49 @@ This file is part of `MAST_common` (submoduled into each MAST project). It is im
 
 | Project | Role | Runs on |
 |---|---|---|
-| `MAST_common` | Shared library (git submodule in all others) | — |
+| `MAST_common` | Shared library (submodule in control/spec/gui; sibling clone for units) | — |
 | `MAST_control` | Central backend orchestrator | `mast-wis-control` |
 | `MAST_spec` | Spectrograph control backend | `mast-wis-spec` |
 | `MAST_unit.*` | Per-unit backend (telescope hardware) | Each unit machine (`mast01`…`mast20`) |
 | `MAST_gui` | Django web frontend | `mast-wis-control` |
 
-### MAST_common submodule placement
-- In `MAST_control` and `MAST_spec`: submoduled as `./common/`
-- In `MAST_unit.*`: submoduled as `./src/common/`
-- In `MAST_gui`: submoduled as `./common/`
+### How each project gets `MAST_common`
+
+**Two mechanisms are in play. The submodule is being phased out.**
+
+| Project | Mechanism | Path |
+|---|---|---|
+| `MAST_unit.*` | **sibling clone** (flat layout) | `<top>/common/`, beside `<top>/unit/` |
+| `MAST_control` | submodule — *to be phased out* | `./common/` |
+| `MAST_spec` | submodule — *to be phased out* | `./common/` |
+| `MAST_gui` | submodule — *to be phased out* | `./common/` |
+
+#### TODO: retire the submodule in `MAST_control`, `MAST_spec` and `MAST_gui`
+
+`MAST_unit` dropped it on 2026-08-06 (MAST_unit#94). The other three still carry a
+gitlink and a `.gitmodules`; do the same there, then delete this section.
+
+Why it went, and what to check before repeating it elsewhere: in the unit the gitlink
+turned out to be **resolving nothing**. The service starts with its `src/` as the working
+directory and no `PYTHONPATH`, and `import common` was already satisfied by a `mast.pth`
+that MAST_provisioning writes into the venv, pointing at the flat top folder. So the
+submodule was a second, stale mechanism (its gitlink several merges behind) shadowing the
+one actually in use. An *uninitialised* submodule directory is also a live hazard: it is
+an empty directory that Python can treat as a namespace-package portion named `common`,
+and it makes ruff's first-party classification machine-dependent.
+
+Before removing it from a project, confirm for that project:
+
+1. how `common` is on `sys.path` at **runtime** — a `.pth`, an installed package, or the
+   submodule directory itself. Only the first two survive removal. Django's `manage.py`
+   and WSGI entry points make this a different question in `MAST_gui` than in the units;
+2. that every deployed machine is provisioned that way, not just the dev checkout;
+3. what breaks in the repo's own files — the `@common/CLAUDE.md` import at the top of its
+   `CLAUDE.md`, `ruff.toml`'s `extend-exclude`, test bootstraps, IDE launch configs.
+
+Keep `known-first-party = ["common"]` in each `ruff.toml`. It matters **more** after the
+move, not less: the package then lives outside the repo, where ruff's path-based resolver
+cannot classify it at all.
 
 ## Configuration System (`common/config/`)
 
@@ -125,16 +158,21 @@ in-progress → canceled
 In `json_schema_extra` dicts on Pydantic model fields, put one key-value entry per line, and never wrap a `"tooltip": "..."` value across lines — keep the whole tooltip pair on a single line regardless of length (prevents auto-formatter line-wrapping of tooltip content).
 
 ### Syncing `common/` across checkouts
-`MAST_common` is checked out in several places — `MAST_control/common/`, `MAST_spec/common/`, `MAST_gui/common/`, and `MAST_unit.*/src/common/`. They are independent checkouts of the same repository, so after changing any file under a `common/`, apply the same change to (or re-sync) the other checkouts so they don't diverge.
+`MAST_common` is checked out in several places — `MAST_control/common/`, `MAST_spec/common/`, `MAST_gui/common/`, and, for units, the sibling `<top>/common/`. They are independent checkouts of the same repository, so after changing any file under a `common/`, apply the same change to (or re-sync) the other checkouts so they don't diverge.
+
+The sibling clone is updated with a plain `git pull` in it — there is no gitlink to bump, and the section below does not apply to it.
 
 ### Updating the `common/` submodule — use `--remote`
+
+*Applies to `MAST_control`, `MAST_spec` and `MAST_gui` only, and only until the submodule is retired there (see above). Units have no submodule to update.*
+
 Always update with:
 
 ```bash
 git submodule update --remote
 ```
 
-A bare `git submodule update` checks out the **commit recorded in the parent's gitlink**, which leaves `common/` on a **detached HEAD** — commits made there belong to no branch and are easy to lose. Every parent's `.gitmodules` sets `branch = master` for its `common` submodule, and `--remote` follows that branch instead.
+A bare `git submodule update` checks out the **commit recorded in the parent's gitlink**, which leaves `common/` on a **detached HEAD** — commits made there belong to no branch and are easy to lose. Each remaining parent's `.gitmodules` sets `branch = master` for its `common` submodule, and `--remote` follows that branch instead.
 
 If a `common/` checkout is already detached, reattach with `git -C <parent>/common checkout master` (verify nothing is stranded first: `git -C <parent>/common branch -a --contains HEAD`).
 

@@ -4,9 +4,11 @@
 # version is pinned in requirements-dev.txt (ruff==0.16.0); config alone is not
 # enough — formatter output can differ between ruff versions.
 #
-# This repo is consumed as a submodule (src/common) by MAST_unit, MAST_spec and
-# MAST_control; formatting it here does not change those superprojects until
-# their submodule pointers are advanced.
+# This repo is consumed as a submodule (common/) by MAST_control, MAST_spec and
+# MAST_gui; formatting it here does not change those superprojects until their
+# submodule pointers are advanced. MAST_unit consumes it as a sibling clone
+# instead (MAST_unit#94), where a plain `git pull` is all that is needed --
+# see "How each project gets MAST_common" in CLAUDE.md.
 
 line-length = 125
 target-version = "py312"
