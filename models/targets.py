@@ -1,46 +1,10 @@
-import math
-
-import astropy.coordinates
 from pydantic import BaseModel, Field, field_validator
 
+# One implementation, beside the FastAPI patterns that guard the same grammar, so a
+# coordinate cannot mean one thing to a plan and another to an endpoint.
 from common.models.constraints import RepeatsModel
 from common.models.science import ScienceModel
-
-# What a coordinate may look like, for error messages. astropy accepts all of it:
-# ':' or whitespace as separator, one or two digits per component, any number of
-# decimals on the seconds, and surrounding whitespace trimmed.
-_ACCEPTED_FORMS = "sexagesimal ('5:34:32.5', '05 34 32.5') or decimal ('5.575')"
-
-
-def _parse_angle(value: str | float, *, unit: str, low: float, high: float, high_included: bool, kind: str) -> float:
-    """
-    Parse a sexagesimal or decimal angle and range-check it. No normalisation.
-
-    Angle is used rather than Longitude/Latitude because both of those decide the
-    range question themselves and so hid the check below. Longitude WRAPS: it turned
-    an RA of 25 into 1.0 and -1 into 23.0, silently accepting a typo as a different
-    target, and left `0 <= ra < 24` unable to fail. Latitude raises before the check
-    is reached, so the message an operator saw came from astropy, not from here.
-    Angle does neither -- it parses and stops -- which makes the bounds below the
-    only thing that decides what is acceptable, for decimal and sexagesimal alike.
-    """
-    if isinstance(value, str):
-        value = value.strip()
-        if not value:
-            raise ValueError(f"{kind} is empty; expected {_ACCEPTED_FORMS}")
-    try:
-        angle = float(astropy.coordinates.Angle(value, unit=unit).value)
-    except ValueError as e:
-        # Every astropy angle error (IllegalHourError and friends) subclasses
-        # ValueError. Its own wording is about parser columns; say what we wanted.
-        raise ValueError(f"{kind}: cannot parse {value!r} -- expected {_ACCEPTED_FORMS} ({e})") from e
-    if not math.isfinite(angle):
-        # inf parses to nan rather than raising, and every comparison against nan is
-        # False, so an unguarded range test would report it as merely out of range.
-        raise ValueError(f"{kind}: {value!r} is not a finite number")
-    if not (low <= angle <= high if high_included else low <= angle < high):
-        raise ValueError(f"{kind} {angle} is out of range [{low}, {high}{']' if high_included else ')'}")
-    return angle
+from common.parsers import sexagesimal_degrees_to_decimal, sexagesimal_hours_to_decimal
 
 
 class Target(BaseModel):
@@ -172,7 +136,7 @@ class Target(BaseModel):
         :param value: sexagesimal string or float
         :return: a float in [0, 24)
         """
-        return _parse_angle(value, unit="hour", low=0.0, high=24.0, high_included=False, kind="RA")
+        return sexagesimal_hours_to_decimal(value)
 
     @field_validator("dec_degrees")
     @classmethod
@@ -182,7 +146,7 @@ class Target(BaseModel):
         :param value: sexagesimal string or float
         :return: a float in [-90, 90]
         """
-        return _parse_angle(value, unit="deg", low=-90.0, high=90.0, high_included=True, kind="Dec")
+        return sexagesimal_degrees_to_decimal(value)
 
     def __repr__(self) -> str:
         return f"Target(ra_hours={self.ra_hours}, dec_degrees={self.dec_degrees})"
