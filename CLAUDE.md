@@ -1,6 +1,6 @@
 # MAST Common — Shared Claude Guidance
 
-This file is part of `MAST_common`, which each MAST project consumes. It is imported by each project's own `CLAUDE.md` via `@common/CLAUDE.md` (or `@../common/CLAUDE.md` in MAST_unit, which no longer submodules it — see below).
+This file is part of `MAST_common`, which each MAST project consumes. It is imported by each project's own `CLAUDE.md` via `@../common/CLAUDE.md`.
 
 ## What is MAST?
 
@@ -10,7 +10,7 @@ This file is part of `MAST_common`, which each MAST project consumes. It is impo
 
 | Project | Role | Runs on |
 |---|---|---|
-| `MAST_common` | Shared library (submodule in control/spec/gui; sibling clone for units) | — |
+| `MAST_common` | Shared library (sibling clone in every project) | — |
 | `MAST_control` | Central backend orchestrator | `mast-wis-control` |
 | `MAST_spec` | Spectrograph control backend | `mast-wis-spec` |
 | `MAST_unit.*` | Per-unit backend (telescope hardware) | Each unit machine (`mast01`…`mast20`) |
@@ -18,41 +18,36 @@ This file is part of `MAST_common`, which each MAST project consumes. It is impo
 
 ### How each project gets `MAST_common`
 
-**Two mechanisms are in play. The submodule is being phased out.**
+**Every project consumes it as a sibling clone, in a flat layout. There is no submodule
+anywhere any more.**
 
-| Project | Mechanism | Path |
-|---|---|---|
-| `MAST_unit.*` | **sibling clone** (flat layout) | `<top>/common/`, beside `<top>/unit/` |
-| `MAST_control` | submodule — *to be phased out* | `./common/` |
-| `MAST_spec` | submodule — *to be phased out* | `./common/` |
-| `MAST_gui` | submodule — *to be phased out* | `./common/` |
+| Project | Path |
+|---|---|
+| `MAST_unit.*` | `<top>/common/`, beside `<top>/unit/` |
+| `MAST_control` | `<top>/common/`, beside `<top>/control/` |
+| `MAST_spec` | `<top>/common/`, beside `<top>/spec/` |
+| `MAST_gui` | `<top>/common/`, beside `<top>/gui/` |
 
-#### TODO: retire the submodule in `MAST_control`, `MAST_spec` and `MAST_gui`
+`import common` is satisfied by the `mast.pth` that MAST_provisioning writes into the venv,
+which puts `<top>` on `sys.path`. **A clone of any single repo is therefore not runnable on
+its own** — it needs the flat layout and that `.pth`.
 
-`MAST_unit` dropped it on 2026-08-06 (MAST_unit#94). The other three still carry a
-gitlink and a `.gitmodules`; do the same there, then delete this section.
+The submodule was retired in MAST_unit#94 (2026-08-06), then MAST_spec#33, MAST_control#19
+and MAST_gui#18. In every case the gitlink was **resolving nothing**: the `.pth` already
+provided `common`, so the submodule was a second, stale mechanism shadowing the one actually
+in use — `MAST_control` and `MAST_spec` were both pinned at the same commit, several merges
+behind. An *uninitialised* submodule directory is also a live hazard: it is an empty
+directory that Python can treat as a namespace-package portion named `common`, and it makes
+ruff's first-party classification machine-dependent.
 
-Why it went, and what to check before repeating it elsewhere: in the unit the gitlink
-turned out to be **resolving nothing**. The service starts with its `src/` as the working
-directory and no `PYTHONPATH`, and `import common` was already satisfied by a `mast.pth`
-that MAST_provisioning writes into the venv, pointing at the flat top folder. So the
-submodule was a second, stale mechanism (its gitlink several merges behind) shadowing the
-one actually in use. An *uninitialised* submodule directory is also a live hazard: it is
-an empty directory that Python can treat as a namespace-package portion named `common`,
-and it makes ruff's first-party classification machine-dependent.
+Keep `known-first-party = ["common"]` in each `ruff.toml`. It matters **more** now, not
+less: the package lives outside every repo, where ruff's path-based resolver cannot classify
+it at all. It is not cosmetic — adding it cleared 9 pre-existing `I001` findings in
+`MAST_spec`, 3 in `MAST_gui` and 2 in `MAST_control`.
 
-Before removing it from a project, confirm for that project:
-
-1. how `common` is on `sys.path` at **runtime** — a `.pth`, an installed package, or the
-   submodule directory itself. Only the first two survive removal. Django's `manage.py`
-   and WSGI entry points make this a different question in `MAST_gui` than in the units;
-2. that every deployed machine is provisioned that way, not just the dev checkout;
-3. what breaks in the repo's own files — the `@common/CLAUDE.md` import at the top of its
-   `CLAUDE.md`, `ruff.toml`'s `extend-exclude`, test bootstraps, IDE launch configs.
-
-Keep `known-first-party = ["common"]` in each `ruff.toml`. It matters **more** after the
-move, not less: the package then lives outside the repo, where ruff's path-based resolver
-cannot classify it at all.
+**Nothing now records which `MAST_common` commit a consumer was built against.** The gitlink
+was that record, for all its faults. See MAST_common#34 for the gap and the options; #11
+(publish as a versioned package) is the eventual answer.
 
 ## Configuration System (`common/config/`)
 
@@ -158,25 +153,31 @@ in-progress → canceled
 In `json_schema_extra` dicts on Pydantic model fields, put one key-value entry per line, and never wrap a `"tooltip": "..."` value across lines — keep the whole tooltip pair on a single line regardless of length (prevents auto-formatter line-wrapping of tooltip content).
 
 ### Syncing `common/` across checkouts
-`MAST_common` is checked out in several places — `MAST_control/common/`, `MAST_spec/common/`, `MAST_gui/common/`, and, for units, the sibling `<top>/common/`. They are independent checkouts of the same repository, so after changing any file under a `common/`, apply the same change to (or re-sync) the other checkouts so they don't diverge.
 
-The sibling clone is updated with a plain `git pull` in it — there is no gitlink to bump, and the section below does not apply to it.
+Each machine has **one** `common/` clone, shared by every project beside it in the flat
+layout — there is no longer a separate copy per superproject. If you do have more than one
+checkout (say a second workspace), they are independent clones of the same repository, so
+after changing any file under a `common/`, apply the same change to (or re-sync) the others
+so they don't diverge.
 
-### Updating the `common/` submodule — use `--remote`
-
-*Applies to `MAST_control`, `MAST_spec` and `MAST_gui` only, and only until the submodule is retired there (see above). Units have no submodule to update.*
-
-Always update with:
+### Updating `common/`
 
 ```bash
-git submodule update --remote
+git -C <top>/common pull
 ```
 
-A bare `git submodule update` checks out the **commit recorded in the parent's gitlink**, which leaves `common/` on a **detached HEAD** — commits made there belong to no branch and are easy to lose. Each remaining parent's `.gitmodules` sets `branch = master` for its `common` submodule, and `--remote` follows that branch instead.
+That is the whole procedure. There is no gitlink to bump, no `git submodule update --remote`,
+and no detached-HEAD trap — the clone sits on `master` like any ordinary repository.
 
-If a `common/` checkout is already detached, reattach with `git -C <parent>/common checkout master` (verify nothing is stranded first: `git -C <parent>/common branch -a --contains HEAD`).
+Two consequences worth remembering:
 
-Note that `--remote` moves the checkout to the branch tip, which will usually be **ahead of the parent's gitlink** — the parent then reports `modified: common (new commits)`. That is a pointer difference, not a file change; resolve it by committing the bumped gitlink in the parent.
+- **A pull updates every consumer on that machine at once**, since they all share the clone.
+  There is no per-project pin.
+- **A consumer can reference an API the local clone does not have yet**, and nothing reports
+  it — the import simply fails at runtime. This has already happened once on a dev box: a
+  `common/` 24 commits behind, against a `MAST_control/app.py` already using
+  `configure_logging` / `get_logger`. If a consumer raises `ImportError` or `NameError` on a
+  `common` symbol, check the clone is current before anything else. See MAST_common#34.
 
 ## Project-wide LLM guidance
 
