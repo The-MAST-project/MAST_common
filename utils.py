@@ -21,8 +21,8 @@ from astropy.units import deg, hourangle  # type: ignore
 from cachetools import cached  # type: ignore
 
 from common.filer import Filer
-from common.paths import PathMaker
 from common.mast_logging import get_logger
+from common.paths import PathMaker
 
 default_encoding = "utf-8"
 
@@ -259,8 +259,7 @@ def boxed_lines(lines: str | list[str], center: bool = False) -> list[str]:
         lines = [lines]
 
     for line in lines:
-        if len(line) > max_len:
-            max_len = len(line)
+        max_len = max(max_len, len(line))
     if (max_len % 2) != 0:
         max_len += 1
 
@@ -444,7 +443,6 @@ if __name__ == "__main__":
     response = CanonicalResponse(errors=["err 1", "err 2"])
     response = CanonicalResponse(value={"tf": True, "val": 17})
     response = CanonicalResponse_Ok
-    pass
 
 
 def isoformat_zulu(dt: datetime.datetime) -> str:

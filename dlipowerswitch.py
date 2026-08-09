@@ -14,7 +14,6 @@ from common.config.power import PowerSwitchConfig
 from common.config.unit import UnitConfig
 from common.interfaces.components import Component
 from common.mast_logging import get_logger
-
 from common.models.statuses import OutletStatus, PowerStatus, PowerSwitchStatus
 
 TriStateBool = bool | None
@@ -261,7 +260,7 @@ class PowerSwitchFactory:
 
     def __new__(cls):
         if cls._factory_instance is None:
-            cls._factory_instance = super(PowerSwitchFactory, cls).__new__(cls)
+            cls._factory_instance = super().__new__(cls)
             logger.info(f"Created PowerSwitchFactory instance: id=0x{id(cls._factory_instance):08X}")
         return cls._factory_instance
 
@@ -412,7 +411,7 @@ class SwitchedOutlet:
         ],
     }
 
-    def __init__(  # noqa: C901
+    def __init__(
         self,
         domain: OutletDomain,
         outlet_name: str,

@@ -365,7 +365,7 @@ class Plan(BaseModel, Activities):
         else:
             # Filename does not comply, generate and enforce new ULID
             ulid_from_basename = ulid.ULID()
-            basename = f"PLAN_{str(ulid_from_basename)}.toml"
+            basename = f"PLAN_{ulid_from_basename!s}.toml"
             new_path = folder / basename
             if not new_path.exists():
                 shutil.copy(toml_file, str(new_path))
@@ -379,7 +379,7 @@ class Plan(BaseModel, Activities):
             import traceback
 
             traceback.print_exc()
-            raise Exception(f"Invalid TOML file {toml_file}: {str(e)}") from e
+            raise Exception(f"Invalid TOML file {toml_file}: {e!s}") from e
 
         if "ulid" not in toml_doc or toml_doc["ulid"] != str(ulid_from_basename):
             toml_doc["ulid"] = str(ulid_from_basename)
@@ -392,7 +392,7 @@ class Plan(BaseModel, Activities):
                 import traceback
 
                 traceback.print_exc()
-                raise Exception(f"Failed to update ULID in TOML file {real_path}: {str(e)}") from e
+                raise Exception(f"Failed to update ULID in TOML file {real_path}: {e!s}") from e
         new_plan = Plan(**toml_doc)  # type: ignore  — ValidationError propagates to caller
 
         return new_plan
@@ -459,7 +459,7 @@ class Plan(BaseModel, Activities):
             new_path = current_path.parent.parent / sub_folder / current_path.name
             os.makedirs(new_path.parent, exist_ok=True)
             shutil.move(str(current_path), str(new_path))
-            logger.info(f"moved plan '{self.ulid}' from {str(current_path)} to {str(new_path)}")
+            logger.info(f"moved plan '{self.ulid}' from {current_path!s} to {new_path!s}")
         self.end_activity(PlanActivities.Executing)
         self.terminated = True
 

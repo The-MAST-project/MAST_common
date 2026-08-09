@@ -247,11 +247,10 @@ class Filer:
                 self._drain_pending()
             # Exit (freeing the thread) only when nothing is left; re-checked atomically
             # with _ensure_sweeper so a concurrent enqueue can't be stranded.
-            with Filer._sweeper_lock:
-                with Filer._pending_lock:
-                    if not Filer._pending:
-                        Filer._sweeper_thread = None
-                        return
+            with Filer._sweeper_lock, Filer._pending_lock:
+                if not Filer._pending:
+                    Filer._sweeper_thread = None
+                    return
             time.sleep(Filer._SWEEP_INTERVAL_SEC)
 
     def find_latest(

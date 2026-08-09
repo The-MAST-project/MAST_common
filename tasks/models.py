@@ -1,6 +1,6 @@
 import asyncio
 
-from pydantic import BaseModel, ValidationError
+from pydantic import ValidationError
 
 from common.api import SpecApi
 from common.canonical import CanonicalResponse

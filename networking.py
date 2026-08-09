@@ -32,7 +32,6 @@ class NetworkDestination:
                 raise
             except socket.herror:
                 logger.error(f"cannot resolve {addr} to hostname")
-                pass
 
         except ipaddress.AddressValueError:
             # nope, it's a hostname

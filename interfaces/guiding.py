@@ -10,12 +10,10 @@ class GuiderInterface(ABC, Activities):
         """
         Starts guiding
         """
-        pass
 
     @abstractmethod
     def stop_guiding(self):
         """Stops guiding"""
-        pass
 
     @abstractmethod
     def status(self):

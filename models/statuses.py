@@ -5,7 +5,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-import common.asi as asi
+from common import asi
 from common.activities import ActivitiesVerbal
 from common.mast_logging import get_logger
 from common.rois import SkyRoi, SpecRoi, UnitRoi
@@ -438,7 +438,6 @@ class ImagerSettings(BaseModel):
             self.file_name_parts.append(f"binned_roi={self.roi.binned(self.binning)}")
 
         self.image_path = str(Path(self.folder, ",".join(self.file_name_parts) + ".fits").as_posix())
-        pass
 
 
 class ImagerExposure(BaseModel):

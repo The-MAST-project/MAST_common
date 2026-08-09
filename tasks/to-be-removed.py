@@ -1,6 +1,4 @@
-from common.utils import init_log
 from common.api import UnitApi
-from typing import List
 from common.mast_logging import get_logger
 
 logger = get_logger(__name__)
@@ -14,8 +12,8 @@ class Target:
         self.ra: float = ra
         self.dec: float = dec
         self.priority: float = priority
-        self.required_units: List[int] = []
-        self.units: List[UnitApi] = []
+        self.required_units: list[int] = []
+        self.units: list[UnitApi] = []
         self.number_of_visits: int = 1  # from config
         self.observing_duration: float  # [seconds] from config
 
@@ -24,4 +22,3 @@ class Target:
         Calculates the target's Signal-to-Noise-Ratio at the current time
         :return:
         """
-        pass

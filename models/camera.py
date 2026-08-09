@@ -1,23 +1,23 @@
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel
 
 
 class BinningModel(BaseModel):
-    x: Optional[Literal[1, 2, 3, 4]]
-    y: Optional[Literal[1, 2, 3, 4]]
+    x: Literal[1, 2, 3, 4] | None
+    y: Literal[1, 2, 3, 4] | None
 
 
 class RoiModel(BaseModel):
-    x: Optional[int]
-    y: Optional[int]
-    width: Optional[int]
-    height: Optional[int]
+    x: int | None
+    y: int | None
+    width: int | None
+    height: int | None
 
 
 class SettingsModel(BaseModel):
-    binning: Optional[BinningModel]
-    roi: Optional[RoiModel]
-    set_point: Optional[float]
-    exposure: Optional[float]
-    gain: Optional[int]
+    binning: BinningModel | None
+    roi: RoiModel | None
+    set_point: float | None
+    exposure: float | None
+    gain: int | None

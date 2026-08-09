@@ -486,7 +486,6 @@ def test_bogus_unit_api():
             print(f"unit.status(): {response=}")
     except Exception as e:
         logger.error(f"Error accessing unit API: {e}")
-        pass
 
     try:
         focuser = BaseApi(hostname="mast01", device="focuser")
@@ -495,7 +494,6 @@ def test_bogus_unit_api():
             print(f"focuser.status(): {response=}")
     except Exception as e:
         logger.error(f"Error accessing unit API: {e}")
-        pass
 
     try:
         BaseApi(hostname="mast01", device="screwdriver")
@@ -527,7 +525,6 @@ def test_safety_wind_speed():
 
     except Exception as e:
         logger.error(f"Error accessing safety API: {e}")
-        pass
 
 
 def test_safety_sensors():
@@ -542,7 +539,6 @@ def test_safety_sensors():
 
     except Exception as e:
         logger.error(f"Error accessing safety API: {e}")
-        pass
 
 
 if __name__ == "__main__":

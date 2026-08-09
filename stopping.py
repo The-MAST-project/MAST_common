@@ -1,6 +1,6 @@
 from collections import deque
+from collections.abc import Callable
 from threading import Lock
-from typing import Callable
 
 from common.mast_logging import get_logger
 from common.utils import RepeatTimer

@@ -41,7 +41,7 @@ class Handler(FileSystemEventHandler):
     # @staticmethod
     def on_any_event(self, event):
         if event.is_directory:
-            return None
+            return
 
         if event.event_type in self.handlers:
             # logger.info(f"handling '{event.event_type}' on '{event.src_path}'")

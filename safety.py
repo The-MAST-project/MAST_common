@@ -104,7 +104,7 @@ def safety_get_sensor(
             for error in response.errors or []:
                 logger.error(error)
             return None
-    except Exception as ex:
+    except Exception:
         return None
 
 
