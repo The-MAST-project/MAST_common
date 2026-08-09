@@ -1,0 +1,84 @@
+# Continuous integration for MAST_common.
+#
+# This repo runs on BOTH production platforms -- Windows (unit, spec) and Linux
+# (control, gui) -- so the suite is matrixed over the two. Darwin is a development
+# platform only (tests/conftest.py shims Filer for it) and is deliberately not built.
+#
+# Lint is BLOCKING and, as of 2026-08-09, failing: 202 ruff findings and 18 files
+# needing the formatter, all pre-existing. That is deliberate -- the debt is meant to
+# show as red until it is cleared, rather than sit in an advisory step nobody reads.
+#
+# It is a separate job from the tests so the two signals stay independent: a red lint
+# does not hide whether the suite passed on either platform, and vice versa. Lint runs
+# once, on Linux, because ruff is platform-independent -- only the tests need the matrix.
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+# A new push supersedes an in-flight run for the same ref.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # Report both platforms: a Windows-only or Linux-only break is exactly what this
+      # matrix exists to catch, and cancelling the other job hides half the answer.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          # ruff.toml sets target-version = "py312"; keep these in step.
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements-ci.txt
+            requirements-dev.txt
+
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip -r requirements-ci.txt -r requirements-dev.txt
+
+      - name: Tests
+        # tests/test_imports.py runs first in collection order and fails loudly if the
+        # environment is incomplete. Without it the importorskip() guards in the other
+        # modules would skip 190 of 201 tests and this job would pass having proved
+        # nothing. -ra surfaces any skip that does occur, so it cannot pass unnoticed.
+        run: python -m pytest tests/ -q -ra
+
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install ruff
+        # requirements-dev.txt pins the version, so CI and every workstation agree on
+        # what counts as a finding. Nothing else is needed: ruff never imports the code.
+        run: python -m pip install --upgrade pip -r requirements-dev.txt
+
+      - name: Format
+        # Deliberately before `ruff check`: this one is a single `ruff format .` away,
+        # so surfacing it first means the cheap half of the debt is not hidden behind
+        # the expensive half.
+        run: ruff format --check .
+
+      - name: Lint
+        run: ruff check .
