@@ -31,6 +31,8 @@ if TYPE_CHECKING:
     from common.tasks.models import GatherResponse
 
 logger = get_logger(__name__)
+
+
 class Plan(BaseModel, Activities):
     target: Target
     model_config = ConfigDict(

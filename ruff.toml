@@ -44,3 +44,11 @@ indent-style = "space"
 skip-magic-trailing-comma = false
 line-ending = "lf"
 docstring-code-format = true
+
+# Ruff also formats Python embedded in Markdown code fences, which is not wanted
+# here: docs/ holds design and plan documents whose snippets are illustrations,
+# hand-wrapped to read well inside prose. Reflowing them to line-length = 125
+# turns a readable example into one long line, and because `ruff format --check`
+# is a blocking CI gate it would enforce that on every future doc. Code is
+# formatted; documents are written.
+exclude = ["*.md"]

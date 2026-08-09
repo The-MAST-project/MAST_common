@@ -27,6 +27,8 @@ from .unit import UnitConfig
 DEFAULT_COLLECTIONS = ("groups", "services", "sites", "specs", "units", "users")
 
 logger = get_logger(__name__)
+
+
 # Enable warning logging for PyMongo
 class ServiceConfig(BaseModel):
     name: str

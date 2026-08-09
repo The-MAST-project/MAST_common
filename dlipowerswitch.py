@@ -20,6 +20,8 @@ from common.models.statuses import OutletStatus, PowerStatus, PowerSwitchStatus
 TriStateBool = bool | None
 
 logger = get_logger(__name__)
+
+
 class DliPowerSwitch(Component):
     NUM_OUTLETS: int = 8
     _instantiated: list[str] = []

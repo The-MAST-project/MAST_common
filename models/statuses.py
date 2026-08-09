@@ -20,6 +20,8 @@ from common.spec import (
 from common.utils import PathMaker, function_name
 
 logger = get_logger(__name__)
+
+
 class StatusType(StrEnum):
     BASIC = "basic"
     FULL = "full"

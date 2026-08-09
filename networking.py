@@ -6,6 +6,8 @@ from common.mast_logging import get_logger
 from common.utils import function_name
 
 logger = get_logger(__name__)
+
+
 class NetworkDestination:
     def __init__(self, addr: str, port: int):
         """
