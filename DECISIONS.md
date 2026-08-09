@@ -3,6 +3,64 @@
 ---
 
 
+## [2026-08-09] An imager backend's `status()` answers for itself, not for the imager
+
+**Why:** `ImagerInterface` never declared `status` at all, so each of the three
+backends invented a meaning for it. PHD2 returned a narrow `PHD2ImagerStatus` and
+took a `capacity: Literal["imager", "guider"]` argument selecting between two
+different return models; ASCOM and ZWO returned a whole `ImagerStatus` and took no
+argument. The `Imager` wrapper called `self._backend.status(capacity="imager")`
+against all three, so `/imager/status` raised `TypeError` on ASCOM and ZWO alike
+(MAST_unit#100) — a 500 on two of the three backends, silenced at the call site by
+a `# type: ignore`. Where it did not raise, it nested a full `ImagerStatus` inside
+the wrapper's own under `backend`, answering temperature, cooler, set point and
+camera size twice with only the outer copy authoritative. Nothing caught that,
+because the field was typed `object | None`.
+
+**What:** Two declarations, and the meaning follows from them.
+
+- `ImagerBackendStatus` is what a backend reports about *itself* — identifier,
+  name, connected, operational, activities. `PHD2ImagerStatus` becomes a subclass
+  that only pins `name = "phd2"`.
+- `ImagerInterface.status() -> ImagerBackendStatus` is declared abstract, and
+  `ImagerStatus.backend` is typed `ImagerBackendStatus | None` rather than
+  `object | None`.
+
+The composite stays the `Imager` wrapper's job: it already computes the general
+fields itself and reaches into the backend separately for `set_point`. This is not
+a new pattern — the guider side has had a typed `GuiderStatus.backend:
+PHD2GuiderStatus` all along. The imager side is the one that drifted.
+
+`capacity` disappears rather than moving: PHD2's two roles become two methods
+(`status()` for the imager role, a separate accessor for guider status), which
+removes the by-kind dispatch, the union return type, both `# type: ignore`s, and a
+latent `UnboundLocalError` on an unmatched capacity. The two branches shared only
+`identifier`, so the split duplicates nothing.
+
+**Implications:** ASCOM and ZWO must stop returning `ImagerStatus` from
+`status()` — a behavioral change to what `/imager/status` reports under `backend`,
+made deliberately. Checked before making it: nothing consumes the field.
+`MAST_control` has no reference to it and every `backend` hit in `MAST_gui` is
+Django's own vocabulary. Eli confirmed the ASCOM and ZWO paths are not working
+today regardless.
+
+The root cause is one level up and is left standing: `Component.status()` is
+declared with no return annotation at all, which is why *every* component's status
+is free to drift. Fixing that is a change to every component, not to the imager,
+and belongs with the contract enforcement work (MAST_unit#52).
+
+The former body of the abstract `start_exposure` — the "must call
+`start_exposure_series()` first" guard — moves to `require_open_exposure_series()`.
+It has never executed: no backend calls `super().start_exposure()`. It is extracted
+rather than deleted so the abstract method can declare its return type while the
+guard stays callable, but it remains **unenforced**.
+
+Related: MAST_unit#42 invariant 4 (uniform response envelope), MAST_unit#74,
+MAST_unit#100.
+
+---
+
+
 ## [2026-07-23] `ImagerRoi.verbatim()` — an unconditioned construction path
 
 **Why:** `ImagerRoi.model_post_init` conditions every rectangle (center-preserving

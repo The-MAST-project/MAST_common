@@ -174,13 +174,31 @@ class MountStatus(PowerStatus, AscomStatus, ComponentStatus):
     date: str | None = None
 
 
-# PHD2 Imager status
-class PHD2ImagerStatus(ActivitiesStatus):
+# Imager backend status
+class ImagerBackendStatus(ActivitiesStatus):
+    """What an imager backend reports about *itself*.
+
+    Deliberately narrow. The composite `ImagerStatus` is owned by the `Imager` wrapper,
+    which computes the general fields (temperature, cooler, camera size, power) and
+    embeds one of these under `backend`. A backend returning a full `ImagerStatus`
+    instead produces a status nested inside a status, answering the same fields twice
+    with only the outer copy authoritative.
+
+    This mirrors the guider side, where `GuiderStatus.backend` has been a typed
+    `PHD2GuiderStatus` all along. The imager side drifted because `ImagerInterface`
+    never declared `status` at all, so each of the three backends invented a meaning
+    for it.
+    """
+
     identifier: str | None = None
-    name: str = "phd2"
+    name: str | None = None
     operational: bool = False
     why_not_operational: list[str] = []
     connected: bool = False
+
+
+class PHD2ImagerStatus(ImagerBackendStatus):
+    name: str = "phd2"
 
 
 # class NotPoweredStatus(BaseStatus):
@@ -458,7 +476,7 @@ class ImagerStatus(PowerStatus, ComponentStatus):
     latest_exposure: ImagerExposure | None = None
     latest_settings: ImagerSettings | None = None
     date: str | None = None
-    backend: object | None = None
+    backend: ImagerBackendStatus | None = None
 
 
 class FullUnitStatus(ComponentStatus, PowerStatus):
