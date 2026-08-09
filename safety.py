@@ -57,6 +57,8 @@ class SafetySensorModel(BaseModel):
 
 
 logger = get_logger(__name__)
+
+
 def safety_get_sensor(
     sensor_name: str,
     project_name: str | None = None,

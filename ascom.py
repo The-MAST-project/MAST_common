@@ -9,6 +9,8 @@ from common.mast_logging import get_logger
 from common.models.statuses import AscomDriverInfoModel, AscomStatus
 
 logger = get_logger(__name__)
+
+
 def ascom_driver_info(driver):
     return {
         "name": driver.Name,

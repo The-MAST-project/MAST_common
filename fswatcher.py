@@ -7,6 +7,8 @@ from common.mast_logging import get_logger
 from common.utils import path_maker
 
 logger = get_logger(__name__)
+
+
 class FsWatcher:
     def __init__(self, folder: str, handlers: dict):
         self.folder = folder

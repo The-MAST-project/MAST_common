@@ -121,7 +121,7 @@ VALID_MACHINE_ROLES = ("unit", "spec", "control")
 class LocalConfig(BaseModel):
     site: str
     project: str
-    machine_role: str    # NEW: machine role; was the MAST_PROJECT env var
+    machine_role: str  # NEW: machine role; was the MAST_PROJECT env var
     controller_host: str
     database: str
     domain: str
@@ -132,10 +132,7 @@ class LocalConfig(BaseModel):
     @classmethod
     def _validate_machine_role(cls, v: str) -> str:
         if v not in VALID_MACHINE_ROLES:
-            raise ValueError(
-                f"machine_role={v!r} is invalid; expected one of "
-                f"{', '.join(VALID_MACHINE_ROLES)}"
-            )
+            raise ValueError(f"machine_role={v!r} is invalid; expected one of {', '.join(VALID_MACHINE_ROLES)}")
         return v
 
     # mongo_uri / data_root unchanged
@@ -183,10 +180,8 @@ lived here (it moves onto the field validator as `VALID_MACHINE_ROLES`).
 
 ```python
 local = load_local_config()
-role = local.machine_role                 # was: os.getenv("MAST_PROJECT")
-machine_type = {"unit": "unit", "spec": "spec", "control": "controller"}.get(
-    role, "unknown-machine-type"
-)
+role = local.machine_role  # was: os.getenv("MAST_PROJECT")
+machine_type = {"unit": "unit", "spec": "spec", "control": "controller"}.get(role, "unknown-machine-type")
 ```
 
 - Drop the now-unused `import os` if nothing else in the module needs it.
@@ -217,9 +212,10 @@ def init_log(logger_, level=None):
     ...
     try:
         from common.config.local import load_local_config
+
         role = load_local_config().machine_role
     except Exception:
-        role = "STARTUP"               # logging must never break import/startup
+        role = "STARTUP"  # logging must never break import/startup
     file_name = f"mast-{role}-log.txt"
     ...
 ```
@@ -392,10 +388,11 @@ pointing at temp fixtures; clear the `lru_cache` between cases):
 ```python
 def test_valid_config_loads(tmp_path, monkeypatch):
     cfg = tmp_path / "config.toml"
-    cfg.write_text(VALID_TOML)                 # includes machine_role = "control"
+    cfg.write_text(VALID_TOML)  # includes machine_role = "control"
     monkeypatch.setenv("MAST_CONFIG", str(cfg))
     load_local_config.cache_clear()
     assert load_local_config().machine_role == "control"
+
 
 def test_missing_machine_role_field_fails(tmp_path, monkeypatch):
     cfg = tmp_path / "config.toml"
@@ -406,6 +403,7 @@ def test_missing_machine_role_field_fails(tmp_path, monkeypatch):
         load_local_config()
     assert "machine_role" in str(e.value)
 
+
 def test_invalid_machine_role_value_fails(tmp_path, monkeypatch):
     cfg = tmp_path / "config.toml"
     cfg.write_text(VALID_TOML.replace('machine_role = "control"', 'machine_role = "gui"'))
@@ -415,11 +413,13 @@ def test_invalid_machine_role_value_fails(tmp_path, monkeypatch):
         load_local_config()
     assert "expected one of" in str(e.value)
 
+
 def test_fixed_default_path_used_when_no_env(monkeypatch):
     monkeypatch.delenv("MAST_CONFIG", raising=False)
-    monkeypatch.delenv("MAST_PROJECT", raising=False)   # must be irrelevant now
+    monkeypatch.delenv("MAST_PROJECT", raising=False)  # must be irrelevant now
     # platform-branch: assert _config_file_path() endswith "config.toml"
     assert _config_file_path().endswith("config.toml")
+
 
 def test_missing_file_fails(monkeypatch):
     monkeypatch.setenv("MAST_CONFIG", "/nonexistent/config.toml")
@@ -427,9 +427,11 @@ def test_missing_file_fails(monkeypatch):
     with pytest.raises(ConfigError):
         load_local_config()
 
+
 def test_notification_machine_type_from_role(tmp_path, monkeypatch):
     # role = "control" -> initiator.type == "controller"
     ...
+
 
 def test_log_name_uses_machine_role_and_survives_missing_config(monkeypatch):
     # With a valid config -> "mast-<machine_role>-log.txt".

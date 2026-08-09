@@ -4,6 +4,8 @@ from typing import List
 from common.mast_logging import get_logger
 
 logger = get_logger(__name__)
+
+
 class Target:
     DEFAULT_PRIORITY = 0
 

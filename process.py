@@ -17,6 +17,8 @@ from common.mast_logging import get_logger
 from common.utils import function_name
 
 logger = get_logger(__name__)
+
+
 def find_process(name: str | None = None, patt: str | None = None, pid: int | None = None) -> psutil.Process | None:
     """
     Searches for a running process either by a pattern in the command line or by pid
