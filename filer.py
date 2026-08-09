@@ -12,6 +12,7 @@ from collections.abc import Callable
 from enum import Enum, auto
 from pathlib import Path
 from threading import Condition, Lock, Thread
+from typing import ClassVar
 
 
 def is_windows_drive_mapped(drive_letter):
@@ -288,6 +289,11 @@ class Filer:
         return matches_sorted[0] if (matches_sorted and len(matches_sorted) > 0) else None
 
 
+def _is_under(path: str, folder: str) -> bool:
+    """True if ``path`` is ``folder`` itself or lies beneath it (both already realpaths)."""
+    return path == folder or path.startswith(folder + os.sep)
+
+
 def _flatten_paths(paths) -> list[str]:
     """Accept a single path, or any nesting of lists/tuples of paths, and return a flat list."""
     flat: list[str] = []
@@ -331,7 +337,19 @@ class MoveGuardian:
     _instance = None
     _protected: dict[str, int] = {}  # realpath -> refcount (files being written)
     _moving: dict[str, int] = {}  # realpath -> refcount (moves in progress)
+    # Every path that has been protected at least once, i.e. every artifact a producer
+    # declared worth keeping. Unlike _protected this is NOT cleared when the write ends --
+    # it is the durable record release_folder() needs, since by the time a folder is
+    # finished nothing is protected any more. Entries are dropped when their folder is
+    # released. See release_folder() for the meaning this gives protect().
+    _products: ClassVar[set[str]] = set()
     _condition = Condition()
+
+    # How long release_folder() keeps waiting for a folder to drain before giving up and
+    # leaving it in place. Generous: a move deferred against an unreachable share is
+    # retried by Filer's sweeper every 30s, and losing the folder is worse than keeping it.
+    _RELEASE_TIMEOUT_SEC = 600.0
+    _RELEASE_POLL_SEC = 2.0
 
     def __new__(cls):
         if cls._instance is None:
@@ -343,9 +361,13 @@ class MoveGuardian:
 
         Accepts a single path, several positional paths, or list(s) of paths. Blocks on
         entry until no in-progress move overlaps any of the paths.
+
+        Protecting a path also records it as a *product* -- something worth keeping -- for
+        release_folder(). Write scratch outside a protect() block if it should be discarded
+        with its folder.
         """
         reals = [os.path.realpath(p) for p in _flatten_paths(paths)]
-        return _Claim(reals, self._protected, self._moving)
+        return _Claim(reals, self._protected, self._moving, record_products=True)
 
     def moving(self, *paths) -> "_Claim":
         """Context manager claiming the given path(s) while ``Filer.move`` moves them.
@@ -365,6 +387,108 @@ class MoveGuardian:
         """Keys in ``registry`` overlapping ``real`` -- equal to it, under it, or an
         ancestor of it (caller holds the lock)."""
         return [p for p in registry if p == real or p.startswith(real + os.sep) or real.startswith(p + os.sep)]
+
+    def release_folder(self, folder, logger=None, timeout: float | None = None) -> None:
+        """Declare that nothing more will be written under ``folder``, and reap it.
+
+        The producer calls this once an acquisition (or any other job owning a ram-disk
+        folder) has concluded, successfully or not. A reaper thread then waits until every
+        *product* under the folder -- every path someone wrapped in :meth:`protect` -- has
+        left the ram disk, and no write, move or deferred move is still outstanding
+        underneath it. Only then is the folder removed, taking with it whatever was never
+        protected: the exposure counter ``seq.txt``, and any scratch a producer chose not
+        to declare.
+
+        The close signal has to come from the producer: a folder mid-acquisition looks
+        identical to a finished one, since between one exposure being moved and the next
+        being written nothing is protected, nothing is moving and no product is left behind.
+
+        Never blocks the caller, and never removes a folder it is unsure about -- on
+        timeout the folder stays and the reason is logged.
+        """
+        Thread(
+            name="ram-folder-reaper",
+            target=self._reap_folder,
+            args=(os.path.realpath(str(folder)), logger, timeout),
+            daemon=True,
+        ).start()
+
+    def _reap_folder(self, real_folder: str, logger, timeout: float | None) -> None:
+        def say(msg, error=False):
+            if logger:
+                (logger.error if error else logger.info)(msg)
+
+        deadline = time.monotonic() + (self._RELEASE_TIMEOUT_SEC if timeout is None else timeout)
+        try:
+            while True:
+                drained, why, blockers = self._folder_drained(real_folder)
+                if drained:
+                    break
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    say(f"release_folder: giving up on '{real_folder}', keeping it -- {why}: {blockers}", error=True)
+                    return
+                # Never sleep past the deadline: with a long poll and a short timeout the
+                # wait would otherwise be rounded up to a whole poll interval.
+                time.sleep(min(self._RELEASE_POLL_SEC, remaining))
+
+            if not os.path.isdir(real_folder):
+                self.forget_products_under(real_folder)
+                return
+
+            # Everything worth keeping is out; whatever is left is being discarded on
+            # purpose. Name it anyway -- an artifact nobody protected is indistinguishable
+            # from a producer that forgot to, and this line is the only warning anyone will
+            # get before it is deleted.
+            casualties = [
+                os.path.join(root, name)
+                for root, _dirs, files in os.walk(real_folder)
+                for name in files
+                if name != "seq.txt"
+            ]
+            if casualties:
+                say(
+                    f"release_folder: '{real_folder}': discarding {len(casualties)} unprotected file(s): {casualties}",
+                    error=True,
+                )
+
+            shutil.rmtree(real_folder, ignore_errors=True)
+            self.forget_products_under(real_folder)
+            say(f"release_folder: removed '{real_folder}'")
+        except Exception as e:  # noqa: BLE001 -- a reaper thread must not die silently
+            say(f"release_folder: failed for '{real_folder}': {e}", error=True)
+
+    def _folder_drained(self, real_folder: str) -> tuple[bool, str, list[str]]:
+        """(True, '', []) when nothing under ``real_folder`` is still owed to the shared area.
+
+        The third element is every path responsible, not just the first. Polling only needs
+        the summary, but the give-up message needs the full list: that log line is the sole
+        record of which artifacts were never evacuated, and the folder it names is about to
+        be left on a ram disk that filled up once already.
+        """
+        with self._condition:
+            unmoved = [p for p in self._products_under(real_folder) if os.path.exists(p)]
+            if unmoved:
+                return False, f"{len(unmoved)} product(s) not yet moved", sorted(unmoved)
+            for registry, what in ((self._protected, "write"), (self._moving, "move")):
+                busy = self._conflicts(real_folder, registry)
+                if busy:
+                    return False, f"{len(busy)} {what}(s) in progress", sorted(busy)
+        with Filer._pending_lock:
+            deferred = [s for s in Filer._pending if _is_under(s, real_folder)]
+        if deferred:
+            return False, f"{len(deferred)} deferred move(s)", sorted(deferred)
+        return True, "", []
+
+    def _products_under(self, real_folder: str) -> list[str]:
+        """Products at or below ``real_folder`` (caller holds the lock)."""
+        return [p for p in self._products if _is_under(p, real_folder)]
+
+    def forget_products_under(self, folder) -> None:
+        """Drop the product records for a folder, so the set does not grow for ever."""
+        real = os.path.realpath(str(folder))
+        with self._condition:
+            self._products.difference_update(self._products_under(real))
 
     def wait_until_free(self, path, timeout: float | None = None) -> bool:
         """Block until ``path`` overlaps no path currently being written.
@@ -388,16 +512,21 @@ class _Claim:
     and moves of overlapping paths are mutually exclusive.
     """
 
-    def __init__(self, reals: list[str], own: dict[str, int], other: dict[str, int]):
+    def __init__(self, reals: list[str], own: dict[str, int], other: dict[str, int], record_products: bool = False):
         self._reals = reals
         self._own = own
         self._other = other
+        self._record_products = record_products
 
     def __enter__(self) -> "_Claim":
         with MoveGuardian._condition:
             MoveGuardian._condition.wait_for(lambda: not any(MoveGuardian._conflicts(r, self._other) for r in self._reals))
             for real in self._reals:
                 self._own[real] = self._own.get(real, 0) + 1
+            if self._record_products:
+                # Durable, unlike _own: release_folder() needs to know what was declared
+                # worth keeping long after the write has finished.
+                MoveGuardian._products.update(self._reals)
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
