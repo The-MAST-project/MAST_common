@@ -9,6 +9,7 @@ falling back to `mast-STARTUP-log.txt` when the config cannot be read yet
 import textwrap
 
 import pytest
+
 from common.config.local import load_local_config
 
 VALID_TOML = textwrap.dedent(

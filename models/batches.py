@@ -15,6 +15,8 @@ if TYPE_CHECKING:
     from common.interfaces.components import ComponentStatus
 
 logger = get_logger(__name__)
+
+
 class Batch(BaseModel, Activities):
     ulid: ULID | None = None
     immediate: bool = False  # for immediate execution or merely forecasted

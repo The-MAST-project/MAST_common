@@ -15,7 +15,6 @@ class Component(ABC, Activities):
         Called whenever an observing session starts (at sun-down or when safety returns)
         :return:
         """
-        pass
 
     @abstractmethod
     def shutdown(self):
@@ -23,7 +22,6 @@ class Component(ABC, Activities):
         Called whenever an observing session is terminated (at sun-up or when becoming unsafe)
         :return:
         """
-        pass
 
     @property
     @abstractmethod
@@ -33,7 +31,6 @@ class Component(ABC, Activities):
         This can be used by the controller to determine whether it needs to wait for shutdown to complete before starting up again.
         :return:
         """
-        pass
 
     @abstractmethod
     def powerdown(self):
@@ -46,7 +43,6 @@ class Component(ABC, Activities):
          default state.
         :return:
         """
-        pass
 
     @abstractmethod
     def status(self):
@@ -54,31 +50,26 @@ class Component(ABC, Activities):
         Returns the component's current status
         :return:
         """
-        pass
 
     @property
     @abstractmethod
     def name(self) -> str:
         """The getter method for the abstract name property."""
-        pass
 
     @name.setter
     @abstractmethod
     def name(self, value: str):
         """The setter method for the abstract name property."""
-        pass
 
     @property
     @abstractmethod
     def operational(self) -> bool:
         """The getter method for the abstract name property."""
-        pass
 
     @operational.setter
     @abstractmethod
     def operational(self, value: str) -> bool:
         """The setter method for the abstract name property."""
-        pass
 
     @property
     @abstractmethod

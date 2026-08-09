@@ -21,12 +21,14 @@ from astropy.units import deg, hourangle  # type: ignore
 from cachetools import cached  # type: ignore
 
 from common.filer import Filer
-from common.paths import PathMaker
 from common.mast_logging import get_logger
+from common.paths import PathMaker
 
 default_encoding = "utf-8"
 
 logger = get_logger(__name__)
+
+
 class RepeatTimer(Timer):
     def run(self):
         self.function(*self.args, **self.kwargs)
@@ -106,7 +108,9 @@ def store_params(memory: shared_memory.SharedMemory, d: dict):
 
 
 def time_stamp():
-    return isoformat_zulu(datetime.datetime.now())
+    # datetime.UTC, not now(): isoformat_zulu appends 'Z' to a naive input, so a local
+    # time went out labelled as UTC -- a three-hour lie at this site's offset.
+    return isoformat_zulu(datetime.datetime.now(datetime.UTC))
 
 
 def function_name():
@@ -257,8 +261,7 @@ def boxed_lines(lines: str | list[str], center: bool = False) -> list[str]:
         lines = [lines]
 
     for line in lines:
-        if len(line) > max_len:
-            max_len = len(line)
+        max_len = max(max_len, len(line))
     if (max_len % 2) != 0:
         max_len += 1
 
@@ -436,13 +439,12 @@ if __name__ == "__main__":
 
     try:
         x = 1 / 0
-    except Exception as e:
+    except ZeroDivisionError as e:
         response = CanonicalResponse(errors=[str(e)])
 
     response = CanonicalResponse(errors=["err 1", "err 2"])
     response = CanonicalResponse(value={"tf": True, "val": 17})
     response = CanonicalResponse_Ok
-    pass
 
 
 def isoformat_zulu(dt: datetime.datetime) -> str:

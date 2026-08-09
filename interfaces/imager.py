@@ -9,9 +9,11 @@ from pydantic import BaseModel, Field
 from common.activities import ImagerActivities
 from common.interfaces.components import Component
 from common.mast_logging import get_logger
-from common.models.statuses import ImagerSettings, ImagerRoi
+from common.models.statuses import ImagerRoi, ImagerSettings
 
 logger = get_logger(__name__)
+
+
 class ImagerTypes(StrEnum):
     Ascom = "ascom"
     Phd2 = "phd2"
@@ -67,7 +69,6 @@ class ImagerInterface(Component, ABC):
         Check if the imager is connected.
         :return: True if connected, False otherwise
         """
-        pass
 
     @connected.setter
     @abstractmethod
@@ -76,7 +77,6 @@ class ImagerInterface(Component, ABC):
         Connect to the imager.
         This method should be called before any other methods that require a connection.
         """
-        pass
 
     @property
     @abstractmethod
@@ -84,7 +84,6 @@ class ImagerInterface(Component, ABC):
         """
         Get the camera's X size in pixels.
         """
-        pass
 
     @property
     @abstractmethod
@@ -92,7 +91,6 @@ class ImagerInterface(Component, ABC):
         """
         Get the camera's Y size in pixels.
         """
-        pass
 
     @abstractmethod
     def start_exposure(self, settings: ImagerSettings):
@@ -101,7 +99,6 @@ class ImagerInterface(Component, ABC):
                 "ImagerInterface.start_exposure(): must call start_exposure_series() before starting an exposure"
             )
         self.latest_settings = settings
-        pass
 
     @abstractmethod
     def start_exposure_series(self, purpose: str | None = None) -> ImagerExposureSeries:
@@ -149,7 +146,6 @@ class ImagerInterface(Component, ABC):
         Check if the imager can capture images to memory.
         :return: True if the imager can capture images to memory, False otherwise
         """
-        pass
 
     @abstractmethod
     def abort_exposure(self):
@@ -183,7 +179,6 @@ class ImagerInterface(Component, ABC):
         Check if the camera cooler is currently on.
         :return: True if the cooler is on, False otherwise
         """
-        pass
 
     @cooler_on.setter
     @abstractmethod
@@ -202,7 +197,6 @@ class ImagerInterface(Component, ABC):
         Get the image data from the imager.
         This method should be called after an exposure has been taken.
         """
-        pass
 
     @property
     def full_frame(self) -> ImagerRoi:

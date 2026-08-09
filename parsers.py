@@ -1,6 +1,5 @@
 import math
 import re
-from typing import List
 
 import astropy.coordinates
 
@@ -11,7 +10,7 @@ from common.utils import function_name
 logger = get_logger(__name__)
 
 
-def parse_units(specifiers: List[str] | str) -> List[str]:
+def parse_units(specifiers: list[str] | str) -> list[str]:
     """
     The ultimate unit-specifier parser
 
@@ -25,8 +24,8 @@ def parse_units(specifiers: List[str] | str) -> List[str]:
     :return: list of site:unit-id pairs
     """
     op = function_name()
-    errors: List[str] = []
-    ret: List[str] = []
+    errors: list[str] = []
+    ret: list[str] = []
     if isinstance(specifiers, str):
         specifiers = [specifiers]
 
@@ -118,7 +117,7 @@ def parse_units(specifiers: List[str] | str) -> List[str]:
     return ret
 
 
-def parse_unit_ids(units_spec: str) -> List[str]:
+def parse_unit_ids(units_spec: str) -> list[str]:
     """
     Parses and validates a units specifier (a string):
 

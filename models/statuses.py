@@ -5,7 +5,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-import common.asi as asi
+from common import asi
 from common.activities import ActivitiesVerbal
 from common.mast_logging import get_logger
 from common.rois import SkyRoi, SpecRoi, UnitRoi
@@ -20,6 +20,8 @@ from common.spec import (
 from common.utils import PathMaker, function_name
 
 logger = get_logger(__name__)
+
+
 class StatusType(StrEnum):
     BASIC = "basic"
     FULL = "full"
@@ -361,7 +363,7 @@ class ImagerSettings(BaseModel):
     tags: dict | None = {}
     save: bool = True
     fits_cards: dict[str, tuple] | None = {}
-    start: datetime.datetime = Field(default=datetime.datetime.now(), exclude=True)
+    start: datetime.datetime = Field(default_factory=lambda: datetime.datetime.now(datetime.UTC), exclude=True)
     file_name_parts: list[str] = Field(default=[], exclude=True)
     folder: str | None = Field(default=None, exclude=True)
     dont_bump_sequence: bool = False
@@ -436,7 +438,6 @@ class ImagerSettings(BaseModel):
             self.file_name_parts.append(f"binned_roi={self.roi.binned(self.binning)}")
 
         self.image_path = str(Path(self.folder, ",".join(self.file_name_parts) + ".fits").as_posix())
-        pass
 
 
 class ImagerExposure(BaseModel):

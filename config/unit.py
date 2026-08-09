@@ -1,7 +1,7 @@
-
 from pydantic import BaseModel, model_validator
 
 from common.asi import ASI_294MM_SUPPORTED_BINNINGS_LITERAL
+from common.mast_logging import get_logger
 
 from .calibration import CalibrationConfig
 from .covers import CoversConfig
@@ -12,7 +12,6 @@ from .phd2 import PHD2Config
 from .power import PowerSwitchConfig
 from .rois import RoisConfig
 from .stage import StageConfig
-from common.mast_logging import get_logger
 
 
 class ToleranceConfig(BaseModel):

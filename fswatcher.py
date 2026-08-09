@@ -7,6 +7,8 @@ from common.mast_logging import get_logger
 from common.utils import path_maker
 
 logger = get_logger(__name__)
+
+
 class FsWatcher:
     def __init__(self, folder: str, handlers: dict):
         self.folder = folder
@@ -21,7 +23,11 @@ class FsWatcher:
         try:
             while True:
                 time.sleep(5)
-        except Exception as _:
+        except KeyboardInterrupt:
+            # Was `except Exception`, which never fired: the loop body is a sleep, so the
+            # only thing that ends it is Ctrl-C -- and KeyboardInterrupt derives from
+            # BaseException, not Exception. The observer was therefore never stopped and
+            # the join() below had nothing to join against.
             self.observer.stop()
             logger.info("Observer Stopped")
 
@@ -39,7 +45,7 @@ class Handler(FileSystemEventHandler):
     # @staticmethod
     def on_any_event(self, event):
         if event.is_directory:
-            return None
+            return
 
         if event.event_type in self.handlers:
             # logger.info(f"handling '{event.event_type}' on '{event.src_path}'")

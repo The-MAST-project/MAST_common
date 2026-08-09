@@ -1,11 +1,13 @@
 from collections import deque
+from collections.abc import Callable
 from threading import Lock
-from typing import Callable
 
 from common.mast_logging import get_logger
 from common.utils import RepeatTimer
 
 logger = get_logger(__name__)
+
+
 class MonitoredPosition:
     def __init__(self, ra: float, dec: float):
         self.ra = ra

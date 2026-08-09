@@ -6,6 +6,8 @@ from common.mast_logging import get_logger
 from common.utils import function_name
 
 logger = get_logger(__name__)
+
+
 class NetworkDestination:
     def __init__(self, addr: str, port: int):
         """
@@ -30,7 +32,6 @@ class NetworkDestination:
                 raise
             except socket.herror:
                 logger.error(f"cannot resolve {addr} to hostname")
-                pass
 
         except ipaddress.AddressValueError:
             # nope, it's a hostname

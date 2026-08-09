@@ -57,6 +57,8 @@ class SafetySensorModel(BaseModel):
 
 
 logger = get_logger(__name__)
+
+
 def safety_get_sensor(
     sensor_name: str,
     project_name: str | None = None,
@@ -102,7 +104,11 @@ def safety_get_sensor(
             for error in response.errors or []:
                 logger.error(error)
             return None
-    except Exception as ex:
+    except Exception:
+        # Broad on purpose -- a sensor read must never take the caller down -- but it
+        # used to return None in silence, so a malformed reading looked exactly like a
+        # sensor that had nothing to say. logger.exception keeps the traceback.
+        logger.exception("safety_get_sensor: failed")
         return None
 
 

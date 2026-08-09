@@ -1,6 +1,6 @@
 from enum import IntFlag, StrEnum, auto
 from pathlib import Path
-from typing import Any, Literal, Optional
+from typing import Any, Literal
 
 from pydantic import BaseModel
 
@@ -66,12 +66,12 @@ class SpecAcquisitionSettings:
         spec_name: SpecName,
         lamp_on: bool,
         exposure_duration: float,
-        filter_name: Optional[str] = None,
-        number_of_exposures: Optional[int] = 1,
-        grating: Optional[Disperser] = None,
-        x_binning: Optional[int] = 1,
-        y_binning: Optional[int] = 2,
-        output_folder: Optional[str] = None,
+        filter_name: str | None = None,
+        number_of_exposures: int | None = 1,
+        grating: Disperser | None = None,
+        x_binning: int | None = 1,
+        y_binning: int | None = 2,
+        output_folder: str | None = None,
     ):
         self.spec: SpecId = SpecId.Deepspec if spec_name == "Deepspec" else SpecId.Highspec
         self.grating = grating

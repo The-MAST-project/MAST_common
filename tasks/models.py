@@ -1,6 +1,6 @@
 import asyncio
 
-from pydantic import BaseModel, ValidationError
+from pydantic import ValidationError
 
 from common.api import SpecApi
 from common.canonical import CanonicalResponse
@@ -11,6 +11,8 @@ from common.models.plans import Plan
 GatherResponse = CanonicalResponse | BaseException | None
 
 logger = get_logger(__name__)
+
+
 async def main():
     # task_file = '/Storage/mast-share/MAST/tasks/assigned/TSK_assigned_highspec_task.toml'
     plan_file = "/Storage/mast-share/MAST/tasks/assigned/TSK_assigned_deepspec_task.toml"
