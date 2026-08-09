@@ -160,10 +160,10 @@ def ensure_process_is_running(
         if logger:
             logger.info(f"started process (pid={process.pid}) with cmd: '{cmd_for_shell if shell else cmd}' in {cwd=}")
     except Exception:
-        if logger:
-            logger.exception(f"ensure_process_is_running: failed to start '{cmd}'")
-        else:
-            logging.error(f"ensure_process_is_running: failed to start '{cmd}': {e}")
+        # Both arms go through .exception(): the traceback is the whole point of
+        # catching this broadly, and the module-level logger is the fallback when the
+        # caller supplied none.
+        (logger or logging).exception(f"ensure_process_is_running: failed to start '{cmd}'")
         return None
 
     # Wait for the process to appear in the process list, with a deadline.
