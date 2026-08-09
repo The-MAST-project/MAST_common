@@ -70,6 +70,15 @@ _install_common_alias()
 _shim_filer_for_darwin()
 
 
+# Programs a test may legitimately start. Keep this list short and justified: it is the
+# one hole in the guard below.
+#
+# fontconfig -- matplotlib's font manager shells out to `fc-list` while importing, on
+# Linux only, so this surfaces on the ubuntu half of the CI matrix and never on Windows,
+# where matplotlib finds fonts differently. Enumerating fonts is not driving hardware.
+ALLOWED = {"fc-list", "fc-match"}
+
+
 class ProcessLaunchError(RuntimeError):
     """Raised when a test tries to start an external process."""
 
@@ -115,9 +124,17 @@ def _block_external_processes() -> None:
     except ImportError:
         pass
 
-    def deny(name):
+    def executable_of(target) -> str:
+        """Best-effort program name, whether the caller passed a list or a string."""
+        if isinstance(target, (list, tuple)) and target:
+            target = target[0]
+        return os.path.basename(str(target)).lower()
+
+    def deny(name, original):
         def _deny(*args, **kwargs):
             target = args[0] if args else kwargs.get("args") or kwargs.get("cmd") or "?"
+            if executable_of(target) in ALLOWED:
+                return original(*args, **kwargs)
             raise ProcessLaunchError(
                 f"the test suite tried to start a process via {name}: {target!r}. "
                 "On a MAST machine this would drive real hardware. If a test genuinely "
@@ -128,9 +145,10 @@ def _block_external_processes() -> None:
 
     for module, names in denied.items():
         for name in names:
-            if getattr(module, name, None) is None:  # os.startfile is Windows-only, etc.
+            original = getattr(module, name, None)
+            if original is None:  # os.startfile is Windows-only, etc.
                 continue
-            setattr(module, name, deny(f"{module.__name__}.{name}"))
+            setattr(module, name, deny(f"{module.__name__}.{name}", original))
 
 
 _block_external_processes()
