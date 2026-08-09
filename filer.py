@@ -23,7 +23,7 @@ def is_windows_drive_mapped(drive_letter):
         drives = win32api.GetLogicalDriveStrings()
         drives = drives.split("\000")[:-1]
         return drive_letter.upper() + "\\" in drives
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 -- a drive probe answers False; it must never fail its caller
         print(f"is_windows_drive_mapped: An error occurred: {e}")
         return False
 
@@ -141,7 +141,11 @@ class Filer:
                     return
 
                 # self.info(f"moved '{src.as_posix()}' to '{dst.as_posix()}'")
-            except Exception as e:
+            except (OSError, shutil.Error) as e:
+                # shutil.move raises OSError for the filesystem cases (share gone,
+                # permissions, disk full) and shutil.Error when a destination is in the
+                # way. _move_ram_file re-queues on a surviving source, so a miss here is
+                # retried rather than lost.
                 self.error(f"failed to move '{src.as_posix()} to '{dst.as_posix()}' (exception: {e})")
 
     def change_top_to(self, top: FilerTop, path: str):

@@ -148,7 +148,7 @@ class DailyFileHandler(logging.FileHandler):
     def emit(self, record: logging.LogRecord):
         try:
             self._emit(record)
-        except Exception:
+        except Exception:  # noqa: BLE001 -- a logging handler must never raise into its caller
             # A full disk or a revoked permission must not take the service down
             # with it; logging's own error path reports it instead.
             self.handleError(record)
@@ -314,7 +314,7 @@ def init_log(
         from common.config.local import load_local_config
 
         role = load_local_config().machine_role
-    except Exception:
+    except Exception:  # noqa: BLE001 -- runs at import; any config problem must degrade, not raise
         role = "STARTUP"
     file_name = f"mast-{role}-log.txt"
 

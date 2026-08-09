@@ -212,7 +212,7 @@ class BaseApi:
                 self.detected = False
                 return CanonicalResponse(errors=self.errors)
 
-            except Exception as e:
+            except httpx.HTTPError as e:
                 self.errors.append(f"{op}: exception: {e}")
                 self.detected = False
                 return CanonicalResponse(errors=self.errors)
@@ -247,7 +247,7 @@ class BaseApi:
                 self.detected = False
                 return CanonicalResponse(errors=self.errors)
 
-            except Exception as e:
+            except httpx.HTTPError as e:
                 self.append_error(f"{op}: exception: {e}")
                 self.detected = False
                 return CanonicalResponse(errors=self.errors)
@@ -305,7 +305,11 @@ class BaseApi:
         except httpx.RequestError as e:
             self.append_error(f"{op}: Request error (url={e.request.url}): {e}")
             return CanonicalResponse(errors=self.errors)
-        except Exception as e:
+        except ValueError as e:
+            # Everything left in this body that can fail does so as a ValueError:
+            # response.json() raises JSONDecodeError and CanonicalResponse(**...) raises
+            # pydantic ValidationError, both of which derive from it. httpx failures are
+            # taken by the two clauses above.
             self.append_error(f"{op}: An error occurred: {e}")
             return CanonicalResponse(errors=self.errors)
 
@@ -484,7 +488,7 @@ def test_bogus_unit_api():
         response = unit.get("status")
         if response:
             print(f"unit.status(): {response=}")
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 -- demo entry point: report whatever went wrong
         logger.error(f"Error accessing unit API: {e}")
 
     try:
@@ -492,12 +496,12 @@ def test_bogus_unit_api():
         response = focuser.get("status")
         if response:
             print(f"focuser.status(): {response=}")
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 -- demo entry point: report whatever went wrong
         logger.error(f"Error accessing unit API: {e}")
 
     try:
         BaseApi(hostname="mast01", device="screwdriver")
-    except Exception as ex:
+    except Exception as ex:  # noqa: BLE001 -- demo entry point: report whatever went wrong
         print(f"exception: {ex}")
 
 
@@ -523,7 +527,7 @@ def test_safety_wind_speed():
 
             print(f"{wind_speed=}, age='{humanfriendly.format_timespan(age.total_seconds())}'")
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 -- demo entry point: report whatever went wrong
         logger.error(f"Error accessing safety API: {e}")
 
 
@@ -537,7 +541,7 @@ def test_safety_sensors():
         if response.succeeded and response.value is not None:
             print(json.dumps(response.value, indent=2))
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 -- demo entry point: report whatever went wrong
         logger.error(f"Error accessing safety API: {e}")
 
 

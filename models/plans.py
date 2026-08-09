@@ -636,8 +636,8 @@ class Plan(BaseModel, Activities):
                         + f"({self.operational_unit_apis[i].ipaddr}): {canonical_response}"
                     )
 
-            except Exception as e:
-                logger.error(f"non-canonical response (error: {e}), ignoring!")
+            except Exception:
+                logger.exception("non-canonical response, ignoring!")
                 continue
 
         n_committed = len(self.committed_unit_apis)
@@ -842,11 +842,8 @@ if __name__ == "__main__":
     toml_path = sys.argv[1]
     try:
         plan = Plan.from_toml_file(toml_path)
-        try:
-            data = plan.model_dump()
-        except Exception:
-            data = plan.model_dump()
+        data = plan.model_dump()
         print(json.dumps(data, indent=2, default=str))
-    except Exception:
+    except Exception:  # noqa: BLE001 -- top-level entry point: print the traceback and exit non-zero
         traceback.print_exc()
         sys.exit(2)

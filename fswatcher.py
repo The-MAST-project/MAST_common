@@ -23,7 +23,11 @@ class FsWatcher:
         try:
             while True:
                 time.sleep(5)
-        except Exception as _:
+        except KeyboardInterrupt:
+            # Was `except Exception`, which never fired: the loop body is a sleep, so the
+            # only thing that ends it is Ctrl-C -- and KeyboardInterrupt derives from
+            # BaseException, not Exception. The observer was therefore never stopped and
+            # the join() below had nothing to join against.
             self.observer.stop()
             logger.info("Observer Stopped")
 

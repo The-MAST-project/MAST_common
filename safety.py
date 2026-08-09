@@ -105,6 +105,10 @@ def safety_get_sensor(
                 logger.error(error)
             return None
     except Exception:
+        # Broad on purpose -- a sensor read must never take the caller down -- but it
+        # used to return None in silence, so a malformed reading looked exactly like a
+        # sensor that had nothing to say. logger.exception keeps the traceback.
+        logger.exception("safety_get_sensor: failed")
         return None
 
 

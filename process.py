@@ -159,9 +159,9 @@ def ensure_process_is_running(
 
         if logger:
             logger.info(f"started process (pid={process.pid}) with cmd: '{cmd_for_shell if shell else cmd}' in {cwd=}")
-    except Exception as e:
+    except Exception:
         if logger:
-            logger.error(f"ensure_process_is_running: failed to start '{cmd}': {e}")
+            logger.exception(f"ensure_process_is_running: failed to start '{cmd}'")
         else:
             logging.error(f"ensure_process_is_running: failed to start '{cmd}': {e}")
         return None

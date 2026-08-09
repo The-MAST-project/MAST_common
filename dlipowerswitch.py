@@ -95,7 +95,7 @@ class DliPowerSwitch(Component):
                 # logger.error(f"timeout after {self.timeout} seconds, {url=}")
                 self._detected = False
                 return {"error": "timeout"}
-            except Exception as e:
+            except httpx.HTTPError as e:
                 # logger.error(f"exception: {e}")
                 self._detected = False
                 return {"error": f"{e}"}
@@ -119,7 +119,7 @@ class DliPowerSwitch(Component):
                 # logger.error(f"timeout after {self.timeout} seconds, {url=}")
                 self._detected = False
                 return {"error": "timeout"}
-            except Exception as e:
+            except httpx.HTTPError as e:
                 logger.error(f"exception: {e}")
                 self._detected = False
                 return {"error": f"{e}"}
@@ -141,7 +141,7 @@ class DliPowerSwitch(Component):
             # on PUT requests, even though we give the right 'value' and the switch acts upon it
             #  (changes the outlet name) - we get a JSONDecodeError
             return None
-        except Exception as e:
+        except httpx.HTTPError as e:
             logger.error(f"httpx: Exception: {e}")
             return None
 

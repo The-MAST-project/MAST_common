@@ -437,7 +437,7 @@ if __name__ == "__main__":
 
     try:
         x = 1 / 0
-    except Exception as e:
+    except ZeroDivisionError as e:
         response = CanonicalResponse(errors=[str(e)])
 
     response = CanonicalResponse(errors=["err 1", "err 2"])
