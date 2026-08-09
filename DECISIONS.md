@@ -19,9 +19,12 @@ because the field was typed `object | None`.
 
 **What:** Two declarations, and the meaning follows from them.
 
-- `ImagerBackendStatus` is what a backend reports about *itself* — identifier,
-  name, connected, operational, activities. `PHD2ImagerStatus` becomes a subclass
-  that only pins `name = "phd2"`.
+- `ImagerBackendStatus` is what a backend reports about *itself*. It derives
+  `ComponentStatus` — a backend **is** a `Component`, since `ImagerInterface`
+  derives from it — and declares only the two fields genuinely its own,
+  `identifier` and `name`. `connected`, `operational`, `why_not_operational`,
+  `activities` and `activities_verbal` all come from the base.
+  `PHD2ImagerStatus` becomes a subclass that only pins `name = "phd2"`.
 - `ImagerInterface.status() -> ImagerBackendStatus` is declared abstract, and
   `ImagerStatus.backend` is typed `ImagerBackendStatus | None` rather than
   `object | None`.
@@ -44,10 +47,22 @@ made deliberately. Checked before making it: nothing consumes the field.
 Django's own vocabulary. Eli confirmed the ASCOM and ZWO paths are not working
 today regardless.
 
-The root cause is one level up and is left standing: `Component.status()` is
+Deriving `ComponentStatus` also changes the backend payload, in the same
+no-readers way: it gains `type`, `detected` and `was_shut_down`, and the base's
+optionality replaces the narrower defaults — `operational` and
+`why_not_operational` default to `None` rather than `False` and `[]`, while
+`activities` defaults to `0` rather than `None`. Accepted rather than papered
+over by re-declaring the fields, since re-declaring them is exactly the
+duplication being removed.
+
+The root cause is one level up and is **not** fixed here: `Component.status()` is
 declared with no return annotation at all, which is why *every* component's status
-is free to drift. Fixing that is a change to every component, not to the imager,
-and belongs with the contract enforcement work (MAST_unit#52).
+is free to drift. Annotating it reaches `MAST_control` and `MAST_spec`, which also
+implement `Component`, so it is deliberately sequenced behind the unit contract
+rather than done in passing — #45, enforced by MAST_unit#52. Re-parenting
+`ImagerBackendStatus` here is that issue's step 1, and the reason the base
+annotation will hold when it lands: every other component's status model already
+derives `ComponentStatus`, and the imager backends were the one exception.
 
 The former body of the abstract `start_exposure` — the "must call
 `start_exposure_series()` first" guard — moves to `require_open_exposure_series()`.

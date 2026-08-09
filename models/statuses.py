@@ -175,7 +175,7 @@ class MountStatus(PowerStatus, AscomStatus, ComponentStatus):
 
 
 # Imager backend status
-class ImagerBackendStatus(ActivitiesStatus):
+class ImagerBackendStatus(ComponentStatus):
     """What an imager backend reports about *itself*.
 
     Deliberately narrow. The composite `ImagerStatus` is owned by the `Imager` wrapper,
@@ -188,13 +188,16 @@ class ImagerBackendStatus(ActivitiesStatus):
     `PHD2GuiderStatus` all along. The imager side drifted because `ImagerInterface`
     never declared `status` at all, so each of the three backends invented a meaning
     for it.
+
+    A backend is a `Component` -- `ImagerInterface` derives from it -- so its status is
+    a `ComponentStatus`, and only the two fields that are genuinely its own are declared
+    here. `connected`, `operational`, `why_not_operational`, `activities` and
+    `activities_verbal` all come from the base; declaring them again is the duplication
+    this class existed to avoid, one level down.
     """
 
     identifier: str | None = None
     name: str | None = None
-    operational: bool = False
-    why_not_operational: list[str] = []
-    connected: bool = False
 
 
 class PHD2ImagerStatus(ImagerBackendStatus):
