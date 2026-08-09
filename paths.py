@@ -41,13 +41,28 @@ class PathMaker:
         folder.mkdir(parents=True, exist_ok=True)
         return str(folder)
 
-    def make_autofocus_folder(self, root: str | None = None) -> str:
-        autofocus_folder = (
-            # Path(self.make_daily_folder_name(root=root or Filer().shared.root))
-            Path(self.make_daily_folder_name(root=root or Filer().ram.root))  # type: ignore
-            / "highspec"
-            / "Autofocus"
-        )
+    def make_autofocus_folder(self, root: str | None = None, subfolder: str | None = None) -> str:
+        """
+        <daily>[/<subfolder>]/Autofocus/<NNNN>
+
+        `subfolder` names the instrument being focused, and only a caller that focuses more
+        than one has anything to say: MAST_spec passes the spectrograph's name, MAST_unit
+        omits it because there is one telescope focuser.
+
+        It used to be hardcoded to "highspec" (e212729, 2026-06-08), which put the unit's
+        TELESCOPE autofocus -- stepped focuser positions, a V-curve, a status sidecar --
+        under the name of a spectrograph it has nothing to do with. The path is the only
+        label these frames carry, so it sent anyone reading the tree looking for HighSpec
+        data, hid the focus history from anyone after it, and would have collided with
+        genuine HighSpec output in one directory. MAST_unit#87.
+
+        Note the unit's flat layout is the restored one, not a new invention: the shared
+        area carries <date>/Autofocus for sixteen nights between 2025-08-19 and 2026-05-12,
+        against two under <date>/highspec/Autofocus.
+        """
+        # Path(self.make_daily_folder_name(root=root or Filer().shared.root))
+        daily = Path(self.make_daily_folder_name(root=root or Filer().ram.root))  # type: ignore
+        autofocus_folder = (daily / subfolder if subfolder else daily) / "Autofocus"
         folder = autofocus_folder / self.make_seq(str(autofocus_folder))
         folder.mkdir(parents=True, exist_ok=True)
         return str(folder)
