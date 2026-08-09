@@ -704,7 +704,7 @@ class Plan(BaseModel, Activities):
     async def wait_for_guiding(self):
         """Units are committed to their assignments, now wait for them to reach 'guiding'"""
 
-        start = datetime.datetime.now()
+        start = time.monotonic()
         reached_guiding = False
         self.start_activity(PlanActivities.WaitingForGuiding)
 
@@ -712,7 +712,10 @@ class Plan(BaseModel, Activities):
             "task.timeout_to_guiding should not be None, it should be set in the task definition"
         )
 
-        while (datetime.datetime.now() - start).seconds < self.timeout_to_guiding:
+        # monotonic, and elapsed seconds rather than timedelta.seconds: the latter is the
+        # 0-86399 component, so a backwards clock step normalised to days=-1, seconds=86399
+        # and this loop would have run for about a day instead of timing out.
+        while time.monotonic() - start < self.timeout_to_guiding:
             time.sleep(20)
             responses = await self.fetch_statuses(self.committed_unit_apis)
 

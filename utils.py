@@ -108,7 +108,9 @@ def store_params(memory: shared_memory.SharedMemory, d: dict):
 
 
 def time_stamp():
-    return isoformat_zulu(datetime.datetime.now())
+    # datetime.UTC, not now(): isoformat_zulu appends 'Z' to a naive input, so a local
+    # time went out labelled as UTC -- a three-hour lie at this site's offset.
+    return isoformat_zulu(datetime.datetime.now(datetime.UTC))
 
 
 def function_name():

@@ -363,7 +363,7 @@ class ImagerSettings(BaseModel):
     tags: dict | None = {}
     save: bool = True
     fits_cards: dict[str, tuple] | None = {}
-    start: datetime.datetime = Field(default=datetime.datetime.now(), exclude=True)
+    start: datetime.datetime = Field(default_factory=lambda: datetime.datetime.now(datetime.UTC), exclude=True)
     file_name_parts: list[str] = Field(default=[], exclude=True)
     folder: str | None = Field(default=None, exclude=True)
     dont_bump_sequence: bool = False

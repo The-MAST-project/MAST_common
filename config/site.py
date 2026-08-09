@@ -96,7 +96,7 @@ class Site(BaseModel):
             return None
 
         if day is None:
-            day = date.today()
+            day = datetime.now(UTC).date()
 
         observer = Observer(
             location=EarthLocation(
