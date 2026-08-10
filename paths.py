@@ -32,7 +32,7 @@ class PathMaker:
             ram = Filer().ram
             assert ram
             root = ram.root
-        # noqa below is deliberate and tracked by MAST_common#28. This is naive LOCAL
+        # The suppression below is deliberate and tracked by MAST_common#28. This is naive LOCAL
         # time, so a product written after local midnight lands under the next day --
         # which is why the frames from the night of 2026-08-04 are filed under
         # 2026-08-05. Two coupled changes are needed: naive local -> UTC, and calendar
