@@ -61,7 +61,7 @@ class Location:
 class Filer:
     # Deferred ram->shared moves, retried by a single background sweeper when the shared
     # area is unreachable. Class-level so all Filer instances share one queue/sweeper.
-    _pending: dict[str, str] = {}  # src -> dst
+    _pending: ClassVar[dict[str, str]] = {}  # src -> dst
     _pending_lock = Lock()
     _sweeper_thread = None
     _sweeper_lock = Lock()
@@ -338,8 +338,8 @@ class MoveGuardian:
     """
 
     _instance = None
-    _protected: dict[str, int] = {}  # realpath -> refcount (files being written)
-    _moving: dict[str, int] = {}  # realpath -> refcount (moves in progress)
+    _protected: ClassVar[dict[str, int]] = {}  # realpath -> refcount (files being written)
+    _moving: ClassVar[dict[str, int]] = {}  # realpath -> refcount (moves in progress)
     # Every path that has been protected at least once, i.e. every artifact a producer
     # declared worth keeping. Unlike _protected this is NOT cleared when the write ends --
     # it is the durable record release_folder() needs, since by the time a folder is

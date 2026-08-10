@@ -13,7 +13,7 @@ from concurrent.futures import TimeoutError as FuturesTimeout
 from contextlib import AbstractContextManager
 from multiprocessing import shared_memory
 from threading import Lock, Timer
-from typing import Any, NamedTuple
+from typing import Any, ClassVar, NamedTuple
 
 import numpy as np
 from astropy.coordinates import Angle
@@ -37,7 +37,7 @@ class RepeatTimer(Timer):
 
 
 class SingletonFactory:
-    _instances = {}
+    _instances: ClassVar[dict] = {}
     _lock = Lock()
 
     @staticmethod

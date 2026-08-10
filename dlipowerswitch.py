@@ -4,6 +4,7 @@ import time
 from enum import IntFlag, auto
 from json import JSONDecodeError
 from threading import Lock
+from typing import ClassVar
 
 import httpx
 
@@ -23,7 +24,7 @@ logger = get_logger(__name__)
 
 class DliPowerSwitch(Component):
     NUM_OUTLETS: int = 8
-    _instantiated: list[str] = []
+    _instantiated: ClassVar[list[str]] = []  # shared registry of instantiated switches
 
     def __init__(self, hostname: str, ipaddr: str | None, conf: PowerSwitchConfig):
         Component.__init__(self, PowerSwitchActivities)
@@ -374,7 +375,7 @@ class OutletDomain(IntFlag):
 
 
 class SwitchedOutlet:
-    valid_names = {
+    valid_names: ClassVar[dict[OutletDomain, list[str]]] = {
         OutletDomain.UnitOutlets: [
             "Mount",
             "Stage",
