@@ -193,7 +193,7 @@ class Notifier:
                         if self.notification_queue and self.notification_queue[0] == data:
                             self.notification_queue.popleft()
                             # logger.debug("Notification sent successfully")
-                except Exception:
+                except Exception:  # noqa: BLE001 -- the sender thread must outlive any one failed notification
                     # logger.error(f"Failed to send notification: {e}")
                     # logger.error(
                     #     f"Data type: {type(data)}, length: {len(data) if isinstance(data, str) else 'N/A'}"

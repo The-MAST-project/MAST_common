@@ -27,6 +27,8 @@ from .unit import UnitConfig
 DEFAULT_COLLECTIONS = ("groups", "services", "sites", "specs", "units", "users")
 
 logger = get_logger(__name__)
+
+
 # Enable warning logging for PyMongo
 class ServiceConfig(BaseModel):
     name: str
@@ -280,7 +282,7 @@ class Config:
         try:
             found = [unit for unit in units if unit["name"] == unit_name]
             unit_config = found[0]
-        except Exception:
+        except IndexError:
             unit_config = None  # we may not hve a unit-specific entry in the DB
 
         combined_dict: dict = deepcopy(common_config)
@@ -330,7 +332,7 @@ class Config:
         # Find the 'common' unit config for diffing
         try:
             common_conf_dict = [unit for unit in self.db["units"] if unit["name"] == "common"][0]
-        except Exception:
+        except (IndexError, KeyError):  # no 'common' entry, or no 'units' collection at all
             logger.error(f"{function_name()}: 'common' unit configuration not found")
             raise ValueError(f"{function_name()}: 'common' unit configuration not found")
 

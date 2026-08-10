@@ -8,6 +8,7 @@ fixed config-file path (no MAST_PROJECT env var), and the fail-fast behavior of
 import textwrap
 
 import pytest
+
 from common.config.local import (
     VALID_MACHINE_ROLES,
     ConfigError,

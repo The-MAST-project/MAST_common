@@ -1,7 +1,6 @@
 import re
-from typing import Annotated
 
-from fastapi import HTTPException, Query
+from fastapi import HTTPException
 
 # Regex for valid hour angle in sexagesimal format with optional fractional seconds
 RA_SEXAGESIMAL_REGEX = r"^(2[0-3]|1[0-9]|0?[0-9]):([0-5]?[0-9]):([0-5]?[0-9])(\.\d{1,3})?$"

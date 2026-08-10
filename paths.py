@@ -32,7 +32,14 @@ class PathMaker:
             ram = Filer().ram
             assert ram
             root = ram.root
-        d = Path(root) / datetime.datetime.now().strftime("%Y-%m-%d")
+        # noqa below is deliberate and tracked by MAST_common#28. This is naive LOCAL
+        # time, so a product written after local midnight lands under the next day --
+        # which is why the frames from the night of 2026-08-04 are filed under
+        # 2026-08-05. Two coupled changes are needed: naive local -> UTC, and calendar
+        # day -> observing night (the 12:00 UTC anchor the logs already use, #29). Both
+        # rename product folders, which planning and the GUI consume, so they land
+        # together with those consumers rather than as a lint fix.
+        d = Path(root) / datetime.datetime.now().strftime("%Y-%m-%d")  # noqa: DTZ005 -- see MAST_common#28
         d.mkdir(parents=True, exist_ok=True)
         return str(d)
 

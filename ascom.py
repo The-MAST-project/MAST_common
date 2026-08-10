@@ -9,6 +9,8 @@ from common.mast_logging import get_logger
 from common.models.statuses import AscomDriverInfoModel, AscomStatus
 
 logger = get_logger(__name__)
+
+
 def ascom_driver_info(driver):
     return {
         "name": driver.Name,
@@ -61,7 +63,7 @@ def ascom_run(o: AscomDispatcher, sentence: str, no_entry_log=True) -> Canonical
         logger.debug(f"{label}:        Code: 0x{(e.hresult & 0xFFFFFFFF):08X}")  # type: ignore
         return CanonicalResponse(errors=[f"{e}"])
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 -- COM/driver boundary: anything a vendor driver raises becomes a CanonicalResponse
         message = f"{label}: Exception: cmd='{cmd}', exception='{e}'"
         logger.debug(message)
         return CanonicalResponse(errors=[message])

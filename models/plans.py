@@ -31,6 +31,8 @@ if TYPE_CHECKING:
     from common.tasks.models import GatherResponse
 
 logger = get_logger(__name__)
+
+
 class Plan(BaseModel, Activities):
     target: Target
     model_config = ConfigDict(
@@ -363,7 +365,7 @@ class Plan(BaseModel, Activities):
         else:
             # Filename does not comply, generate and enforce new ULID
             ulid_from_basename = ulid.ULID()
-            basename = f"PLAN_{str(ulid_from_basename)}.toml"
+            basename = f"PLAN_{ulid_from_basename!s}.toml"
             new_path = folder / basename
             if not new_path.exists():
                 shutil.copy(toml_file, str(new_path))
@@ -377,7 +379,7 @@ class Plan(BaseModel, Activities):
             import traceback
 
             traceback.print_exc()
-            raise Exception(f"Invalid TOML file {toml_file}: {str(e)}") from e
+            raise Exception(f"Invalid TOML file {toml_file}: {e!s}") from e
 
         if "ulid" not in toml_doc or toml_doc["ulid"] != str(ulid_from_basename):
             toml_doc["ulid"] = str(ulid_from_basename)
@@ -390,7 +392,7 @@ class Plan(BaseModel, Activities):
                 import traceback
 
                 traceback.print_exc()
-                raise Exception(f"Failed to update ULID in TOML file {real_path}: {str(e)}") from e
+                raise Exception(f"Failed to update ULID in TOML file {real_path}: {e!s}") from e
         new_plan = Plan(**toml_doc)  # type: ignore  — ValidationError propagates to caller
 
         return new_plan
@@ -457,7 +459,7 @@ class Plan(BaseModel, Activities):
             new_path = current_path.parent.parent / sub_folder / current_path.name
             os.makedirs(new_path.parent, exist_ok=True)
             shutil.move(str(current_path), str(new_path))
-            logger.info(f"moved plan '{self.ulid}' from {str(current_path)} to {str(new_path)}")
+            logger.info(f"moved plan '{self.ulid}' from {current_path!s} to {new_path!s}")
         self.end_activity(PlanActivities.Executing)
         self.terminated = True
 
@@ -634,8 +636,8 @@ class Plan(BaseModel, Activities):
                         + f"({self.operational_unit_apis[i].ipaddr}): {canonical_response}"
                     )
 
-            except Exception as e:
-                logger.error(f"non-canonical response (error: {e}), ignoring!")
+            except Exception:
+                logger.exception("non-canonical response, ignoring!")
                 continue
 
         n_committed = len(self.committed_unit_apis)
@@ -702,7 +704,7 @@ class Plan(BaseModel, Activities):
     async def wait_for_guiding(self):
         """Units are committed to their assignments, now wait for them to reach 'guiding'"""
 
-        start = datetime.datetime.now()
+        start = time.monotonic()
         reached_guiding = False
         self.start_activity(PlanActivities.WaitingForGuiding)
 
@@ -710,7 +712,10 @@ class Plan(BaseModel, Activities):
             "task.timeout_to_guiding should not be None, it should be set in the task definition"
         )
 
-        while (datetime.datetime.now() - start).seconds < self.timeout_to_guiding:
+        # monotonic, and elapsed seconds rather than timedelta.seconds: the latter is the
+        # 0-86399 component, so a backwards clock step normalised to days=-1, seconds=86399
+        # and this loop would have run for about a day instead of timing out.
+        while time.monotonic() - start < self.timeout_to_guiding:
             time.sleep(20)
             responses = await self.fetch_statuses(self.committed_unit_apis)
 
@@ -840,11 +845,8 @@ if __name__ == "__main__":
     toml_path = sys.argv[1]
     try:
         plan = Plan.from_toml_file(toml_path)
-        try:
-            data = plan.model_dump()
-        except Exception:
-            data = plan.model_dump()
+        data = plan.model_dump()
         print(json.dumps(data, indent=2, default=str))
-    except Exception:
+    except Exception:  # noqa: BLE001 -- top-level entry point: print the traceback and exit non-zero
         traceback.print_exc()
         sys.exit(2)

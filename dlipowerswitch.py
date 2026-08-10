@@ -14,12 +14,13 @@ from common.config.power import PowerSwitchConfig
 from common.config.unit import UnitConfig
 from common.interfaces.components import Component
 from common.mast_logging import get_logger
-
 from common.models.statuses import OutletStatus, PowerStatus, PowerSwitchStatus
 
 TriStateBool = bool | None
 
 logger = get_logger(__name__)
+
+
 class DliPowerSwitch(Component):
     NUM_OUTLETS: int = 8
     _instantiated: list[str] = []
@@ -94,7 +95,7 @@ class DliPowerSwitch(Component):
                 # logger.error(f"timeout after {self.timeout} seconds, {url=}")
                 self._detected = False
                 return {"error": "timeout"}
-            except Exception as e:
+            except httpx.HTTPError as e:
                 # logger.error(f"exception: {e}")
                 self._detected = False
                 return {"error": f"{e}"}
@@ -118,7 +119,7 @@ class DliPowerSwitch(Component):
                 # logger.error(f"timeout after {self.timeout} seconds, {url=}")
                 self._detected = False
                 return {"error": "timeout"}
-            except Exception as e:
+            except httpx.HTTPError as e:
                 logger.error(f"exception: {e}")
                 self._detected = False
                 return {"error": f"{e}"}
@@ -140,7 +141,7 @@ class DliPowerSwitch(Component):
             # on PUT requests, even though we give the right 'value' and the switch acts upon it
             #  (changes the outlet name) - we get a JSONDecodeError
             return None
-        except Exception as e:
+        except httpx.HTTPError as e:
             logger.error(f"httpx: Exception: {e}")
             return None
 
@@ -259,7 +260,7 @@ class PowerSwitchFactory:
 
     def __new__(cls):
         if cls._factory_instance is None:
-            cls._factory_instance = super(PowerSwitchFactory, cls).__new__(cls)
+            cls._factory_instance = super().__new__(cls)
             logger.info(f"Created PowerSwitchFactory instance: id=0x{id(cls._factory_instance):08X}")
         return cls._factory_instance
 
@@ -410,7 +411,7 @@ class SwitchedOutlet:
         ],
     }
 
-    def __init__(  # noqa: C901
+    def __init__(
         self,
         domain: OutletDomain,
         outlet_name: str,
