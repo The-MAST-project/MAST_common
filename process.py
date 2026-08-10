@@ -160,10 +160,15 @@ def ensure_process_is_running(
         if logger:
             logger.info(f"started process (pid={process.pid}) with cmd: '{cmd_for_shell if shell else cmd}' in {cwd=}")
     except Exception:
-        # Both arms go through .exception(): the traceback is the whole point of
-        # catching this broadly, and the module-level logger is the fallback when the
-        # caller supplied none.
-        (logger or logging).exception(f"ensure_process_is_running: failed to start '{cmd}'")
+        # Both arms go through .exception(): the traceback is the whole point of catching
+        # this broadly, and the module-level logger is the fallback when the caller
+        # supplied none. Spelled out rather than `(logger or logging).exception(...)`,
+        # which reads the same but stops ruff recognising it as a logging call.
+        message = f"ensure_process_is_running: failed to start '{cmd}'"
+        if logger:
+            logger.exception(message)
+        else:
+            logging.exception(message)
         return None
 
     # Wait for the process to appear in the process list, with a deadline.
