@@ -107,11 +107,11 @@ class ImagerInterface(Component, ABC):
 
         The composite is the wrapper's job. A backend answers only for itself.
         """
-        ...
+        pass
 
     @abstractmethod
     def start_exposure(self, settings: ImagerSettings) -> CanonicalResponse:
-        ...
+        pass
 
     def require_open_exposure_series(self, settings: ImagerSettings) -> None:
         """Precondition every backend's `start_exposure` is meant to satisfy: a series is open.
@@ -164,7 +164,7 @@ class ImagerInterface(Component, ABC):
 
     @abstractmethod
     def stop_exposure(self) -> CanonicalResponse:
-        ...
+        pass
 
     @property
     @abstractmethod
@@ -177,7 +177,7 @@ class ImagerInterface(Component, ABC):
 
     @abstractmethod
     def abort_exposure(self) -> CanonicalResponse:
-        ...
+        pass
 
     @abstractmethod
     def can_send_image_ready_event(self) -> bool:
