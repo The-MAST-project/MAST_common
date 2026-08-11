@@ -208,8 +208,14 @@ class Filer:
 
         assert self.ram is not None
         for file in paths:
-            src = str(Path(file).as_posix())
-            dst = str(Path(src.replace(self.ram.root, self.shared.root)))
+            # Two spellings, deliberately. The roots are stored posix-style ("D:/MAST/"),
+            # so deriving the destination needs the posix form -- but the queue is keyed by
+            # realpath, matching MoveGuardian's `_protected`/`_products` and the `os.sep`
+            # comparison in `_is_under`. Keying it posix-style made `_folder_drained`'s
+            # queued-move check silently never match on Windows, where the two differ.
+            posix_src = str(Path(file).as_posix())
+            dst = str(Path(posix_src.replace(self.ram.root, self.shared.root)))
+            src = os.path.realpath(posix_src)
 
             # Write ahead: record the intent BEFORE trying to act on it, and clear it only
             # once the source is gone. Every way this can fail -- the share being down, the

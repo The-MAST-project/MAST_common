@@ -22,7 +22,7 @@ import pytest
 
 pytest.importorskip("common.filer", reason="filer import chain unavailable")
 import common.filer as filer_module
-from common.filer import Filer, FilerTop, Location
+from common.filer import Filer, FilerTop, Location, MoveGuardian
 
 
 class RefusingPool:
@@ -67,9 +67,16 @@ def filer(tmp_path, monkeypatch):
 
 
 def _make(ram, name="exposure-001.fits", content="data"):
+    """Create a source file and return it spelled the way the queue keys it.
+
+    `move_ram_to_shared` keys `_pending` by `os.path.realpath`, matching MoveGuardian and
+    the `os.sep` comparison in `_is_under`. Asserting against a raw `str(path)` passes on
+    Linux and fails on Windows, where the two spellings differ -- which is how the
+    separator inconsistency this fixture now mirrors was found.
+    """
     path = ram / name
     path.write_text(content)
-    return str(path)
+    return os.path.realpath(str(path))
 
 
 def test_refused_mover_leaves_the_file_queued(filer, monkeypatch):
@@ -80,8 +87,10 @@ def test_refused_mover_leaves_the_file_queued(filer, monkeypatch):
     filer.move_ram_to_shared(src)
 
     assert os.path.exists(src), "file must stay put when the mover never ran"
-    assert Filer._pending.get(src, "").startswith(str(filer.shared_dir)), (
-        "the intent must be recorded, with the shared-side destination"
+    recorded = Filer._pending.get(src, "")
+    assert recorded, "the intent must be recorded"
+    assert os.path.realpath(recorded).startswith(os.path.realpath(str(filer.shared_dir))), (
+        "the recorded destination must be on the shared side"
     )
     assert src not in Filer._in_flight, "a refused submit must not leave the source marked in flight"
 
@@ -136,6 +145,28 @@ def test_sweeper_skips_sources_a_mover_is_handling(filer):
 
     assert os.path.exists(src), "the sweeper must not touch a source already being moved"
     assert src in Filer._pending
+
+
+def test_queued_move_is_visible_to_folder_drained(filer, monkeypatch):
+    """A queued move must block `release_folder` from reaping the folder.
+
+    `_folder_drained` matches with `_is_under`, which compares using `os.sep`, and
+    `_protected`/`_products` are keyed by `os.path.realpath`. Keying `_pending` any other
+    way makes this check silently never match on Windows -- the folder then looks drained
+    while moves are still outstanding. Passes either way on Linux, where the two spellings
+    coincide; it is the Windows leg of CI that has teeth here.
+    """
+    monkeypatch.setattr(filer_module, "is_accessible", lambda *_a, **_k: False)
+    folder = filer.ram_dir / "acq-001"
+    folder.mkdir()
+    src = _make(folder, "e1.fits")
+
+    filer.move_ram_to_shared(src)
+    drained, why, blockers = MoveGuardian()._folder_drained(os.path.realpath(str(folder)))
+
+    assert not drained, "a folder with a queued move is not drained"
+    assert "queued" in why
+    assert src in blockers
 
 
 def test_movers_are_bounded(filer):
