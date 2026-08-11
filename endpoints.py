@@ -33,12 +33,19 @@ there, one line per route. Only the *tier* moves to the definition site.
 
 from __future__ import annotations
 
+import functools
+import inspect
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
 
 from fastapi import APIRouter
+
+from common.canonical import CanonicalResponse
+from common.mast_logging import get_logger
+
+logger = get_logger(__name__)
 
 # The attribute the decorator sets. Named with dunders so it cannot collide with anything a
 # component defines, and read through `declaration_of` rather than directly.
@@ -131,6 +138,69 @@ def declared_endpoints(target: Any) -> dict[str, EndpointDeclaration]:
     return found
 
 
+def _envelope(value: Any) -> CanonicalResponse:
+    """Wrap a bare return value, and pass an existing envelope through untouched.
+
+    The pass-through is not a convenience -- it is what makes double-wrapping impossible.
+    MAST_unit#70 established the hazard concretely: `FullUnitStatus`'s fields are *typed as*
+    the component status models, so an extra envelope nests inside the payload and breaks
+    control / gui / SSE silently rather than loudly. 29 of the unit's handlers delegate to
+    internal methods that already return a `CanonicalResponse`.
+
+    It is also what lets the migration land component by component instead of as a flag day:
+    a handler that still builds its own envelope keeps working unchanged.
+    """
+    return value if isinstance(value, CanonicalResponse) else CanonicalResponse(value=value)
+
+
+def _as_canonical_error(name: str, exception: Exception) -> CanonicalResponse:
+    """Turn an escaping exception into `errors`, after logging it with its traceback.
+
+    `logger.exception` first, always. Uniformity at the API boundary is the goal; losing the
+    diagnostics is not -- the tracebacks are what made MAST_unit#82, #85 and #86 findable.
+    """
+    logger.exception("%s: unhandled exception, returned as a canonical error", name)
+    return CanonicalResponse(errors=[f"{type(exception).__name__}: {exception}"])
+
+
+def enveloped(handler: Callable) -> Callable:
+    """Wrap `handler` so it always answers a `CanonicalResponse` (invariant 4).
+
+    Three mechanics, each of which breaks something if omitted:
+
+    - **`functools.wraps` is mandatory.** FastAPI builds the OpenAPI schema and the parameter
+      list from `inspect.signature`, which follows `__wrapped__`. Without it every routed
+      handler would appear to take `*args, **kwargs` and the 17 handlers with real parameters
+      would lose them.
+    - **The return annotation is replaced on a fresh dict.** `functools.wraps` assigns the
+      handler's own `__annotations__` object to the wrapper, so mutating it in place would
+      edit the handler's annotations too.
+    - **An async handler needs an async wrapper.** Three of the unit's handlers are
+      `async def`; a sync wrapper would put the coroutine object into `value` and FastAPI
+      would try to serialise it.
+    """
+    if inspect.iscoroutinefunction(handler):
+
+        @functools.wraps(handler)
+        async def wrapper(*args: Any, **kwargs: Any) -> CanonicalResponse:
+            try:
+                return _envelope(await handler(*args, **kwargs))
+            except Exception as exception:  # noqa: BLE001 -- invariant 4: no exception escapes a handler
+                return _as_canonical_error(getattr(handler, "__qualname__", "handler"), exception)
+
+    else:
+
+        @functools.wraps(handler)
+        def wrapper(*args: Any, **kwargs: Any) -> CanonicalResponse:
+            try:
+                return _envelope(handler(*args, **kwargs))
+            except Exception as exception:  # noqa: BLE001 -- invariant 4: no exception escapes a handler
+                return _as_canonical_error(getattr(handler, "__qualname__", "handler"), exception)
+
+    wrapper.__annotations__ = {**getattr(handler, "__annotations__", {}), "return": CanonicalResponse}
+    return wrapper
+
+
 def add_api_route(
     router: APIRouter,
     path: str,
@@ -152,6 +222,11 @@ def add_api_route(
     `tags` is passed through untouched. Replacing subsystem tags with the tier is
     MAST_unit#39's change, deliberately not made here: doing both at once would make stage
     2's OpenAPI snapshot diff unreadable.
+
+    Every handler is wrapped by `enveloped()` so it answers a `CanonicalResponse` and never
+    a bare value, a `None` or an escaping exception (invariant 4, MAST_unit#34 stage 3). Doing
+    it here rather than in 32 handler bodies is also what makes the parked HTTP-status-code
+    decision (guidelines §4) tractable: it collapses ~70 error-construction sites to one.
     """
     declaration = declaration_of(endpoint)
     if declaration is None:
@@ -165,4 +240,14 @@ def add_api_route(
     if declaration.stability is Stability.DEPRECATED:
         kwargs.setdefault("deprecated", True)
 
-    router.add_api_route(path, endpoint=endpoint, methods=methods or ["GET"], tags=tags, **kwargs)
+    # Declared explicitly, not left to the wrapper's return annotation. `functools.wraps`
+    # sets `__wrapped__`, and `inspect.signature` -- which is what FastAPI reads -- follows
+    # it to the ORIGINAL handler. That transparency is exactly what preserves the parameter
+    # list, and it is also why overriding `wrapper.__annotations__["return"]` has no effect
+    # on the schema: FastAPI never looks at the wrapper's own annotations. Without this line
+    # the 53 handlers that declare no return type would advertise an empty 200 schema.
+    # `CanonicalResponse.value` is `Any | None`, so this validates the envelope without
+    # filtering the payload inside it.
+    kwargs.setdefault("response_model", CanonicalResponse)
+
+    router.add_api_route(path, endpoint=enveloped(endpoint), methods=methods or ["GET"], tags=tags, **kwargs)
