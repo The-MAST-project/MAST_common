@@ -45,8 +45,13 @@ def filer(tmp_path, monkeypatch):
     shared.mkdir()
 
     def fake_init(self, logger=None):
-        self.ram = Location(None, f"{ram}/")
-        self.shared = Location(None, f"{shared}/")
+        # Posix-style, because that is what production roots look like on every platform:
+        # `Location("D:/", "MAST/")` joins to "D:/MAST/". `move_ram_to_shared` derives the
+        # destination by replacing that prefix in the posix spelling of the source, so a
+        # root written with native separators would silently never match on Windows and
+        # every file would be "moved" to itself.
+        self.ram = Location(None, f"{ram.as_posix()}/")
+        self.shared = Location(None, f"{shared.as_posix()}/")
         self.local = self.shared
         self.tops = {FilerTop.Local: self.local, FilerTop.Shared: self.shared, FilerTop.Ram: self.ram}
         self.logger = logger
