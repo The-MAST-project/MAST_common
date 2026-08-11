@@ -13,10 +13,10 @@
 # cross-checks them at startup and refuses to start if they disagree.
 # (`machine_role` is NOT cross-checked — a site hosts several roles.)
 
-site = "wis"                       # site name (must match a 'sites' doc in the DB)
+site = "ns"                        # site name (must match a 'sites' doc in the DB)
 project = "mast"                   # project name (e.g. "mast")
 machine_role = "unit"              # this machine's role: one of "unit", "spec", "control"
-controller_host = "mast-wis-control"  # controller machine; also the MongoDB host
+controller_host = "mast-ns-control"   # controller machine; also the MongoDB host
 database = "mast"                  # MongoDB database name
 domain = "weizmann.ac.il"          # DNS domain — the single source of truth
 # mongo_port = 27017               # optional, defaults to 27017
