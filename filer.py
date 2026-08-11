@@ -160,7 +160,16 @@ class Filer:
                 if not src.exists():
                     self.error(f"{op}: path does not exist, ignoring: '{src.as_posix()}'")
                     return
-                if src.is_file() or src.is_dir() or src.is_symlink():
+                if src.is_dir() and not src.is_symlink() and dst.is_dir():
+                    # shutil.move onto an EXISTING directory nests instead of merging:
+                    # it moves the source INTO the destination, giving `<dst>/<src.name>`.
+                    # That is how mast00 grew `Acquisitions/Acquisitions` and six
+                    # `spec/spec`, splitting one night's products across two levels.
+                    # Harmless while this only ever moved files (their destination is a
+                    # full path that does not exist yet); the product-relocation sweep is
+                    # the first caller to pass folders, which is what exposed it.
+                    self._merge_into(src, dst, op)
+                elif src.is_file() or src.is_dir() or src.is_symlink():
                     dst.parent.mkdir(parents=True, exist_ok=True)
                     shutil.move(src, dst)
                 else:
@@ -174,6 +183,38 @@ class Filer:
                 # way. _move_ram_file re-queues on a surviving source, so a miss here is
                 # retried rather than lost.
                 self.error(f"failed to move '{src.as_posix()} to '{dst.as_posix()}' (exception: {e})")
+
+    def _merge_into(self, src: Path, dst: Path, op: str = "move") -> None:
+        """Move the CONTENTS of `src` into the existing directory `dst`, then drop `src`.
+
+        Recurses where both sides have a folder of the same name, so two trees combine
+        rather than one ending up inside the other.
+
+        A name that exists on BOTH sides as anything but two folders is a collision
+        between distinct products. Those are left where they are, and reported: the
+        source stays on the ram area, where the next sweep retries it, which is
+        recoverable. Overwriting would not be.
+        """
+        dst.mkdir(parents=True, exist_ok=True)
+        for entry in sorted(src.iterdir()):
+            target = dst / entry.name
+            entry_is_dir = entry.is_dir() and not entry.is_symlink()
+            if entry_is_dir and target.is_dir():
+                self._merge_into(entry, target, op)
+            elif target.exists():
+                self.error(
+                    f"{op}: '{target.as_posix()}' already exists and is not a folder on both sides; "
+                    f"leaving '{entry.as_posix()}' in place rather than overwriting it"
+                )
+            else:
+                shutil.move(entry, target)
+
+        # Only succeeds once everything has gone; a collision above leaves it behind on
+        # purpose, so the source survives for the next sweep instead of vanishing.
+        try:
+            src.rmdir()
+        except OSError as e:
+            self.error(f"{op}: '{src.as_posix()}' not empty after merging, left in place ({e})")
 
     def change_top_to(self, top: FilerTop, path: str):
         for t in self.tops:
