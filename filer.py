@@ -2,8 +2,16 @@ import platform
 import socket
 
 if platform.system() == "Windows":
+    import pywintypes
     import win32api
+    import win32con
+    import win32event
+    import win32file
+    import winerror
+else:
+    import fcntl
 
+import contextlib
 import fnmatch
 import os
 import shutil
@@ -80,6 +88,11 @@ class Filer:
     _mover_pool: ClassVar[ThreadPoolExecutor | None] = None
     _mover_pool_lock = Lock()
     _MOVER_WORKERS = 4
+
+    # Held for the life of the process once a relocation sweep is taken, so a second
+    # process cannot start one. Ephemeral: a named mutex on Windows, a lock file handle on
+    # Linux -- both released by the kernel if this process dies.
+    _sweep_guard: ClassVar[object | None] = None
 
     def __init__(self, logger=None):
         sys = platform.system()
@@ -242,6 +255,101 @@ class Filer:
                 self.info(f"move_ram_to_shared: could not start a mover for '{src}' ({e}); left queued")
                 self._ensure_sweeper()
 
+    def start_product_relocation_sweep(self, logger=None) -> bool:
+        """Relocate whatever a previous run left on the ram area. Call once, at app startup.
+
+        `_pending` lives in memory and its sweeper is a daemon thread, so nothing survives
+        the process dying: a move that never completed is invisible to the next run. This is
+        the only mechanism that recovers those, and on a unit it is the difference between
+        an artifact reaching the shared area and being erased by the next reboot.
+
+        Belongs in the *app lifespan* of a producer, not in a component's ``startup()``:
+        that is an HTTP endpoint an operator can call again mid-night, and a sweep then
+        would relocate folders that are live. At lifespan startup nothing is operational
+        yet, so everything present is by definition a leftover.
+
+        Returns False if another process already holds the sweep, or there is no ram area.
+        """
+        if self.ram is None or not os.path.isdir(self.ram.root):
+            return False
+        if not self._take_sweep_guard():
+            self.info("product_relocation_sweeper: another process is sweeping; skipping")
+            return False
+        Thread(
+            name="product-relocation-sweeper",
+            target=self._relocate_products,
+            args=(logger,),
+            daemon=True,
+        ).start()
+        return True
+
+    def _take_sweep_guard(self) -> bool:
+        """One sweeper per machine, held by an ephemeral kernel object -- nothing on disk.
+
+        Windows named objects are scoped per *session*, not per user, so a service in
+        session 0 and an interactive process in session 1 would not see a bare name even
+        running as the same account: hence ``Global\\``. Creating there needs
+        SeCreateGlobalPrivilege, which a service token has; failing to take the guard means
+        skipping the sweep, never proceeding unguarded.
+        """
+        if platform.system() == "Windows":
+            try:
+                Filer._sweep_guard = win32event.CreateMutex(None, False, r"Global\product_relocation_sweeper")
+                return win32api.GetLastError() != winerror.ERROR_ALREADY_EXISTS
+            except Exception as e:  # noqa: BLE001 -- e.g. ACCESS_DENIED unelevated
+                self.info(f"product_relocation_sweeper: could not take the guard ({e}); skipping")
+                return False
+        Filer._sweep_guard = _open_claim(_folder_lock_path(os.path.realpath(self.ram.root)))
+        return _try_lock(Filer._sweep_guard, exclusive=True)
+
+    def _relocate_products(self, logger=None) -> None:
+        """Move every unclaimed folder holding files off the ram area, deepest first."""
+        ram_root = os.path.realpath(self.ram.root)
+        guardian = MoveGuardian()
+        candidates = []
+        for dirpath, _dirnames, filenames in os.walk(ram_root):
+            real = os.path.realpath(dirpath)
+            if real == ram_root:
+                continue
+            # A folder is a unit of relocation only if it directly holds files. Parents of
+            # such folders are left alone, so a claimed leaf cannot be carried off inside
+            # an unclaimed ancestor.
+            if any(not (f.startswith(".") and f.endswith(".lock")) for f in filenames):
+                candidates.append(real)
+
+        moved = skipped = 0
+        for folder in sorted(candidates, key=len, reverse=True):
+            if not os.path.isdir(folder):
+                continue  # already carried off inside something else
+            if guardian.folder_is_claimed(folder):
+                skipped += 1
+                continue
+            self.move_ram_to_shared(folder)
+            moved += 1
+
+        message = f"product_relocation_sweeper: relocated {moved} leftover folder(s), skipped {skipped} in use"
+        (logger.info if logger else self.info)(message)
+
+    def flush(self, timeout: float = 30.0) -> bool:
+        """Wait for outstanding ram->shared moves. Call from the app lifespan's shutdown.
+
+        Without this the movers are abandoned mid-flight at interpreter teardown -- which is
+        how #52 was first seen, a solve's cleanup racing service shutdown. Draining here
+        happens while the process is still healthy.
+
+        Returns True if everything drained within the timeout.
+        """
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            with Filer._pending_lock:
+                if not Filer._pending:
+                    return True
+            time.sleep(0.2)
+        with Filer._pending_lock:
+            left = sorted(Filer._pending)
+        self.error(f"flush: {len(left)} move(s) still outstanding after {timeout}s: {left}")
+        return False
+
     def _movers(self) -> ThreadPoolExecutor:
         """The shared, bounded ram->shared mover pool, created on first use."""
         with Filer._mover_pool_lock:
@@ -367,6 +475,87 @@ def _flatten_paths(paths) -> list[str]:
     return flat
 
 
+#
+# Cross-process folder claims (MAST_common#56)
+#
+# MoveGuardian's registries are process-local, so they say nothing to a relocation sweep
+# running in another process -- which could move a frame mid-write. A folder in use is
+# therefore also claimed through a lock file *beside* it:
+#
+#     <daily>/acq-0001/         the folder
+#     <daily>/.acq-0001.lock    the claim
+#
+# Producers take a shared lock, the sweeper a non-blocking exclusive one, so producers
+# never serialise against each other while a sweep can still tell "someone is using this".
+# The lock is a property of an open handle, so a crashed producer releases it with no
+# cleanup to run; the file it leaves behind is simply re-acquirable.
+#
+# Beside rather than inside: an in-folder lock would be copied along with the folder by
+# the cross-volume `shutil.move`, and would stop its own holder from moving the folder at
+# all. Both verified on Windows, along with the shared/exclusive and crash-release
+# behaviour -- see the measurements on #56.
+#
+
+
+def _folder_lock_path(real_folder: str) -> str:
+    """The sibling claim file for a folder: ``<parent>/.<name>.lock``."""
+    parent, name = os.path.split(real_folder.rstrip("\\/"))
+    return os.path.join(parent, f".{name}.lock")
+
+
+if platform.system() == "Windows":
+    _LOCKFILE_FAIL_IMMEDIATELY = 0x00000001
+    _LOCKFILE_EXCLUSIVE_LOCK = 0x00000002
+    _LOCK_BYTES = 1  # one byte stands for the whole claim
+
+    def _open_claim(path: str):
+        handle = win32file.CreateFile(
+            path,
+            win32con.GENERIC_READ | win32con.GENERIC_WRITE,
+            win32con.FILE_SHARE_READ | win32con.FILE_SHARE_WRITE | win32con.FILE_SHARE_DELETE,
+            None,
+            win32con.OPEN_ALWAYS,
+            0,
+            None,
+        )
+        # A leading dot means nothing on NTFS; this is what actually keeps it out of
+        # listings, and `dir /a` still shows it to anyone looking.
+        with contextlib.suppress(Exception):
+            win32api.SetFileAttributes(path, win32con.FILE_ATTRIBUTE_HIDDEN)
+        return handle
+
+    def _try_lock(handle, exclusive: bool) -> bool:
+        flags = _LOCKFILE_FAIL_IMMEDIATELY | (_LOCKFILE_EXCLUSIVE_LOCK if exclusive else 0)
+        try:
+            # pywin32's LockFileEx takes five arguments -- the offset rides on the
+            # OVERLAPPED, there is no separate reserved parameter.
+            win32file.LockFileEx(handle, flags, _LOCK_BYTES, 0, pywintypes.OVERLAPPED())
+            return True
+        except pywintypes.error:
+            return False
+
+    def _close_claim(handle) -> None:
+        with contextlib.suppress(Exception):
+            handle.Close()
+
+else:
+
+    def _open_claim(path: str):
+        return os.open(path, os.O_RDWR | os.O_CREAT, 0o644)
+
+    def _try_lock(fd, exclusive: bool) -> bool:
+        flags = (fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH) | fcntl.LOCK_NB
+        try:
+            fcntl.flock(fd, flags)
+            return True
+        except OSError:
+            return False
+
+    def _close_claim(fd) -> None:
+        with contextlib.suppress(OSError):
+            os.close(fd)
+
+
 class MoveGuardian:
     """
     Process-wide guard that keeps ``Filer.move`` from moving files while they are still
@@ -407,6 +596,11 @@ class MoveGuardian:
     _products: ClassVar[set[str]] = set()
     _condition = Condition()
 
+    # Folders this process has claimed against other processes: realpath -> open handle on
+    # the sibling lock file. Kept until release_folder() reaps the folder; see claim_folder.
+    _folder_claims: ClassVar[dict[str, object]] = {}
+    _claim_lock = Lock()
+
     # How long release_folder() keeps waiting for a folder to drain before giving up and
     # leaving it in place. Generous: a move deferred against an unreachable share is
     # retried by Filer's sweeper every 30s, and losing the folder is worse than keeping it.
@@ -429,7 +623,56 @@ class MoveGuardian:
         with its folder.
         """
         reals = [os.path.realpath(p) for p in _flatten_paths(paths)]
+        for real in reals:
+            self.claim_folder(os.path.dirname(real))
         return _Claim(reals, self._protected, self._moving, record_products=True)
+
+    def claim_folder(self, folder) -> bool:
+        """Advertise, to other processes, that this folder is in use. Idempotent.
+
+        Held from the first protect() in the folder until release_folder() reaps it -- not
+        just for the duration of a write. The gap between one exposure being moved and the
+        next being written is precisely the state release_folder() cannot tell apart from a
+        finished folder, so a claim that came and went with each write would leave it open.
+        """
+        real_folder = os.path.realpath(str(folder))
+        with MoveGuardian._claim_lock:
+            if real_folder in MoveGuardian._folder_claims:
+                return True
+            handle = _open_claim(_folder_lock_path(real_folder))
+            if _try_lock(handle, exclusive=False):
+                MoveGuardian._folder_claims[real_folder] = handle
+                return True
+            # Only an exclusive holder -- a sweep already relocating this folder -- can
+            # refuse a shared lock. Rare, and not ours to resolve here.
+            _close_claim(handle)
+            return False
+
+    def folder_is_claimed(self, folder) -> bool:
+        """True if any process is using this folder. The sweeper's question."""
+        real_folder = os.path.realpath(str(folder))
+        with MoveGuardian._claim_lock:
+            if real_folder in MoveGuardian._folder_claims:
+                return True  # ours, and this process is the one asking
+        lock_path = _folder_lock_path(real_folder)
+        if not os.path.exists(lock_path):
+            return False
+        handle = _open_claim(lock_path)
+        try:
+            # A stale file from a crashed producer locks cleanly, which is how the design
+            # avoids needing any cleanup protocol.
+            return not _try_lock(handle, exclusive=True)
+        finally:
+            _close_claim(handle)
+
+    def _release_claim(self, real_folder: str) -> None:
+        """Drop our claim and remove the lock file, once the folder is finished with."""
+        with MoveGuardian._claim_lock:
+            handle = MoveGuardian._folder_claims.pop(real_folder, None)
+        if handle is not None:
+            _close_claim(handle)
+        with contextlib.suppress(OSError):
+            os.remove(_folder_lock_path(real_folder))
 
     def moving(self, *paths) -> "_Claim":
         """Context manager claiming the given path(s) while ``Filer.move`` moves them.
@@ -489,6 +732,11 @@ class MoveGuardian:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     say(f"release_folder: giving up on '{real_folder}', keeping it -- {why}: {blockers}", error=True)
+                    # Drop the claim even here. The folder stays, but nothing in this
+                    # process will touch it again, so holding it would only stop a later
+                    # relocation sweep from rescuing exactly the artifacts this line is
+                    # complaining about.
+                    self._release_claim(real_folder)
                     return
                 # Never sleep past the deadline: with a long poll and a short timeout the
                 # wait would otherwise be rounded up to a whole poll interval.
@@ -496,6 +744,7 @@ class MoveGuardian:
 
             if not os.path.isdir(real_folder):
                 self.forget_products_under(real_folder)
+                self._release_claim(real_folder)
                 return
 
             # Everything worth keeping is out; whatever is left is being discarded on
@@ -516,6 +765,10 @@ class MoveGuardian:
 
             shutil.rmtree(real_folder, ignore_errors=True)
             self.forget_products_under(real_folder)
+            # Released last: until the folder is actually gone, another process must still
+            # see it as in use. Removes the sibling .lock too, so the pair disappears
+            # together and nothing is left behind for the next run to wonder about.
+            self._release_claim(real_folder)
             say(f"release_folder: removed '{real_folder}'")
         except Exception as e:  # noqa: BLE001 -- a reaper thread must not die silently
             say(f"release_folder: failed for '{real_folder}': {e}", error=True)
