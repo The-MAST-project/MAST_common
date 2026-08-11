@@ -2,6 +2,51 @@
 
 ---
 
+## [2026-08-11] The HTTP surface is declared at the definition site, not by a name
+
+**Why:** MAST_unit's `endpoint_` prefix was meant to make a component's HTTP surface visible
+by scanning its method names. Measured on `65a1b96` it did not: of 73 routed operations, **26
+were registered on bare, unprefixed methods**, and ten `endpoint_`-named methods were routed
+by nothing at all. A convention that looks authoritative and is wrong in both directions is
+worse than none, because it is trusted. The retirement was ratified 2026-08-10 (Eli, Arie
+aware) on the condition that whatever replaced it actually delivered the quick-find property
+the prefix was chosen for.
+
+**What:** `common/endpoints.py` -- a `Tier` enum, an `@endpoint(tier=...)` decorator that
+marks a method at its definition, `declared_endpoints()` to enumerate the surface at runtime,
+and an `add_api_route()` helper that **raises `UndeclaredEndpointError` at import** when a
+route is registered on an undeclared method.
+
+Four choices inside it are load-bearing:
+
+- **Keyword-only decorator arguments.** `@endpoint(Tier.INTERFACE)` would read naturally as
+  positional and invite a bare `@endpoint`. One literal `@endpoint(` must find the whole
+  surface exactly, so there is deliberately no form that omits the parenthesis.
+- **`declared_endpoints()` walks `vars()` across the MRO, never `getattr` on the instance.**
+  A component is full of properties that touch hardware -- `connected` talks to an ASCOM
+  driver -- so plain attribute access during a scan would connect a telescope as a side
+  effect of asking a question about the class.
+- **`tags` passes through untouched.** Replacing subsystem tags with the tier is
+  MAST_unit#39; doing it here would make MAST_unit#34 stage 2's OpenAPI snapshot diff
+  unreadable, and that diff is the only mechanical guard over a 62-registration rewrite.
+- **`Stability.DEPRECATED` drives FastAPI's native `deprecated=True`**, which renders struck
+  through in Swagger. That is the retirement notice for the eleven routes MAST_unit#124
+  removes, and it reaches operators a code search cannot.
+
+**Implications:** the marker is the single source MAST_unit#39, #40 and #52 read, replacing
+three independent re-derivations of the route set from `api_router` bodies. Registration
+becomes the one seam where the response envelope can later be applied once instead of
+per-handler (MAST_unit#34 stage 3), which is also the seam the parked HTTP-status-code
+decision needs.
+
+One measured consequence worth recording, because it corrects a claim made when stage 2 was
+planned: **`deprecated=True` is not schema-neutral.** It adds a `deprecated` key to the
+operation. So stage 2's guarantee is not "the OpenAPI schema is byte-identical" but "identical
+except an additive `deprecated: true` on exactly the eleven known routes", and its snapshot
+check asserts that narrower thing.
+
+
+---
 
 ## [2026-08-09] An imager backend's `status()` answers for itself, not for the imager
 
