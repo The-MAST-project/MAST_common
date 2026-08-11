@@ -9,6 +9,7 @@ import os
 import shutil
 import time
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from enum import Enum, auto
 from pathlib import Path
 from threading import Condition, Lock, Thread
@@ -66,6 +67,19 @@ class Filer:
     _sweeper_thread = None
     _sweeper_lock = Lock()
     _SWEEP_INTERVAL_SEC = 30
+
+    # Sources a mover is handling right now. `_pending` records intent before the move is
+    # attempted (see move_ram_to_shared), so during a normal move the entry is queued *and*
+    # in flight; without this the sweeper would try to move the same source in parallel.
+    _in_flight: ClassVar[set[str]] = set()  # guarded by _pending_lock
+
+    # One bounded pool for every ram->shared move, instead of a thread per file. A move is
+    # short and IO-bound, so a small pool keeps the share busy; the point is the bound.
+    # Thread-per-file had none, and `Thread.start()` raising under load or at interpreter
+    # shutdown was how files went missing (#52).
+    _mover_pool: ClassVar[ThreadPoolExecutor | None] = None
+    _mover_pool_lock = Lock()
+    _MOVER_WORKERS = 4
 
     def __init__(self, logger=None):
         sys = platform.system()
@@ -194,32 +208,71 @@ class Filer:
 
         assert self.ram is not None
         for file in paths:
-            src = Path(file).as_posix()
-            dst = Path(str(src).replace(self.ram.root, self.shared.root))
-            if is_accessible(self.shared.root):
-                Thread(
-                    name="ram-to-shared-mover",
-                    target=self._move_ram_file,
-                    args=[str(src), str(dst)],
-                ).start()
-            else:
-                # Don't spin up a thread that would only block on / fail against a dead
-                # share: defer the file (it stays safely in ram) for the sweeper to retry.
+            src = str(Path(file).as_posix())
+            dst = str(Path(src.replace(self.ram.root, self.shared.root)))
+
+            # Write ahead: record the intent BEFORE trying to act on it, and clear it only
+            # once the source is gone. Every way this can fail -- the share being down, the
+            # move erroring, the mover never starting, the thread being killed mid-move --
+            # then leaves the entry behind for the sweeper, instead of needing its own
+            # rescue path. The previous order (act, then defer if it went wrong) could not
+            # cover a failure to *start* the mover, which is #52.
+            self._enqueue_pending(src, dst)
+
+            if not is_accessible(self.shared.root):
+                # Don't occupy a worker that would only block on / fail against a dead
+                # share: leave it queued (the file stays safely in ram) for the sweeper.
                 self.info(f"move_ram_to_shared: shared area '{self.shared.root}' not accessible; deferring '{src}'")
-                self._enqueue_pending(str(src), str(dst))
+                self._ensure_sweeper()
+                continue
+
+            try:
+                self._mark_in_flight(src)
+                self._movers().submit(self._move_ram_file, src, dst)
+            except RuntimeError as e:
+                # Pool or interpreter shutting down -- `submit` refuses just as
+                # `Thread.start()` did. Nothing to rescue: the entry is already queued.
+                self._unmark_in_flight(src)
+                self.info(f"move_ram_to_shared: could not start a mover for '{src}' ({e}); left queued")
                 self._ensure_sweeper()
 
+    def _movers(self) -> ThreadPoolExecutor:
+        """The shared, bounded ram->shared mover pool, created on first use."""
+        with Filer._mover_pool_lock:
+            if Filer._mover_pool is None:
+                Filer._mover_pool = ThreadPoolExecutor(
+                    max_workers=Filer._MOVER_WORKERS, thread_name_prefix="ram-to-shared-mover"
+                )
+            return Filer._mover_pool
+
     def _move_ram_file(self, src, dst):
-        """Fast-path mover (one per file): move now, and if it didn't succeed (share went
-        down mid-move, or any error), defer the file to the sweeper instead of losing it."""
-        self.move(src, dst)
+        """Move one queued file. The caller has already recorded it in `_pending`, so this
+        only has to clear that record on success; every failure path leaves it for the
+        sweeper by doing nothing."""
+        try:
+            self.move(src, dst)
+        finally:
+            self._unmark_in_flight(str(src))
         if os.path.exists(src):  # move() swallows errors; a surviving src means it failed
-            self._enqueue_pending(str(src), str(dst))
             self._ensure_sweeper()
+        else:
+            self._dequeue_pending(str(src))
 
     def _enqueue_pending(self, src, dst):
         with Filer._pending_lock:
             Filer._pending[str(src)] = str(dst)
+
+    def _dequeue_pending(self, src):
+        with Filer._pending_lock:
+            Filer._pending.pop(str(src), None)
+
+    def _mark_in_flight(self, src):
+        with Filer._pending_lock:
+            Filer._in_flight.add(str(src))
+
+    def _unmark_in_flight(self, src):
+        with Filer._pending_lock:
+            Filer._in_flight.discard(str(src))
 
     def _ensure_sweeper(self):
         """Start the single ram->shared sweeper if it isn't already running."""
@@ -232,7 +285,7 @@ class Filer:
         """Attempt every queued move once; drop entries that succeed or whose source is
         gone, and skip (retry next cycle) sources still being written."""
         with Filer._pending_lock:
-            items = list(Filer._pending.items())
+            items = [(src, dst) for src, dst in Filer._pending.items() if src not in Filer._in_flight]
         for src, dst in items:
             if not os.path.exists(src):  # already moved/cleaned elsewhere
                 with Filer._pending_lock:
@@ -478,9 +531,12 @@ class MoveGuardian:
                 if busy:
                     return False, f"{len(busy)} {what}(s) in progress", sorted(busy)
         with Filer._pending_lock:
-            deferred = [s for s in Filer._pending if _is_under(s, real_folder)]
-        if deferred:
-            return False, f"{len(deferred)} deferred move(s)", sorted(deferred)
+            # Since move_ram_to_shared records intent up front, this covers moves that are
+            # in flight as well as ones deferred against a dead share -- both mean the
+            # folder still owes something to the shared area.
+            queued = [s for s in Filer._pending if _is_under(s, real_folder)]
+        if queued:
+            return False, f"{len(queued)} queued move(s)", sorted(queued)
         return True, "", []
 
     def _products_under(self, real_folder: str) -> list[str]:
