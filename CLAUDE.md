@@ -11,10 +11,17 @@ This file is part of `MAST_common`, which each MAST project consumes. It is impo
 | Project | Role | Runs on |
 |---|---|---|
 | `MAST_common` | Shared library (sibling clone in every project) | — |
-| `MAST_control` | Central backend orchestrator | `mast-wis-control` |
-| `MAST_spec` | Spectrograph control backend | `mast-wis-spec` |
+| `MAST_control` | Central backend orchestrator | `mast-ns-control` |
+| `MAST_spec` | Spectrograph control backend | `mast-ns-spec` |
 | `MAST_unit.*` | Per-unit backend (telescope hardware) | Each unit machine (`mast01`…`mast20`) |
-| `MAST_gui` | Django web frontend | `mast-wis-control` |
+| `MAST_gui` | Django web frontend | `mast-ns-control` |
+
+The active site is **`ns`** (Neot Smadar), which is where those names come from. They are
+recorded here for orientation only — **never read a hostname out of this table in code.**
+The config DB is the source of truth: `Config().get_sites()` gives `controller_host` and
+`spec_host` per site, and `Filer` builds the shared root from `socket.gethostname()`. This
+table previously said `mast-wis-control` / `mast-wis-spec`, and that error was copied into
+three other repos' `CLAUDE.md` files and into live code (MAST_control#21, MAST_gui#20).
 
 ### How each project gets `MAST_common`
 
