@@ -147,7 +147,28 @@ class AssignmentNotification(BaseModel):
     state: AssignmentState
     initiator: NotificationInitiator | None = None
     errors: list[str] | None = None
+
+    # Where the products live, **relative to the producer's shared root** -- e.g.
+    # "2026-08-11/highspec/acquisition-0001", never "D:/MAST/..." or "Z:/MAST/...".
+    #
+    # It has to be relative because the two ends do not share a spelling. A producer's
+    # shared root is `Z:/MAST/<hostname>/`; the controller's is `/Storage/mast-share/MAST`,
+    # with the host as the next component. Only the receiver can name the path in a form
+    # its own filesystem resolves, and it does: MAST_control symlinks
+    # `Filer().shared.root / initiator.hostname / shared_top` into the run folder.
+    #
+    # A producer computes it from the ram-side folder it wrote into:
+    #     os.path.relpath(folder, Filer().ram.root)
+    # which is exactly the path `Filer.move_ram_to_shared` moves that folder to, since the
+    # move only swaps ram.root for shared.root.
+    #
+    # This was previously an absolute ram path (MAST_spec#39): it named a directory that is
+    # reaped once the products move, in a drive-letter spelling meaningless on the Linux
+    # controller. `os.symlink` accepts a dangling target, so it failed silently.
     shared_top: str | None = None
+
+    # Which kind of products these are ("acquisition", "autofocus", "deepspec", ...). Names
+    # the symlink the controller creates under the run folder; not part of the source path.
     shared_subpath: str | None = None
 
     def model_post_init(self):
