@@ -212,7 +212,7 @@ class TestCache:
             resolve_object_name("Nothing Here")
         assert len(sesame.calls) == 1
 
-    def test_a_service_outage_is_NOT_remembered(self, sesame):
+    def test_a_service_outage_is_not_remembered(self, sesame):
         """The bug this exists to prevent, seen live on 2026-08-12: CDS refused a query
         after several in quick succession, `NGC 224` -- which is M31 -- came back
         unresolved, and the miss was cached. It resolved in 0.83s on the next attempt.
@@ -273,10 +273,68 @@ class TestBudget:
 
         def slow_tns(name, credentials, timeout):
             clock.t += 99  # TNS burned the whole budget
-            return None
 
         monkeypatch.setattr(res, "_resolve_via_tns", slow_tns)
 
         with pytest.raises(ObjectNameError, match="not resolved within"):
             resolve_object_name("SN2024zzz")
         assert sesame.calls == [], "Sesame must not be asked after the deadline has passed"
+
+
+class TestLogging:
+    """The returned provenance only helps if something captured it. For a plan sweeper
+    working through targets overnight, the log is the record of what was asked, who
+    answered, how long it took and what failed -- and it is what answers "why did we
+    point there" long after the fact.
+    """
+
+    def test_a_resolution_logs_provenance_and_timing(self, sesame, caplog):
+        with caplog.at_level("INFO", logger="mast.common.object_resolver"):
+            resolve_object_name("M31")
+
+        line = "\n".join(r.message for r in caplog.records)
+        assert "M31" in line
+        assert "via sesame" in line, "which service answered must be in the log, not only the return value"
+        assert "ra=" in line and "dec=" in line, "the coordinates it resolved to"
+        assert "s" in line and "in " in line, "and how long it took"
+
+    def test_the_service_that_answered_is_named(self, sesame, tns, caplog):
+        tns.answer = ResolvedObject("SN2023ixf", 14.06, 54.31, resolver="tns", canonical_name="SN 2023ixf")
+        with caplog.at_level("INFO", logger="mast.common.object_resolver"):
+            resolve_object_name("SN2023ixf")
+
+        line = "\n".join(r.message for r in caplog.records)
+        assert "via tns" in line
+        assert "SN 2023ixf" in line, "the canonical name it matched -- an alias match is the likeliest misresolution"
+
+    def test_a_failure_is_logged_with_what_was_tried(self, sesame, caplog):
+        sesame.fail_with = name_resolve.NameResolveError("Unable to find coordinates for name 'Nope' using ...")
+        with caplog.at_level("WARNING", logger="mast.common.object_resolver"), pytest.raises(ObjectNameError):
+            resolve_object_name("Nope")
+
+        warnings = [r.message for r in caplog.records if r.levelname == "WARNING"]
+        assert warnings, "a failed resolution must leave a trace, not only raise"
+        assert "sesame" in warnings[0], "and say which services were asked"
+
+    def test_a_failure_says_whether_it_will_be_retried(self, sesame, caplog):
+        """The distinction that matters to whoever reads the log at 03:00: a definitive
+        miss is a bad name, a non-conclusive one is a service that did not answer."""
+        sesame.fail_with = name_resolve.NameResolveError("All Sesame queries failed. Unable to retrieve coordinates.")
+        with caplog.at_level("WARNING", logger="mast.common.object_resolver"), pytest.raises(ObjectNameError):
+            resolve_object_name("NGC 224")
+
+        assert "will retry" in "\n".join(r.message for r in caplog.records)
+
+    def test_a_refusal_is_logged(self, sesame, caplog):
+        with caplog.at_level("INFO", logger="mast.common.object_resolver"), pytest.raises(MovingTargetError):
+            resolve_object_name("C/2023 A3")
+
+        assert "moving target" in "\n".join(r.message for r in caplog.records)
+
+    def test_a_cache_hit_does_not_repeat_the_info_line(self, sesame, caplog):
+        """Otherwise a sweeper's log implies a network call that never happened."""
+        resolve_object_name("M31")
+        with caplog.at_level("INFO", logger="mast.common.object_resolver"):
+            resolve_object_name("M31")
+
+        assert [r for r in caplog.records if r.levelname == "INFO"] == []

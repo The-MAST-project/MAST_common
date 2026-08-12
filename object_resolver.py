@@ -112,8 +112,32 @@ _COMET = re.compile(r"^\s*\d*[PDCXAI][/-]\s*", re.IGNORECASE)
 _MINOR_PLANET_PROVISIONAL = re.compile(r"^\s*\(?\s*\d{4}\s*\)?\s+[A-Z]{2}\d*\s*$")
 _MINOR_PLANET_NUMBERED = re.compile(r"^\s*\(\s*\d+\s*\)")
 _SOLAR_SYSTEM_BODIES = frozenset(
-    """mercury venus mars jupiter saturn uranus neptune pluto sun moon luna sol ceres
-    vesta pallas juno io europa ganymede callisto titan enceladus phobos deimos""".split()
+    [
+        "mercury",
+        "venus",
+        "mars",
+        "jupiter",
+        "saturn",
+        "uranus",
+        "neptune",
+        "pluto",
+        "sun",
+        "moon",
+        "luna",
+        "sol",
+        "ceres",
+        "vesta",
+        "pallas",
+        "juno",
+        "io",
+        "europa",
+        "ganymede",
+        "callisto",
+        "titan",
+        "enceladus",
+        "phobos",
+        "deimos",
+    ]
 )
 
 # `AT2024xyz`, `SN2023ixf`, `SN 1987A`.
@@ -228,6 +252,54 @@ def _resolve_via_sesame(name: str, timeout: float) -> ResolvedObject:
     )
 
 
+def _describe(result: ResolvedObject) -> str:
+    canonical = f" as '{result.canonical_name}'" if result.canonical_name else ""
+    return f"ra={result.ra_j2000_hours:.6f}h dec={result.dec_j2000_degs:+.6f}d via {result.resolver}{canonical}"
+
+
+def _try_tns(name: str, deadline: float, attempts: list[str]) -> ResolvedObject | None:
+    """TNS's answer, or None to fall through to Sesame.
+
+    Never raises: a TNS outage, a missing credential or a miss all mean "ask Sesame", and
+    a name that merely looks like a transient may be an older object Sesame knows.
+    """
+    credentials = _tns_credentials()
+    if credentials is None:
+        # Not fatal and not a reason to refuse: Sesame carries transients once they are
+        # catalogued, and a fresh one is simply not found, which is safe.
+        attempts.append("tns: no credentials in the vault")
+        logger.info(f"'{name}' looks like a TNS name but the vault has no TNS credentials; trying Sesame")
+        return None
+
+    try:
+        resolved = _resolve_via_tns(name, credentials, min(TNS_TIMEOUT_SECONDS, deadline - time.monotonic()))
+    except Exception as e:  # noqa: BLE001 -- any TNS failure falls through to Sesame
+        attempts.append(f"tns: {e}")
+        logger.info(f"TNS could not resolve '{name}' ({e}); trying Sesame")
+        return None
+
+    if resolved is None:
+        attempts.append("tns: no match")
+    return resolved
+
+
+def _try_sesame(name: str, remaining: float, attempts: list[str]) -> tuple[ResolvedObject | None, bool]:
+    """(result, definitive). `definitive` says whether a failure may be remembered.
+
+    Never raises: an unexpected exception from a catalogue client must not surprise a
+    caller that is already handling ObjectNameError.
+    """
+    try:
+        return _resolve_via_sesame(name, min(SESAME_TIMEOUT_SECONDS, remaining)), True
+    except name_resolve.NameResolveError as e:
+        attempts.append(f"sesame: {e}")
+        return None, _is_definitive_miss(e)
+    except Exception as e:
+        attempts.append(f"sesame: {type(e).__name__}: {e}")
+        logger.exception(f"unexpected failure resolving '{name}' through Sesame")
+        return None, False
+
+
 def resolve_object_name(name: str, total_timeout: float = TOTAL_TIMEOUT_SECONDS) -> ResolvedObject:
     """Coordinates for `name`, in J2000, with a record of which service supplied them.
 
@@ -240,9 +312,11 @@ def resolve_object_name(name: str, total_timeout: float = TOTAL_TIMEOUT_SECONDS)
         raise ObjectNameError("no object name given")
 
     asked = name.strip()
-    deadline = time.monotonic() + total_timeout
+    started = time.monotonic()
+    deadline = started + total_timeout
 
     if _is_moving_target(asked):
+        logger.info(f"refused '{asked}': moving target, no fixed J2000 position")
         raise MovingTargetError(
             f"'{asked}' is a moving target; it has no fixed J2000 position, only an "
             "ephemeris at an instant, so it cannot be resolved to coordinates here"
@@ -251,52 +325,38 @@ def resolve_object_name(name: str, total_timeout: float = TOTAL_TIMEOUT_SECONDS)
     hit, cached = _cache.get(asked)
     if hit:
         if cached is None:
+            logger.info(f"'{asked}' unresolved (remembered from a recent attempt)")
             raise ObjectNameError(f"'{asked}' could not be resolved (remembered from a recent attempt)")
-        logger.debug(f"'{asked}' resolved from cache ({cached.resolver})")
+        logger.debug(f"resolved '{asked}' from cache: {_describe(cached)}")
         return cached
 
     attempts: list[str] = []
 
     if is_tns_name(asked):
-        credentials = _tns_credentials()
-        if credentials is None:
-            # Not fatal, and not a reason to refuse: Sesame carries transients once they
-            # are catalogued. A fresh one will simply not be found, which is safe.
-            attempts.append("tns: no credentials in the vault")
-            logger.info(f"'{asked}' looks like a TNS name but the vault has no TNS credentials; trying Sesame")
-        else:
-            try:
-                resolved = _resolve_via_tns(asked, credentials, min(TNS_TIMEOUT_SECONDS, deadline - time.monotonic()))
-            except Exception as e:  # noqa: BLE001 -- any TNS failure falls through to Sesame
-                attempts.append(f"tns: {e}")
-                logger.info(f"TNS could not resolve '{asked}' ({e}); trying Sesame")
-            else:
-                if resolved is not None:
-                    _cache.put(asked, resolved, TNS_TTL_SECONDS)
-                    return resolved
-                attempts.append("tns: no match")
+        resolved = _try_tns(asked, deadline, attempts)
+        if resolved is not None:
+            _cache.put(asked, resolved, TNS_TTL_SECONDS)
+            logger.info(f"resolved '{asked}': {_describe(resolved)} in {time.monotonic() - started:.2f}s")
+            return resolved
 
     remaining = deadline - time.monotonic()
     if remaining <= 0:
         # Not cached: running out of budget says nothing about whether the object exists.
+        logger.warning(f"'{asked}' not resolved within {total_timeout:g}s -- tried {'; '.join(attempts)}")
         raise ObjectNameError(f"'{asked}' not resolved within {total_timeout:g}s ({'; '.join(attempts)})")
 
-    definitive = True
-    try:
-        resolved = _resolve_via_sesame(asked, min(SESAME_TIMEOUT_SECONDS, remaining))
-    except name_resolve.NameResolveError as e:
-        definitive = _is_definitive_miss(e)
-        attempts.append(f"sesame: {e}")
-    except Exception as e:  # noqa: BLE001 -- a resolver must not raise anything unexpected at its caller
-        definitive = False
-        attempts.append(f"sesame: {type(e).__name__}: {e}")
-        logger.exception(f"unexpected failure resolving '{asked}' through Sesame")
-    else:
+    resolved, definitive = _try_sesame(asked, remaining, attempts)
+    if resolved is not None:
         _cache.put(asked, resolved, CATALOGUE_TTL_SECONDS)
+        logger.info(f"resolved '{asked}': {_describe(resolved)} in {time.monotonic() - started:.2f}s")
         return resolved
 
     if definitive:
         _cache.put(asked, None, NEGATIVE_TTL_SECONDS)
+    logger.warning(
+        f"'{asked}' could not be resolved in {time.monotonic() - started:.2f}s "
+        f"({'definitive' if definitive else 'not conclusive, will retry'}) -- tried {'; '.join(attempts)}"
+    )
     raise ObjectNameError(f"'{asked}' could not be resolved ({'; '.join(attempts)})")
 
 
