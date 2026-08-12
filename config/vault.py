@@ -1,8 +1,11 @@
 """Credentials that must never be tracked in git.
 
-One file for the fleet, on the share, beside the per-machine product trees rather
-than inside one -- see MAST_common#60. `Filer.share_root` is what locates it, so the
-Windows drive letter becoming a UNC (MAST_common#26) changes nothing here.
+One file for the fleet, on the share, beside the per-machine product trees rather than
+inside one. `Filer.share_root` is what locates it, so the Windows drive letter becoming
+a UNC (MAST_common#26) changes nothing here.
+
+Consumers declare their own sections; this module knows only how to find the file, parse
+it, and keep what it holds out of anything that gets printed.
 
 Three properties this deliberately does NOT share with the rest of `config`:
 
@@ -18,8 +21,7 @@ Three properties this deliberately does NOT share with the rest of `config`:
   unreachable for eighteen minutes on 2026-08-11.
 * **Never fatal.** Everything else in `config` raises `ConfigError` and the application
   is expected to stop. A missing or malformed vault degrades whatever needed the
-  credential -- name resolution falls back to Sesame alone -- and must not stop a
-  telescope.
+  credential and must not stop a telescope.
 """
 
 import tomllib
@@ -36,13 +38,7 @@ VAULT_FILE_NAME = "vault.toml"
 
 
 class TnsVault(BaseModel):
-    """Transient Name Server bot credentials.
-
-    Without an api_key, TNS-shaped names (AT/SN + year) cannot be resolved to the
-    transient's own discovery position -- and Sesame may answer such a name with the
-    HOST GALAXY's position instead, which points the telescope somewhere plausible and
-    wrong. See MAST_common#60.
-    """
+    """Transient Name Server bot credentials."""
 
     api_key: SecretStr | None = None
 
