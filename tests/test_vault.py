@@ -26,9 +26,17 @@ class TestWhereItLives:
         assert PurePath(vault_path()).parent == PurePath(Filer().share_root.root)
         assert PurePath(vault_path()).name == VAULT_FILE_NAME
 
-    def test_it_is_not_in_this_machines_product_tree(self):
-        """`shared.root` is per-machine and gets bulk-copied during cleanups; a secret
-        there would be twenty files and would travel with the data."""
+    def test_it_is_not_in_a_per_machine_product_tree(self):
+        """`shared.root` is per-machine on Windows and gets bulk-copied during cleanups;
+        a secret there would be twenty files and would travel with the data.
+
+        Windows only: on Linux `shared.root` IS the share root, so there is no
+        per-machine tree for the vault to be wrongly inside, and the check is vacuous.
+        """
+        import platform
+
+        if platform.system() != "Windows":
+            pytest.skip("no per-machine product tree on this platform")
         assert not str(vault_path()).startswith(str(PurePath(Filer().shared.root)))
 
     def test_it_does_not_carry_the_hostname(self):

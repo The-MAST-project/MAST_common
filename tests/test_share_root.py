@@ -13,7 +13,7 @@ from pathlib import PurePath
 
 import pytest
 
-from common.filer import Filer
+from common.filer import Filer, is_windows_drive_mapped
 
 
 @pytest.fixture
@@ -23,13 +23,27 @@ def filer():
 
 class TestShareRoot:
     def test_it_is_above_the_per_machine_product_tree(self, filer):
-        """`shared.root` is where THIS machine's products go; `share_root` is the share."""
+        """`shared.root` is where THIS machine's products go; `share_root` is the share.
+
+        Only checkable where the share is actually present. Without it `shared` falls
+        back to the local disk while `share_root` does not -- that asymmetry is the
+        point of this attribute, not a violation of it.
+        """
+        if platform.system() != "Windows" or not is_windows_drive_mapped("Z:"):
+            pytest.skip("the per-machine tree only sits under the share when Z: is mapped")
+
         share = PurePath(filer.share_root.root)
         shared = PurePath(filer.shared.root)
-        assert share != shared or platform.system() == "Linux", (
-            "on Windows the two must differ -- shared.root carries the hostname"
-        )
+        assert share != shared, "shared.root carries the hostname; share_root must not"
         assert str(shared).startswith(str(share)), f"{shared} should sit under {share}"
+
+    def test_it_keeps_its_value_when_the_share_is_absent(self, filer):
+        """The others fall back to `C:/MAST/` when their drive is unmapped. This one
+        must not: a caller asking for the share needs to be told where the share is,
+        and to fail reading it, rather than to be handed a local path silently."""
+        if platform.system() != "Windows":
+            pytest.skip("the fallback only exists on Windows")
+        assert filer.share_root.root.replace("\\", "/").startswith("Z:/")
 
     def test_it_does_not_carry_the_hostname(self, filer):
         import socket
