@@ -104,10 +104,21 @@ class Filer:
                 else Location("C:/", "MAST/")
             )
             self.ram = Location("D:/", "MAST/") if is_windows_drive_mapped("D:") else Location("C:/", "MAST/")
+            # The share itself, above every machine's product tree. NOT derived as the
+            # parent of `shared.root`: that works on Windows only by coincidence, since
+            # `shared.root` carries the hostname here and does not on Linux, so the same
+            # expression would mean two different things depending on which role ran it.
+            #
+            # Deliberately without the drive-mapped fallback the others have. A caller
+            # asking for the share wants the share; handing back `C:/MAST/` because Z:
+            # is unmapped would put shared artifacts on a local disk under a name that
+            # says otherwise -- the failure that lost frames on 2026-07-14.
+            self.share_root = Location("Z:/", "MAST/")
         elif sys == "Linux":
             self.local = Location(None, "/Storage/mast-share/MAST")
             self.shared = self.local
             self.ram = None
+            self.share_root = self.local
 
         self.tops = {
             FilerTop.Local: self.local,
