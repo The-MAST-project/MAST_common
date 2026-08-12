@@ -41,6 +41,8 @@ class TnsVault(BaseModel):
     """Transient Name Server bot credentials."""
 
     api_key: SecretStr | None = None
+    tns_id: str | None = None
+    bot_name: str | None = None
 
 
 class MastCredentials(BaseModel):
