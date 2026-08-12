@@ -21,6 +21,7 @@ from .identification import GroupConfig, UserConfig
 from .local import ConfigError, LocalConfig, load_local_config
 from .site import Site
 from .unit import UnitConfig
+from .vault import VaultConfig, load_vault
 
 # The collections that make up the MAST configuration database. This is the DB
 # schema/layout (not a per-deployment setting), so it stays a module constant.
@@ -97,6 +98,9 @@ class ConfigOrigin:
 class Config:
     _instance = None
     _initialized: bool = False
+    #: Lazily loaded on first access to `vault`; never populated in __init__,
+    #: so constructing a Config does not reach for the share.
+    _vault: "VaultConfig | None" = None
 
     def __new__(cls, *args, **kwargs):
         if cls._instance is None:
@@ -422,6 +426,20 @@ class Config:
             return None
 
         return found[0]
+
+    @property
+    def vault(self) -> "VaultConfig":
+        """Credentials from the share, read once and cached.
+
+        Deliberately unlike the rest of this class in three ways, each for a reason
+        recorded in `config/vault.py`: it is NOT reachable from any model that gets
+        dumped, it loads on first access rather than in `__init__` (so the share is not
+        a startup dependency), and it never raises -- a missing vault degrades whatever
+        needed the credential instead of stopping a telescope.
+        """
+        if Config._vault is None:
+            Config._vault = load_vault()
+        return Config._vault
 
     def get_users(self) -> list[UserConfig]:
         all_user_dicts = self.fetch_config_section("users")
