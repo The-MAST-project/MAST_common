@@ -123,7 +123,13 @@ class DailyFileHandler(logging.FileHandler):
         self.current_path: str | None = None
         self._next_open_attempt: float = 0.0
         if "b" not in mode:
-            encoding = io.text_encoding(encoding)
+            # UTF-8 rather than io.text_encoding's locale default: on Windows that
+            # resolves to cp1252, which cannot encode a degree sign or a double
+            # prime. The record is then lost from the file and logging prints a
+            # UnicodeEncodeError traceback to stderr for it -- observed on mast00
+            # on 2026-08-13 for a single U+2033 in a log message. The console
+            # handler has no such limit, so the two disagreed about what happened.
+            encoding = io.text_encoding(encoding or "utf-8")
         logging.FileHandler.__init__(self, filename="", delay=delay, mode=mode, encoding=encoding, errors=errors)
 
     @staticmethod
