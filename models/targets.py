@@ -1,7 +1,10 @@
-import astropy.coordinates
 from pydantic import BaseModel, Field, field_validator
+
+# One implementation, beside the FastAPI patterns that guard the same grammar, so a
+# coordinate cannot mean one thing to a plan and another to an endpoint.
 from common.models.constraints import RepeatsModel
 from common.models.science import ScienceModel
+from common.parsers import sexagesimal_degrees_to_decimal, sexagesimal_hours_to_decimal
 
 
 class Target(BaseModel):
@@ -133,10 +136,7 @@ class Target(BaseModel):
         :param value: sexagesimal string or float
         :return: a float in [0, 24)
         """
-        ra = float(astropy.coordinates.Longitude(value, unit="hour").value)
-        if not (0 <= ra < 24):
-            raise ValueError(f"RA decimal value {ra} is out of range [0, 24)")
-        return ra
+        return sexagesimal_hours_to_decimal(value)
 
     @field_validator("dec_degrees")
     @classmethod
@@ -146,10 +146,7 @@ class Target(BaseModel):
         :param value: sexagesimal string or float
         :return: a float in [-90, 90]
         """
-        dec = float(astropy.coordinates.Latitude(value, unit="deg").value)
-        if not (-90 <= dec <= 90):
-            raise ValueError(f"Dec decimal value {dec} is out of range [-90, 90]")
-        return dec
+        return sexagesimal_degrees_to_decimal(value)
 
     def __repr__(self) -> str:
         return f"Target(ra_hours={self.ra_hours}, dec_degrees={self.dec_degrees})"

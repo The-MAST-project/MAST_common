@@ -1,6 +1,7 @@
 import datetime
 import socket
 import threading
+import time
 from enum import IntFlag, auto
 
 import humanfriendly
@@ -23,11 +24,16 @@ class Timing:
     duration: datetime.timedelta
 
     def __init__(self):
-        self.start_time = datetime.datetime.now()
+        self.start_time = datetime.datetime.now(datetime.UTC)
+        # Duration is measured on the monotonic clock, not by subtracting the two
+        # timestamps: an NTP step or a DST change between start and end would otherwise
+        # skew it, and can make it negative. The timestamps stay for reporting; only the
+        # elapsed measurement needs a clock that cannot move.
+        self._start_monotonic = time.monotonic()
 
     def end(self):
-        self.end_time = datetime.datetime.now()
-        self.duration = self.end_time - self.start_time
+        self.end_time = datetime.datetime.now(datetime.UTC)
+        self.duration = datetime.timedelta(seconds=time.monotonic() - self._start_monotonic)
 
 
 class Activity(IntFlag):

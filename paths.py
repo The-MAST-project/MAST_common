@@ -45,7 +45,14 @@ class PathMaker:
             ram = Filer().ram
             assert ram
             root = ram.root
-        d = Path(root) / datetime.datetime.now().strftime("%Y-%m-%d")
+        # The suppression below is deliberate and tracked by MAST_common#28. This is naive LOCAL
+        # time, so a product written after local midnight lands under the next day --
+        # which is why the frames from the night of 2026-08-04 are filed under
+        # 2026-08-05. Two coupled changes are needed: naive local -> UTC, and calendar
+        # day -> observing night (the 12:00 UTC anchor the logs already use, #29). Both
+        # rename product folders, which planning and the GUI consume, so they land
+        # together with those consumers rather than as a lint fix.
+        d = Path(root) / datetime.datetime.now().strftime("%Y-%m-%d")  # noqa: DTZ005 -- see MAST_common#28
         d.mkdir(parents=True, exist_ok=True)
         return str(d)
 
@@ -54,32 +61,28 @@ class PathMaker:
         folder.mkdir(parents=True, exist_ok=True)
         return str(folder)
 
-    def make_autofocus_folder(
-        self, root: str | None = None, subfolder: str | None = None
-    ) -> str:
-        """``<daily>/[<subfolder>/]Autofocus/<NNNN>``.
-
-        ``subfolder`` scopes the folder to a particular consumer (e.g. a caller
-        on the spectrograph machine passing ``"highspec"``), the same way
-        :meth:`make_spec_acquisitions_folder` and :meth:`make_spec_exposures_folder`
-        take ``spec_name`` instead of hardcoding one.  Omitted -- the unit case --
-        the path carries no spectrograph name: a unit's autofocus is telescope
-        focus and has nothing to do with a spectrograph.
-
-        INTERIM (branch ``calibration``).  ``"highspec"`` was hardcoded here in
-        e212729 ("moved Autofocus folder to highspec"), which -- because this is
-        shared MAST_common code -- also pushed every *unit's* autofocus FITS under
-        a ``highspec/`` folder.  Making it a parameter that defaults to *absent*
-        restores the unit path, but it MOVES the folder for any caller that relied
-        on the hardcoded value: such a caller must now pass ``subfolder="highspec"``
-        explicitly.  MAST_spec is not checked out alongside this branch, so its
-        callers (if any) have NOT been updated -- resolve that before merging, and
-        re-sync this file across the other ``common/`` checkouts.
+    def make_autofocus_folder(self, root: str | None = None, subfolder: str | None = None) -> str:
         """
-        base = Path(self.make_daily_folder_name(root=root or Filer().ram.root))  # type: ignore
-        if subfolder:
-            base = base / subfolder
-        autofocus_folder = base / "Autofocus"
+        <daily>[/<subfolder>]/Autofocus/<NNNN>
+
+        `subfolder` names the instrument being focused, and only a caller that focuses more
+        than one has anything to say: MAST_spec passes the spectrograph's name, MAST_unit
+        omits it because there is one telescope focuser.
+
+        It used to be hardcoded to "highspec" (e212729, 2026-06-08), which put the unit's
+        TELESCOPE autofocus -- stepped focuser positions, a V-curve, a status sidecar --
+        under the name of a spectrograph it has nothing to do with. The path is the only
+        label these frames carry, so it sent anyone reading the tree looking for HighSpec
+        data, hid the focus history from anyone after it, and would have collided with
+        genuine HighSpec output in one directory. MAST_unit#87.
+
+        Note the unit's flat layout is the restored one, not a new invention: the shared
+        area carries <date>/Autofocus for sixteen nights between 2025-08-19 and 2026-05-12,
+        against two under <date>/highspec/Autofocus.
+        """
+        # Path(self.make_daily_folder_name(root=root or Filer().shared.root))
+        daily = Path(self.make_daily_folder_name(root=root or Filer().ram.root))  # type: ignore
+        autofocus_folder = (daily / subfolder if subfolder else daily) / "Autofocus"
         folder = autofocus_folder / self.make_seq(str(autofocus_folder))
         folder.mkdir(parents=True, exist_ok=True)
         return str(folder)
@@ -113,8 +116,7 @@ class PathMaker:
             phase_folder = CALIBRATION_PHASE_FOLDERS[phase]
         except KeyError:
             raise ValueError(
-                f"unknown calibration phase {phase!r}; "
-                f"expected one of {sorted(CALIBRATION_PHASE_FOLDERS)}"
+                f"unknown calibration phase {phase!r}; expected one of {sorted(CALIBRATION_PHASE_FOLDERS)}"
             ) from None
         base = Path(self.make_daily_folder_name(root=root or Filer().ram.root)) / "Calibration"  # type: ignore
         base = base / phase_folder

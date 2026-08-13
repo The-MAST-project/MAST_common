@@ -167,9 +167,7 @@ class CalibrationSettings(BaseModel):
 
     coord: CalibrationCoordConfig = Field(default_factory=CalibrationCoordConfig)
     focuser: FocuserCalibrationSettings = Field(default_factory=FocuserCalibrationSettings)
-    optical_center: OpticalCenterCalibrationSettings = Field(
-        default_factory=OpticalCenterCalibrationSettings
-    )
+    optical_center: OpticalCenterCalibrationSettings = Field(default_factory=OpticalCenterCalibrationSettings)
     stage: StageCalibrationSettings = Field(default_factory=StageCalibrationSettings)
 
 

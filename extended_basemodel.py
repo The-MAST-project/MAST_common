@@ -1,47 +1,21 @@
-import json
-import math
-from typing import Optional
-
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict
 
 
 class ExtendedBaseModel(BaseModel):
-    # Override JSON encoders to handle NaN and infinity
-    class Config:
-        json_encoders = {
-            float: lambda x: (
-                "NaN" if math.isnan(x) else ("Infinity" if x == float("inf") else "-Infinity" if x == -float("inf") else x)
-            )
-        }
+    """A BaseModel that survives a JSON round trip through NaN and infinity.
 
-    @classmethod
-    def custom_json_decoder(cls, v):
-        # Decode 'NaN', 'Infinity', and '-Infinity' strings back to float values
-        if isinstance(v, str):
-            if v == "NaN":
-                return float("nan")
-            elif v == "Infinity":
-                return float("inf")
-            elif v == "-Infinity":
-                return -float("inf")
-        return v
+    Plain JSON has no way to spell those, and pydantic's default is to serialise them
+    as ``null`` -- which silently turns "the solver could not measure this" into "the
+    solver said nothing", two very different things to whoever reads the result later.
+    ``ser_json_inf_nan="strings"`` emits ``"NaN"``, ``"Infinity"`` and ``"-Infinity"``
+    instead.
 
-    @classmethod
-    def parse_obj(cls, obj):
-        # Recursively apply the custom decoder to handle nested data structures
-        obj = json.loads(json.dumps(obj), object_hook=cls.custom_json_decoder)
-        return super().parse_obj(obj)
+    This used to be a pydantic v1 inner ``class Config`` with a ``json_encoders`` float
+    hook, plus a ``parse_obj`` override that walked the decoded object rehydrating those
+    strings. Both were deprecated and slated for removal in pydantic v3. The config line
+    below produces byte-identical output to the old encoder, and the decoder turned out
+    to be unnecessary: pydantic v2 already coerces "NaN"/"Infinity"/"-Infinity" to the
+    corresponding floats, from python objects and from JSON text alike.
+    """
 
-
-# # Example usage
-# class MyModel(CustomBaseModel):
-#     value: Optional[float] = Field(None, description="A float that may be NaN or infinity")
-#
-# # Encoding Example
-# m = MyModel(value=float('inf'))
-# print(m.json())  # Output: {"value": "Infinity"}
-#
-# # Decoding Example
-# data = '{"value": "NaN"}'
-# m = MyModel.parse_raw(data)
-# print(m.value)  # Output: nan
+    model_config = ConfigDict(ser_json_inf_nan="strings")

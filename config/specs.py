@@ -144,5 +144,4 @@ class SpecsConfig(BaseModel):
                 band_cfg.settings = deepcopy(common_cfg.settings)
             else:
                 deep_dict_update(band_cfg.settings.model_dump(), common_cfg.settings.model_dump())
-            pass
         return self

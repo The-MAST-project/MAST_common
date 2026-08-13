@@ -17,6 +17,8 @@ from common.mast_logging import get_logger
 from common.utils import function_name
 
 logger = get_logger(__name__)
+
+
 def find_process(name: str | None = None, patt: str | None = None, pid: int | None = None) -> psutil.Process | None:
     """
     Searches for a running process either by a pattern in the command line or by pid
@@ -157,11 +159,16 @@ def ensure_process_is_running(
 
         if logger:
             logger.info(f"started process (pid={process.pid}) with cmd: '{cmd_for_shell if shell else cmd}' in {cwd=}")
-    except Exception as e:
+    except Exception:
+        # Both arms go through .exception(): the traceback is the whole point of catching
+        # this broadly, and the module-level logger is the fallback when the caller
+        # supplied none. Spelled out rather than `(logger or logging).exception(...)`,
+        # which reads the same but stops ruff recognising it as a logging call.
+        message = f"ensure_process_is_running: failed to start '{cmd}'"
         if logger:
-            logger.error(f"ensure_process_is_running: failed to start '{cmd}': {e}")
+            logger.exception(message)
         else:
-            logging.error(f"ensure_process_is_running: failed to start '{cmd}': {e}")
+            logging.exception(message)
         return None
 
     # Wait for the process to appear in the process list, with a deadline.

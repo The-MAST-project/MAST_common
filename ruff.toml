@@ -4,9 +4,10 @@
 # version is pinned in requirements-dev.txt (ruff==0.16.0); config alone is not
 # enough — formatter output can differ between ruff versions.
 #
-# This repo is consumed as a submodule (src/common) by MAST_unit, MAST_spec and
-# MAST_control; formatting it here does not change those superprojects until
-# their submodule pointers are advanced.
+# Every consumer -- MAST_unit, MAST_control, MAST_spec, MAST_gui -- takes this
+# repo as a sibling clone (<top>/common/), not a submodule. Formatting done here
+# reaches all of them on their next `git pull`, with no pointer to advance and
+# no per-consumer pin. See "How each project gets MAST_common" in CLAUDE.md.
 
 line-length = 125
 target-version = "py312"
@@ -27,6 +28,14 @@ extend-select = [
 ]
 # Optionally ignore some rules:
 # ignore = ["E501"]  # example: disable line-length enforcement
+
+[lint.isort]
+# This repo's own modules are imported absolutely as `from common.X import Y`
+# (it is consumed as a submodule named `common/`), so `common` must be
+# first-party. Without this, ruff's resolver splits the package across the
+# third-party and first-party blocks and every isort run reshuffles it.
+# Kept identical to the consumers' ruff.toml so the fleet sorts the same way.
+known-first-party = ["common"]
 
 [format]
 # Ruff's Black-compatible formatter.
