@@ -117,11 +117,38 @@ Each component exposes a `FastAPI` `APIRouter` (`api_router`) that is included i
 
 ## Logging (`common/mast_logging.py`)
 
-Use `init_log(logger)` after getting a logger. Logs rotate daily under:
-- Linux: `/var/log/mast/<date>/`
-- Windows: `%LOCALAPPDATA%/mast/<date>/`
+Call `init_log()` **once per process, on the root logger**, from the application entry point;
+every `mast.*` logger then inherits the level and both handlers by propagation. The
+per-module `init_log(logger)` form is the pre-centralisation shape, kept only until its
+callers are converted.
 
-Rich console output is enabled by default.
+Two handlers: a Rich console (on by default) and `DailyFileHandler`, which writes
+
+```
+<base>/<observing-night>/mast-<machine_role>-log.txt
+```
+
+**`<base>` is `Filer().accessible_shared_root()`** — the operational share
+(`Z:/MAST/<hostname>/` on Windows), falling back to `local.root` (`C:/MAST/`) when the share
+is unreachable. So a unit's log lands beside its products on the share, **not** on the
+machine that produced it. Do not go looking under `%LOCALAPPDATA%`: that is
+`DailyFileHandler.default_base_dir()`, used only when a caller supplies no `base_dir`, and
+`init_log` always supplies one. Nothing in production takes that path, and on mast00 the
+directory does not exist at all. (This entry previously documented the default as though it
+were the real location; that error had already been copied into three plan documents in
+`mast-claude-config`.)
+
+`<observing-night>` is the night label, not the calendar date -- it turns at 12:00 UTC, so a
+night's records stay in one file. `<machine_role>` comes from the bootstrap config; a file
+named `mast-STARTUP-log.txt` means the record was written before the config could be read,
+which is a marker, not an error.
+
+The daily file is opened **UTF-8**. It used to take the locale encoding, which on these
+Windows machines is cp1252 -- so any degree sign, prime or arrow was dropped from the file
+while the console showed it, with only a `UnicodeEncodeError` traceback on stderr to say so.
+The two sinks disagreeing is the hazard: the file is what gets read the morning after. Fixed
+in MAST_common#63, but note the console will accept characters the file's consumers may not,
+so prefer ASCII in log messages regardless.
 
 ## Notifications (`common/notifications.py`)
 
