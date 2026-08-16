@@ -1,14 +1,11 @@
-import io
 import json
 import socket
 from copy import deepcopy
 from typing import Any
 
-import matplotlib.pyplot as plt
 import pymongo
 import pymongo.database
 from cachetools import TTLCache, cached
-from PIL import Image
 from pydantic import BaseModel
 from pymongo import MongoClient
 from pymongo.errors import PyMongoError
@@ -512,18 +509,6 @@ def test_service_config(service_name: str | None):
     result = Config().get_services()
     assert result is not None
     [print(json.dumps(service.model_dump(), indent=2)) for service in result if service.name == service_name]
-
-
-def test_users():
-    for conf in Config().get_users():
-        if conf.picture:
-            img = Image.open(io.BytesIO(conf.picture))
-            plt.imshow(img)
-            plt.axis("off")  # Hide axes
-            plt.show()
-        else:
-            print(f"no picture for user '{conf.name}'")
-        print(json.dumps(conf.model_dump(), indent=2))
 
 
 def test_user(name: str):
