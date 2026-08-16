@@ -4,6 +4,7 @@ import time
 from enum import IntFlag, auto
 from json import JSONDecodeError
 from threading import Lock
+from typing import ClassVar
 
 import httpx
 
@@ -14,15 +15,16 @@ from common.config.power import PowerSwitchConfig
 from common.config.unit import UnitConfig
 from common.interfaces.components import Component
 from common.mast_logging import get_logger
-
 from common.models.statuses import OutletStatus, PowerStatus, PowerSwitchStatus
 
 TriStateBool = bool | None
 
 logger = get_logger(__name__)
+
+
 class DliPowerSwitch(Component):
     NUM_OUTLETS: int = 8
-    _instantiated: list[str] = []
+    _instantiated: ClassVar[list[str]] = []  # shared registry of instantiated switches
 
     def __init__(self, hostname: str, ipaddr: str | None, conf: PowerSwitchConfig):
         Component.__init__(self, PowerSwitchActivities)
@@ -94,7 +96,7 @@ class DliPowerSwitch(Component):
                 # logger.error(f"timeout after {self.timeout} seconds, {url=}")
                 self._detected = False
                 return {"error": "timeout"}
-            except Exception as e:
+            except httpx.HTTPError as e:
                 # logger.error(f"exception: {e}")
                 self._detected = False
                 return {"error": f"{e}"}
@@ -118,7 +120,7 @@ class DliPowerSwitch(Component):
                 # logger.error(f"timeout after {self.timeout} seconds, {url=}")
                 self._detected = False
                 return {"error": "timeout"}
-            except Exception as e:
+            except httpx.HTTPError as e:
                 logger.error(f"exception: {e}")
                 self._detected = False
                 return {"error": f"{e}"}
@@ -140,7 +142,7 @@ class DliPowerSwitch(Component):
             # on PUT requests, even though we give the right 'value' and the switch acts upon it
             #  (changes the outlet name) - we get a JSONDecodeError
             return None
-        except Exception as e:
+        except httpx.HTTPError as e:
             logger.error(f"httpx: Exception: {e}")
             return None
 
@@ -259,7 +261,7 @@ class PowerSwitchFactory:
 
     def __new__(cls):
         if cls._factory_instance is None:
-            cls._factory_instance = super(PowerSwitchFactory, cls).__new__(cls)
+            cls._factory_instance = super().__new__(cls)
             logger.info(f"Created PowerSwitchFactory instance: id=0x{id(cls._factory_instance):08X}")
         return cls._factory_instance
 
@@ -373,7 +375,7 @@ class OutletDomain(IntFlag):
 
 
 class SwitchedOutlet:
-    valid_names = {
+    valid_names: ClassVar[dict[OutletDomain, list[str]]] = {
         OutletDomain.UnitOutlets: [
             "Mount",
             "Stage",
@@ -410,7 +412,7 @@ class SwitchedOutlet:
         ],
     }
 
-    def __init__(  # noqa: C901
+    def __init__(
         self,
         domain: OutletDomain,
         outlet_name: str,

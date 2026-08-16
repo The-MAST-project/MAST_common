@@ -7,11 +7,14 @@ import ulid
 from pydantic import BaseModel, Field
 
 from common.activities import ImagerActivities
+from common.canonical import CanonicalResponse
 from common.interfaces.components import Component
 from common.mast_logging import get_logger
-from common.models.statuses import ImagerSettings, ImagerRoi
+from common.models.statuses import ImagerBackendStatus, ImagerRoi, ImagerSettings
 
 logger = get_logger(__name__)
+
+
 class ImagerTypes(StrEnum):
     Ascom = "ascom"
     Phd2 = "phd2"
@@ -67,7 +70,6 @@ class ImagerInterface(Component, ABC):
         Check if the imager is connected.
         :return: True if connected, False otherwise
         """
-        pass
 
     @connected.setter
     @abstractmethod
@@ -76,7 +78,6 @@ class ImagerInterface(Component, ABC):
         Connect to the imager.
         This method should be called before any other methods that require a connection.
         """
-        pass
 
     @property
     @abstractmethod
@@ -84,7 +85,6 @@ class ImagerInterface(Component, ABC):
         """
         Get the camera's X size in pixels.
         """
-        pass
 
     @property
     @abstractmethod
@@ -92,16 +92,37 @@ class ImagerInterface(Component, ABC):
         """
         Get the camera's Y size in pixels.
         """
-        pass
 
     @abstractmethod
-    def start_exposure(self, settings: ImagerSettings):
+    def status(self) -> ImagerBackendStatus:
+        """What this backend reports about itself, for embedding under `ImagerStatus.backend`.
+
+        Declared here because its absence is what let the three backends drift: PHD2
+        returned a narrow `PHD2ImagerStatus` while ASCOM and ZWO returned a whole
+        `ImagerStatus`, which the `Imager` wrapper then nested inside its own -- and
+        PHD2 additionally took a `capacity=` argument the other two do not accept, so
+        `/imager/status` raised `TypeError` on both of them.
+
+        The composite is the wrapper's job. A backend answers only for itself.
+        """
+
+    @abstractmethod
+    def start_exposure(self, settings: ImagerSettings) -> CanonicalResponse:
+        pass
+
+    def require_open_exposure_series(self, settings: ImagerSettings) -> None:
+        """Precondition every backend's `start_exposure` is meant to satisfy: a series is open.
+
+        This was the body of the abstract `start_exposure`, where it has never once
+        executed -- no backend calls `super().start_exposure()`. Extracted so the
+        abstract method can declare a return type, and kept callable rather than
+        deleted so the guard can be wired up. It is **not enforced today**.
+        """
         if self.current_exposure_series is None:
             raise ValueError(
                 "ImagerInterface.start_exposure(): must call start_exposure_series() before starting an exposure"
             )
         self.latest_settings = settings
-        pass
 
     @abstractmethod
     def start_exposure_series(self, purpose: str | None = None) -> ImagerExposureSeries:
@@ -139,7 +160,7 @@ class ImagerInterface(Component, ABC):
         self.current_exposure_series = None
 
     @abstractmethod
-    def stop_exposure(self):
+    def stop_exposure(self) -> CanonicalResponse:
         pass
 
     @property
@@ -149,10 +170,9 @@ class ImagerInterface(Component, ABC):
         Check if the imager can capture images to memory.
         :return: True if the imager can capture images to memory, False otherwise
         """
-        pass
 
     @abstractmethod
-    def abort_exposure(self):
+    def abort_exposure(self) -> CanonicalResponse:
         pass
 
     @abstractmethod
@@ -183,7 +203,6 @@ class ImagerInterface(Component, ABC):
         Check if the camera cooler is currently on.
         :return: True if the cooler is on, False otherwise
         """
-        pass
 
     @cooler_on.setter
     @abstractmethod
@@ -202,7 +221,6 @@ class ImagerInterface(Component, ABC):
         Get the image data from the imager.
         This method should be called after an exposure has been taken.
         """
-        pass
 
     @property
     def full_frame(self) -> ImagerRoi:

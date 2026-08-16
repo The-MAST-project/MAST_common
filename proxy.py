@@ -110,7 +110,7 @@ class ProxyContext:
             from django.conf import settings as dj
 
             scheme = "https" if getattr(dj, "SECURE_SSL_REDIRECT", False) else "http"
-        except Exception:
+        except Exception:  # noqa: BLE001 -- django is optional here; ImproperlyConfigured is not an ImportError
             scheme = "http"
 
         return cls(

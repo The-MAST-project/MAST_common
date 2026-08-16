@@ -1,4 +1,3 @@
-import copy
 import datetime
 import io
 import logging
@@ -11,9 +10,6 @@ from rich.text import Text
 
 from common.filer import Filer
 
-# from common.utils import boxed_lines
-# from typing import List
-
 default_log_level = logging.DEBUG
 
 
@@ -23,38 +19,44 @@ class UtcFormatter(logging.Formatter):
 
     An observatory's logs are correlated with observations, which are recorded
     in UTC; a local-time stamp that does not say so is worse than useless when
-    the two are read side by side. Rollover is UTC as well, so a file's name and
-    the lines inside it agree.
+    the two are read side by side.
+
+    Note that a record's own stamp is a true UTC instant, while the directory it
+    lands in is an observing-night label (see observing_night) -- past 00:00 UTC
+    the two names differ by a day, by design.
     """
 
     converter = time.gmtime
     default_msec_format = "%s.%03dZ"
 
 
-class ConsoleFormatter(UtcFormatter):
+def observing_night(when: datetime.datetime) -> str:
     """
-    UtcFormatter that drops the 'mast.' prefix from %(name)s.
+    The observing-night label for an instant: the UTC date twelve hours earlier.
 
-    Every logger in the application carries it (get_logger enforces that), so on
-    the console it is five columns of noise on every line. The file keeps the full
-    name: there the prefix is what distinguishes our records from a library's.
+    A night spans local midnight, so a calendar date splits it in two. At this
+    site UTC midnight falls at 02:00-03:00 local -- the middle of the run -- so
+    dating by the calendar would break every night across two directories.
+    Anchoring at 12:00 UTC instead gives a night one label, that of the evening
+    it began, and rolls over at 14:00-15:00 local, in daylight.
 
-    The record is copied rather than renamed in place -- it is the same object the
-    file handler is about to format, and handlers run in registration order.
-    formatMessage() is the hook rather than format() because RichHandler calls it
-    directly when it renders a traceback itself.
+    This is the Julian Date's noon epoch, and the same convention Config uses to
+    build the night window (SiteConfig.night_window anchors on 12:00 UTC and
+    takes the next sunset), so the scheduler and the logs agree on which night a
+    record belongs to. `when` must be timezone-aware.
     """
-
-    def formatMessage(self, record: logging.LogRecord) -> str:
-        if record.name.startswith("mast."):
-            record = copy.copy(record)
-            record.name = record.name.removeprefix("mast.")
-        return super().formatMessage(record)
+    return f"{when - datetime.timedelta(hours=12):%Y-%m-%d}"
 
 
 def utc_log_time(when: datetime.datetime) -> Text:
-    """Rich's console timestamp, matching UtcFormatter's: milliseconds and a 'Z'."""
-    return Text(f"{when:%Y-%m-%d %H:%M:%S}.{when.microsecond // 1000:03d}Z")
+    """
+    Rich's console timestamp: UTC time-of-day, milliseconds and a 'Z'.
+
+    Deliberately shorter than UtcFormatter's, which keeps the date for the file:
+    the console is read live, where every line carries the same date, and the
+    daily log already states it in both the directory name and each record.
+    """
+    return Text(f"{when:%H:%M:%S}.{when.microsecond // 1000:03d}Z")
 
 
 class UtcRichHandler(RichHandler):
@@ -89,11 +91,17 @@ class UtcRichHandler(RichHandler):
 class DailyFileHandler(logging.FileHandler):
     """
     A file handler that writes to <base_dir>/<yyyy-mm-dd>/<filename> and follows
-    the date, reopening under the new directory when the day turns.
+    the observing night, reopening under the new directory when the night turns.
 
-    The date is resolved on every emit rather than baked in at construction, so
+    <yyyy-mm-dd> is an observing-night label (see observing_night), not a
+    calendar date: the directory turns at 12:00 UTC, so a night's records stay
+    in one place instead of splitting at local 02:00.
+
+    The night is resolved on every emit rather than baked in at construction, so
     a long-running service keeps rotating instead of writing to its start-up
-    day forever.
+    night forever. Rotation is lazy in the sense that it happens on the first
+    record after the turn: an idle service creates no directory until it has
+    something to say.
     """
 
     # After a failed open the share is not probed again for this long. Retrying on
@@ -115,7 +123,13 @@ class DailyFileHandler(logging.FileHandler):
         self.current_path: str | None = None
         self._next_open_attempt: float = 0.0
         if "b" not in mode:
-            encoding = io.text_encoding(encoding)
+            # UTF-8 rather than io.text_encoding's locale default: on Windows that
+            # resolves to cp1252, which cannot encode a degree sign or a double
+            # prime. The record is then lost from the file and logging prints a
+            # UnicodeEncodeError traceback to stderr for it -- observed on mast00
+            # on 2026-08-13 for a single U+2033 in a log message. The console
+            # handler has no such limit, so the two disagreed about what happened.
+            encoding = io.text_encoding(encoding or "utf-8")
         logging.FileHandler.__init__(self, filename="", delay=delay, mode=mode, encoding=encoding, errors=errors)
 
     @staticmethod
@@ -126,12 +140,11 @@ class DailyFileHandler(logging.FileHandler):
         return "/var/log/mast"
 
     def make_file_name(self) -> str:
-        # UTC, matching the timestamps written inside the file. The day turns at
-        # 00:00 UTC everywhere, so units at different sites agree on which file a
+        # The directory is an observing night, not a calendar day, so a night's
+        # records stay together (see observing_night). It turns at 12:00 UTC
+        # everywhere, so units at different sites still agree on which file a
         # record belongs to.
-        return os.path.join(
-            self.base_dir, f"{datetime.datetime.now(datetime.UTC):%Y-%m-%d}", self.leaf
-        )
+        return os.path.join(self.base_dir, observing_night(datetime.datetime.now(datetime.UTC)), self.leaf)
 
     @property
     def path(self) -> str:
@@ -141,7 +154,7 @@ class DailyFileHandler(logging.FileHandler):
     def emit(self, record: logging.LogRecord):
         try:
             self._emit(record)
-        except Exception:
+        except Exception:  # noqa: BLE001 -- a logging handler must never raise into its caller
             # A full disk or a revoked permission must not take the service down
             # with it; logging's own error path reports it instead.
             self.handleError(record)
@@ -297,19 +310,30 @@ def init_log(
         logger_.propagate = False
     level = resolve_log_level() if level is None else level
     logger_.setLevel(level)
-    role = os.getenv("MAST_PROJECT", "unknown_role")
+    # The machine role comes from the bootstrap config file (single source of
+    # truth). init_log() runs at import time, so this must not force an eager
+    # config load or raise: guard it and fall back to a STARTUP marker. Once the
+    # config is loadable (load_local_config is lru_cached), later init_log calls
+    # resolve the real role. mast-STARTUP-log.txt therefore means "logged before
+    # the config could be read" — not an error value.
+    try:
+        from common.config.local import load_local_config
+
+        role = load_local_config().machine_role
+    except Exception:  # noqa: BLE001 -- runs at import; any config problem must degrade, not raise
+        role = "STARTUP"
     file_name = f"mast-{role}-log.txt"
 
     formatter = UtcFormatter(
         "%(asctime)s - %(levelname)-8s - {%(name)s:%(funcName)s:%(threadName)s:%(thread)s} -  %(message)s"
     )
-    # The console omits %(levelname)s and %(asctime)s: RichHandler renders its own
-    # colour-coded level column, and its own time column -- leaving either in the
-    # format string printed the level twice and handed the timestamp to the message
-    # highlighter, which painted it in three colours (see UtcRichHandler).
-    console_formatter = ConsoleFormatter(
-        "{%(name)s:%(funcName)s:%(threadName)s:%(thread)s} -  %(message)s"
-    )
+    # The console carries the message and nothing else. RichHandler draws its own
+    # level and time columns (leaving %(levelname)s or %(asctime)s in the format
+    # string printed the level twice and handed the timestamp to the message
+    # highlighter, which painted it in three colours -- see UtcRichHandler), and
+    # its right-hand column already gives file:line. Logger name, function, thread
+    # name and thread id are dropped as console noise; the file keeps all four.
+    console_formatter = UtcFormatter("%(message)s")
     stream_handlers = [h for h in logger_.handlers if isinstance(h, logging.StreamHandler)]
     if not stream_handlers:
         # handler = logging.StreamHandler()

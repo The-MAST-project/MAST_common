@@ -1,0 +1,34 @@
+# Third-party packages needed to IMPORT and TEST this repo on its own.
+#
+# Deliberately not a runtime dependency manifest: as requirements-dev.txt says, this
+# repo has no standalone installation and each consumer supplies the real versions. It
+# exists so CI can import the package at all -- without it every test module guarded by
+# pytest.importorskip() would skip, and the run would report green having exercised 11
+# tests out of 201.
+#
+# Versions are those the MAST fleet is running as of 2026-08-09, so a CI failure means
+# this repo changed, not that a transitive dependency moved underneath it.
+#
+# The two production platforms are Windows (unit, spec) and Linux (control, gui); common
+# runs on both, hence the marker below rather than a second file. Darwin is development
+# only and is not built here.
+astroplan==0.10.1
+astropy==8.0.1
+cachetools==7.1.4
+fastapi==0.139.0
+httpx==0.28.1
+humanfriendly==10.0
+matplotlib==3.11.0
+numpy==2.5.1
+psutil==7.2.2
+pydantic==2.13.4
+pymongo==4.17.0
+python-ulid==3.1.0
+rich==15.0.0
+tomlkit==0.15.0
+watchdog==6.0.0
+
+# common/ascom.py imports pywintypes and win32com.client unguarded, so it is importable
+# on Windows only. Nothing under tests/ imports it; this is here so the Windows job
+# matches what the unit and spec machines actually run.
+pywin32==312; sys_platform == "win32"

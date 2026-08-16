@@ -18,7 +18,12 @@ def deep_dict_update(original: dict, update: dict):
             # that unit.
             deep_dict_update(original[key], value)
         else:
-            # Otherwise, update or add the key-value pair to the original dict
+            # Otherwise the update wins wholesale. This covers the key being
+            # absent, and equally the key being present with a non-dict value
+            # (None, a scalar, a list) under a dict update -- there is nothing
+            # to merge into, so it is replaced. Testing `key in original` here
+            # instead of the value's type would recurse into that non-dict and
+            # raise `TypeError: ... does not support item assignment`.
             original[key] = value
 
 

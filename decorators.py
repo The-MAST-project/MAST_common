@@ -3,8 +3,8 @@ Decorators for marking backend endpoints as GUI-accessible.
 This file is part of MAST_common and shared across all MAST projects.
 """
 
+from collections.abc import Callable
 from functools import wraps
-from typing import Callable
 
 
 def gui_endpoint(capability: str | None = None, description: str = "", rate_limit: int | None = None):

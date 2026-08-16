@@ -1,7 +1,7 @@
 from datetime import date, datetime
+from enum import StrEnum
 
 from pydantic import BaseModel, Field
-from enum import StrEnum
 
 
 class MoonConstraintModel(BaseModel):

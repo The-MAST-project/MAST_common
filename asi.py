@@ -1,6 +1,7 @@
 import ctypes
 from enum import IntEnum, auto
 from typing import Literal, get_args
+
 from common.mast_logging import get_logger
 
 logger = get_logger(__name__)

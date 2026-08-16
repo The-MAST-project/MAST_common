@@ -1,4 +1,4 @@
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
 import astropy.units as u
 from astroplan import Observer
@@ -96,7 +96,7 @@ class Site(BaseModel):
             return None
 
         if day is None:
-            day = date.today()
+            day = datetime.now(UTC).date()
 
         observer = Observer(
             location=EarthLocation(
@@ -106,7 +106,7 @@ class Site(BaseModel):
             )
         )
 
-        noon = Time(datetime(day.year, day.month, day.day, 12, 0, 0, tzinfo=timezone.utc))
+        noon = Time(datetime(day.year, day.month, day.day, 12, 0, 0, tzinfo=UTC))
 
         dusk = observer.sun_set_time(
             noon,
@@ -120,8 +120,8 @@ class Site(BaseModel):
         )
 
         assert isinstance(dusk, Time) and isinstance(dawn, Time)
-        window_start = dusk.to_datetime(timezone=timezone.utc)
-        window_end = dawn.to_datetime(timezone=timezone.utc)
+        window_start = dusk.to_datetime(timezone=UTC)
+        window_end = dawn.to_datetime(timezone=UTC)
 
         assert isinstance(window_start, datetime) and isinstance(window_end, datetime)
         return TimeWindow(start=window_start, end=window_end)

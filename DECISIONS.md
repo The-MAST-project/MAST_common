@@ -2,6 +2,80 @@
 
 ---
 
+
+## [2026-08-09] An imager backend's `status()` answers for itself, not for the imager
+
+**Why:** `ImagerInterface` never declared `status` at all, so each of the three
+backends invented a meaning for it. PHD2 returned a narrow `PHD2ImagerStatus` and
+took a `capacity: Literal["imager", "guider"]` argument selecting between two
+different return models; ASCOM and ZWO returned a whole `ImagerStatus` and took no
+argument. The `Imager` wrapper called `self._backend.status(capacity="imager")`
+against all three, so `/imager/status` raised `TypeError` on ASCOM and ZWO alike
+(MAST_unit#100) — a 500 on two of the three backends, silenced at the call site by
+a `# type: ignore`. Where it did not raise, it nested a full `ImagerStatus` inside
+the wrapper's own under `backend`, answering temperature, cooler, set point and
+camera size twice with only the outer copy authoritative. Nothing caught that,
+because the field was typed `object | None`.
+
+**What:** Two declarations, and the meaning follows from them.
+
+- `ImagerBackendStatus` is what a backend reports about *itself*. It derives
+  `ComponentStatus` — a backend **is** a `Component`, since `ImagerInterface`
+  derives from it — and declares only the two fields genuinely its own,
+  `identifier` and `name`. `connected`, `operational`, `why_not_operational`,
+  `activities` and `activities_verbal` all come from the base.
+  `PHD2ImagerStatus` becomes a subclass that only pins `name = "phd2"`.
+- `ImagerInterface.status() -> ImagerBackendStatus` is declared abstract, and
+  `ImagerStatus.backend` is typed `ImagerBackendStatus | None` rather than
+  `object | None`.
+
+The composite stays the `Imager` wrapper's job: it already computes the general
+fields itself and reaches into the backend separately for `set_point`. This is not
+a new pattern — the guider side has had a typed `GuiderStatus.backend:
+PHD2GuiderStatus` all along. The imager side is the one that drifted.
+
+`capacity` disappears rather than moving: PHD2's two roles become two methods
+(`status()` for the imager role, a separate accessor for guider status), which
+removes the by-kind dispatch, the union return type, both `# type: ignore`s, and a
+latent `UnboundLocalError` on an unmatched capacity. The two branches shared only
+`identifier`, so the split duplicates nothing.
+
+**Implications:** ASCOM and ZWO must stop returning `ImagerStatus` from
+`status()` — a behavioral change to what `/imager/status` reports under `backend`,
+made deliberately. Checked before making it: nothing consumes the field.
+`MAST_control` has no reference to it and every `backend` hit in `MAST_gui` is
+Django's own vocabulary. Eli confirmed the ASCOM and ZWO paths are not working
+today regardless.
+
+Deriving `ComponentStatus` also changes the backend payload, in the same
+no-readers way: it gains `type`, `detected` and `was_shut_down`, and the base's
+optionality replaces the narrower defaults — `operational` and
+`why_not_operational` default to `None` rather than `False` and `[]`, while
+`activities` defaults to `0` rather than `None`. Accepted rather than papered
+over by re-declaring the fields, since re-declaring them is exactly the
+duplication being removed.
+
+The root cause is one level up and is **not** fixed here: `Component.status()` is
+declared with no return annotation at all, which is why *every* component's status
+is free to drift. Annotating it reaches `MAST_control` and `MAST_spec`, which also
+implement `Component`, so it is deliberately sequenced behind the unit contract
+rather than done in passing — #45, enforced by MAST_unit#52. Re-parenting
+`ImagerBackendStatus` here is that issue's step 1, and the reason the base
+annotation will hold when it lands: every other component's status model already
+derives `ComponentStatus`, and the imager backends were the one exception.
+
+The former body of the abstract `start_exposure` — the "must call
+`start_exposure_series()` first" guard — moves to `require_open_exposure_series()`.
+It has never executed: no backend calls `super().start_exposure()`. It is extracted
+rather than deleted so the abstract method can declare its return type while the
+guard stays callable, but it remains **unenforced**.
+
+Related: MAST_unit#42 invariant 4 (uniform response envelope), MAST_unit#74,
+MAST_unit#100.
+
+---
+
+
 ## [2026-07-23] `ImagerRoi.verbatim()` — an unconditioned construction path
 
 **Why:** `ImagerRoi.model_post_init` conditions every rectangle (center-preserving
@@ -86,6 +160,39 @@ server and no hardware**, so it runs on any dev machine and in the unit venv:
 bench one-offs; the labcomp2 bench remains for what genuinely needs a live PHD2 or
 real camera. The suite is the durable home foreseen by the 2026-07-07 bench's
 TEST-MIGRATION plan.
+
+---
+
+## [2026-07-20] Machine role moves from the MAST_PROJECT env var into a `machine_role` field; fixed-path config.toml
+
+**Why:** the machine role was carried by the `MAST_PROJECT` environment variable,
+which every launcher (NSSM service, `.bat`, `docker-compose`, manual shell) and
+every host had to set/persist — the friction that made spec/control/gui hard to
+stand up, and the reason two apps on one box (gui + control on the controller)
+could disagree about identity. The name also collided with the *project* concept
+(`MAST_PROJECT=mast` raised `ConfigError`). A separate proposal to rename it to
+`MAST_ROLE` (MAST_common#10) only moved the collision; the topology epic proposed
+yet another `MAST_ROLE`. Epic #15 resolves all of it.
+
+**What:** `local.py` no longer reads any env var for the role. `_config_file_path()`
+returns the **fixed** path `C:\WIS\config.toml` / `/etc/wis/config.toml`
+(`MAST_CONFIG` still overrides for dev/VM/tests). `LocalConfig` gains a **required**
+`machine_role` field validated against `VALID_MACHINE_ROLES = (unit, spec, control)`
+(renamed from `VALID_ROLES`; named `machine_role` to stay distinct from the *user*
+role in `UserConfig`/`GroupConfig`). `notifications._build_initiator` and
+`mast_logging.init_log` now read `local.machine_role` instead of `os.getenv`.
+`init_log` runs at import, so it loads the role through a guarded lazy
+`load_local_config()` and falls back to `mast-STARTUP-log.txt` when the config is
+not yet readable. `machine_role` is deliberately **not** added to the DB `sites`
+cross-check (a site hosts several roles). Supersedes MAST_common#10 (closed).
+
+**Implications:** breaking bootstrap change — a machine on new code with an old
+`<role>.toml` (wrong filename, no `machine_role`) fails fast at startup, by design.
+Provisioning must write `config.toml` with an injected `machine_role` and stop
+setting the env var (epic #15 Stage 2); consumers bump the `common` submodule and
+drop their env-setters (Stage 3); the two on-site Linux hosts get an
+`/etc/wis/config.toml` placed by hand (Stage 4). The env var is fully inert
+afterward. Full plan: `docs/config-toml-role-plan.md`.
 
 ---
 
