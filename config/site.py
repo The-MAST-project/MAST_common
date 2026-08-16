@@ -6,6 +6,7 @@ from astropy.coordinates import EarthLocation
 from astropy.time import Time
 from pydantic import BaseModel, ConfigDict, model_validator
 
+from common.mast_logging import observing_night_date
 from common.models.constraints import TimeWindow
 
 
@@ -92,11 +93,25 @@ class Site(BaseModel):
         # "lamps": doc["lamps"],
 
     def observing_window(self, day: date | None = None) -> TimeWindow | None:
+        """
+        The dusk-to-dawn window of an observing night, or None without coordinates.
+
+        `day` is an observing night, not a calendar date: the window is the first
+        sunset after its 12:00 UTC anchor and the sunrise that follows.
+
+        The default was `datetime.now(UTC).date()`, the calendar date, which is the
+        night in progress only until 00:00 UTC. Past that -- 02:00-03:00 local, with
+        hours of the run still to go -- it named the *next* night, so this returned a
+        window starting the better part of a day out while the telescopes were
+        observing. From 00:00 UTC to dawn, roughly the last 1.5 hours of an August
+        night and 4 of a winter one, MAST_gui's session tile therefore reported the
+        observatory idle (MAST_common#28).
+        """
         if self.location.latitude is None or self.location.longitude is None:
             return None
 
         if day is None:
-            day = datetime.now(UTC).date()
+            day = observing_night_date(datetime.now(UTC))
 
         observer = Observer(
             location=EarthLocation(

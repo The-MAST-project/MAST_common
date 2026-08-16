@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Literal
 
 from common.filer import Filer
+from common.mast_logging import observing_night
 
 
 class PathMaker:
@@ -27,30 +28,39 @@ class PathMaker:
         return f"{seq:04d}"
 
     @staticmethod
-    def make_daily_folder_name(root: str | None = None) -> str:
+    def make_observing_night_folder(root: str | None = None) -> str:
+        """
+        <root>/<observing-night>, created if missing.
+
+        The label is an observing night (`common.mast_logging.observing_night`), not a
+        calendar day: it turns at 12:00 UTC, so a night's products stay in one folder
+        instead of splitting at 02:00-03:00 local, mid-run, and they carry the same
+        name as that night's logs.
+
+        This was `datetime.now()` -- naive LOCAL time and a calendar day -- which is
+        why the frames from the night of 2026-08-04 are filed under 2026-08-05
+        (MAST_common#28). Folders written before this change keep those names, and
+        nothing distinguishes the two conventions, since the format is identical; no
+        migration was attempted. Consumers discover the names by listing rather than
+        computing them (`MAST_control`'s `DataServer.autofocus`, and the GUI through
+        it), so they are unaffected by which convention a folder follows.
+        """
         if not root:
             ram = Filer().ram
             assert ram
             root = ram.root
-        # The suppression below is deliberate and tracked by MAST_common#28. This is naive LOCAL
-        # time, so a product written after local midnight lands under the next day --
-        # which is why the frames from the night of 2026-08-04 are filed under
-        # 2026-08-05. Two coupled changes are needed: naive local -> UTC, and calendar
-        # day -> observing night (the 12:00 UTC anchor the logs already use, #29). Both
-        # rename product folders, which planning and the GUI consume, so they land
-        # together with those consumers rather than as a lint fix.
-        d = Path(root) / datetime.datetime.now().strftime("%Y-%m-%d")  # noqa: DTZ005 -- see MAST_common#28
+        d = Path(root) / observing_night(datetime.datetime.now(datetime.UTC))
         d.mkdir(parents=True, exist_ok=True)
         return str(d)
 
     def make_exposures_folder(self, root: str | None = None) -> str:
-        folder = Path(self.make_daily_folder_name(root=root)) / "Exposures"
+        folder = Path(self.make_observing_night_folder(root=root)) / "Exposures"
         folder.mkdir(parents=True, exist_ok=True)
         return str(folder)
 
     def make_autofocus_folder(self, root: str | None = None, subfolder: str | None = None) -> str:
         """
-        <daily>[/<subfolder>]/Autofocus/<NNNN>
+        <observing-night>[/<subfolder>]/Autofocus/<NNNN>
 
         `subfolder` names the instrument being focused, and only a caller that focuses more
         than one has anything to say: MAST_spec passes the spectrograph's name, MAST_unit
@@ -68,14 +78,14 @@ class PathMaker:
         against two under <date>/highspec/Autofocus.
         """
         # Path(self.make_daily_folder_name(root=root or Filer().shared.root))
-        daily = Path(self.make_daily_folder_name(root=root or Filer().ram.root))  # type: ignore
-        autofocus_folder = (daily / subfolder if subfolder else daily) / "Autofocus"
+        night = Path(self.make_observing_night_folder(root=root or Filer().ram.root))  # type: ignore
+        autofocus_folder = (night / subfolder if subfolder else night) / "Autofocus"
         folder = autofocus_folder / self.make_seq(str(autofocus_folder))
         folder.mkdir(parents=True, exist_ok=True)
         return str(folder)
 
     def make_acquisition_folder(self, phase: str | None = None, tags: dict | None = None) -> str:
-        acquisitions_folder = Path(self.make_daily_folder_name()) / "Acquisitions"
+        acquisitions_folder = Path(self.make_observing_night_folder()) / "Acquisitions"
         acquisitions_folder.mkdir(parents=True, exist_ok=True)
         parts: list[str] = [
             f"seq={PathMaker.make_seq(folder=str(acquisitions_folder))}",
@@ -99,7 +109,7 @@ class PathMaker:
                 ram = Filer().ram
                 assert ram
                 root = ram.root
-            guiding_folder = Path(self.make_daily_folder_name(root=root)) / "Guidings"
+            guiding_folder = Path(self.make_observing_night_folder(root=root)) / "Guidings"
 
         guiding_folder.mkdir(parents=True, exist_ok=True)
         return str(guiding_folder)
@@ -112,7 +122,7 @@ class PathMaker:
                 ram = Filer().ram
                 assert ram
                 root = ram.root
-            spirals_folder = Path(self.make_daily_folder_name(root=root)) / "Spirals"
+            spirals_folder = Path(self.make_observing_night_folder(root=root)) / "Spirals"
 
         spirals_folder = spirals_folder / PathMaker().make_seq(str(spirals_folder))
         spirals_folder.mkdir(parents=True, exist_ok=True)
@@ -151,8 +161,8 @@ class PathMaker:
 
     @staticmethod
     def make_run_folder():
-        daily_run_folder = PathMaker().make_daily_folder_name(root=os.path.join(Filer().shared.root, "runs"))
-        return os.path.join(daily_run_folder, "run-" + PathMaker().make_seq(folder=daily_run_folder))
+        nightly_run_folder = PathMaker().make_observing_night_folder(root=os.path.join(Filer().shared.root, "runs"))
+        return os.path.join(nightly_run_folder, "run-" + PathMaker().make_seq(folder=nightly_run_folder))
 
     @staticmethod
     def make_spec_acquisitions_folder(spec_name: Literal["highspec", "deepspec"]):
@@ -160,7 +170,7 @@ class PathMaker:
             raise Exception(f"bad {spec_name=}, should be one of ['highspec', 'deepspec']")
         location = Filer().ram
         assert location is not None
-        folder = PathMaker().make_daily_folder_name(os.path.join(location.root))
+        folder = PathMaker().make_observing_night_folder(os.path.join(location.root))
         folder = os.path.join(folder, spec_name)
         folder = os.path.join(folder, "acquisition-" + PathMaker().make_seq(folder, None))
         os.makedirs(folder, exist_ok=True)
@@ -173,7 +183,7 @@ class PathMaker:
 
         location = Filer().ram
         assert location is not None
-        folder = PathMaker().make_daily_folder_name(os.path.join(location.root))
+        folder = PathMaker().make_observing_night_folder(os.path.join(location.root))
         folder = os.path.join(folder, spec_name, "Exposures")
         folder = os.path.join(folder, "seq=" + PathMaker().make_seq(folder, None))
         if band:
