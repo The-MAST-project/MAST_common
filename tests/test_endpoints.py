@@ -8,6 +8,9 @@ from fastapi.testclient import TestClient
 
 from common.canonical import CanonicalResponse
 from common.endpoints import (
+    OPENAPI_TAGS,
+    TIER_STABILITY,
+    TIER_TAGS,
     EndpointDeclaration,
     Stability,
     Tier,
@@ -93,7 +96,7 @@ def test_registering_an_undeclared_method_fails_at_registration():
 def test_a_declared_route_registers_and_answers():
     component = Component()
     router = APIRouter()
-    add_api_route(router, "/unit/thing/status", endpoint=component.status, tags=["Thing"])
+    add_api_route(router, "/unit/thing/status", endpoint=component.status)
 
     app = FastAPI()
     app.include_router(router)
@@ -106,9 +109,9 @@ def test_a_declared_route_registers_and_answers():
 def _schema(*, deprecated_route: bool) -> dict:
     component = Component()
     router = APIRouter()
-    add_api_route(router, "/unit/thing/status", endpoint=component.status, tags=["Thing"])
+    add_api_route(router, "/unit/thing/status", endpoint=component.status)
     if deprecated_route:
-        add_api_route(router, "/unit/thing/connect", endpoint=component.connect, tags=["Thing"])
+        add_api_route(router, "/unit/thing/connect", endpoint=component.connect)
     app = FastAPI()
     app.include_router(router)
     return app.openapi()
@@ -123,11 +126,52 @@ def test_a_deprecated_declaration_marks_the_operation_and_nothing_else():
     assert "deprecated" not in schema["paths"]["/unit/thing/status"]["get"]
 
 
-def test_tags_are_passed_through_unchanged():
-    """#39 replaces subsystem tags with the tier; this helper must not pre-empt it."""
+def test_the_tag_is_the_tier():
+    """#39: one tag per route, and it is the tier -- the path prefix already carries the layer."""
     schema = _schema(deprecated_route=False)
 
-    assert schema["paths"]["/unit/thing/status"]["get"]["tags"] == ["Thing"]
+    assert schema["paths"]["/unit/thing/status"]["get"]["tags"] == [TIER_TAGS[Tier.INTERFACE]]
+
+
+def test_a_caller_cannot_file_a_route_under_its_own_tag():
+    """No `tags` parameter at all, so a route cannot be grouped against its declaration."""
+    with pytest.raises(TypeError):
+        add_api_route(APIRouter(), "/unit/thing/status", endpoint=Component().status, tags=["Thing"])
+
+
+def test_the_tier_is_published_as_x_stability():
+    """The machine-readable half: a consumer's contract test can assert what it calls."""
+    schema = _schema(deprecated_route=True)
+
+    assert schema["paths"]["/unit/thing/status"]["get"]["x-stability"] == "interface"
+    assert schema["paths"]["/unit/thing/connect"]["get"]["x-stability"] == "operator"
+
+
+def test_a_demo_route_is_struck_through():
+    """DEMO is parked, so it renders deprecated without needing a stability of its own."""
+
+    class Demo:
+        @endpoint(tier=Tier.DEMO)
+        def dance(self):
+            return {}
+
+    router = APIRouter()
+    add_api_route(router, "/unit/mount/dance", endpoint=Demo().dance)
+    app = FastAPI()
+    app.include_router(router)
+    operation = app.openapi()["paths"]["/unit/mount/dance"]["get"]
+
+    assert operation["deprecated"] is True
+    assert operation["tags"] == [TIER_TAGS[Tier.DEMO]]
+    assert operation["x-stability"] == "demo"
+
+
+def test_every_tier_has_a_tag_a_stability_and_a_described_group():
+    """A tier added without its display metadata would raise a KeyError at registration."""
+    assert set(TIER_TAGS) == set(Tier)
+    assert set(TIER_STABILITY) == set(Tier)
+    assert [group["name"] for group in OPENAPI_TAGS] == [TIER_TAGS[tier] for tier in Tier]
+    assert all(group["description"] for group in OPENAPI_TAGS)
 
 
 def test_the_default_method_is_get():

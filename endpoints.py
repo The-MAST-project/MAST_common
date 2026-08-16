@@ -82,6 +82,54 @@ class Stability(StrEnum):
     DEPRECATED = "deprecated"
 
 
+#: Swagger group per tier. One tag per route, and it is the tier -- the path prefix already
+#: carries the layer (`/unit/<verb>` vs `/unit/<component>/<verb>`), so a subsystem tag would
+#: only repeat it while saying nothing about what a consumer may depend on.
+TIER_TAGS: dict[Tier, str] = {
+    Tier.CONTRACT: "Unit orchestration (contract)",
+    Tier.OPERATION: "Operator / diagnostic operations",
+    Tier.INTERFACE: "Component interface (contract)",
+    Tier.DEMO: "Demonstration (parked)",
+}
+
+#: The machine-readable half, published per operation as `x-stability`. A consumer's contract
+#: test can assert it calls only `contract` and `interface` routes and fail when it reaches
+#: for an operator verb -- which a human-readable tag cannot support.
+TIER_STABILITY: dict[Tier, str] = {
+    Tier.CONTRACT: "contract",
+    Tier.OPERATION: "operator",
+    Tier.INTERFACE: "interface",
+    Tier.DEMO: "demo",
+}
+
+#: `openapi_tags` for the app, in display order: importance and utility, so the operator
+#: surface sits above the uniform lifecycle verbs.
+OPENAPI_TAGS: list[dict[str, str]] = [
+    {
+        "name": TIER_TAGS[Tier.CONTRACT],
+        "description": "The programmatic surface for observing. Build clients on these.",
+    },
+    {
+        "name": TIER_TAGS[Tier.OPERATION],
+        "description": (
+            "Bespoke operator and diagnostic verbs, for driving a unit by hand. "
+            "**Not a contract** -- these may change without notice."
+        ),
+    },
+    {
+        "name": TIER_TAGS[Tier.INTERFACE],
+        "description": (
+            "The lifecycle verbs every component answers -- startup, shutdown, abort, status. "
+            "Uniform across components, and safe to build on."
+        ),
+    },
+    {
+        "name": TIER_TAGS[Tier.DEMO],
+        "description": "Demonstration routes, parked. Shown struck through; do not call them.",
+    },
+]
+
+
 @dataclass(frozen=True)
 class EndpointDeclaration:
     tier: Tier
@@ -251,21 +299,20 @@ def add_api_route(
     *,
     endpoint: Callable,
     methods: list[str] | None = None,
-    tags: list[str] | None = None,
     **kwargs: Any,
 ) -> None:
     """Register a route, refusing any handler that has not declared itself.
 
-    A drop-in for `router.add_api_route` with the same argument shape, so a component's
-    `api_router` keeps reading as a one-line-per-route index.
+    A drop-in for `router.add_api_route`, so a component's `api_router` keeps reading as a
+    one-line-per-route index.
 
     The refusal is the point. A convention that is merely documented decays -- this one
     cannot be half-applied, because a missing declaration stops the process at import rather
     than shipping an untiered endpoint.
 
-    `tags` is passed through untouched. Replacing subsystem tags with the tier is
-    MAST_unit#39's change, deliberately not made here: doing both at once would make stage
-    2's OpenAPI snapshot diff unreadable.
+    **There is no `tags` parameter.** The tag is the tier, read from the declaration, so a
+    route cannot be filed under one group and declared another. A caller still passing `tags=`
+    fails at import rather than silently overriding it.
 
     Every handler is wrapped by `enveloped()` so it answers a `CanonicalResponse` and never
     a bare value, a `None` or an escaping exception (invariant 4, MAST_unit#34 stage 3). Doing
@@ -280,8 +327,17 @@ def add_api_route(
             f"Add @endpoint(tier=Tier.<TIER>) at its definition (MAST_unit#42 invariant 10)."
         )
 
+    if "tags" in kwargs:
+        raise TypeError(f"{path}: the tag is the tier, read from the declaration -- do not pass `tags`.")
+
+    kwargs["tags"] = [TIER_TAGS[declaration.tier]]
+    kwargs["openapi_extra"] = {
+        **kwargs.get("openapi_extra", {}),
+        "x-stability": TIER_STABILITY[declaration.tier],
+    }
+
     # Additive: it puts `deprecated: true` on this operation and changes nothing else.
-    if declaration.stability is Stability.DEPRECATED:
+    if declaration.stability is Stability.DEPRECATED or declaration.tier is Tier.DEMO:
         kwargs.setdefault("deprecated", True)
 
     # Declared explicitly, not left to the wrapper's return annotation. `functools.wraps`
@@ -294,4 +350,4 @@ def add_api_route(
     # filtering the payload inside it.
     kwargs.setdefault("response_model", CanonicalResponse)
 
-    router.add_api_route(path, endpoint=enveloped(endpoint), methods=methods or ["GET"], tags=tags, **kwargs)
+    router.add_api_route(path, endpoint=enveloped(endpoint), methods=methods or ["GET"], **kwargs)
