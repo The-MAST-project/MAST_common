@@ -30,22 +30,31 @@ class UtcFormatter(logging.Formatter):
     default_msec_format = "%s.%03dZ"
 
 
-def observing_night(when: datetime.datetime) -> str:
+def observing_night_date(when: datetime.datetime) -> datetime.date:
     """
-    The observing-night label for an instant: the UTC date twelve hours earlier.
+    The observing night containing an instant: the UTC date twelve hours earlier.
 
     A night spans local midnight, so a calendar date splits it in two. At this
     site UTC midnight falls at 02:00-03:00 local -- the middle of the run -- so
-    dating by the calendar would break every night across two directories.
-    Anchoring at 12:00 UTC instead gives a night one label, that of the evening
-    it began, and rolls over at 14:00-15:00 local, in daylight.
+    dating by the calendar would break every night in two. Anchoring at 12:00 UTC
+    instead gives a night one date, that of the evening it began, and rolls over
+    at 14:00-15:00 local, in daylight.
 
-    This is the Julian Date's noon epoch, and the same convention Config uses to
-    build the night window (SiteConfig.night_window anchors on 12:00 UTC and
-    takes the next sunset), so the scheduler and the logs agree on which night a
-    record belongs to. `when` must be timezone-aware.
+    This is the Julian Date's noon epoch, and the same anchor `Site.observing_window`
+    uses to build a night's window (12:00 UTC, then the next sunset), so the
+    scheduler, the logs and the product folders agree on which night a thing
+    belongs to. `when` must be timezone-aware.
+
+    This is the one place the 12-hour anchor is written down. Three callers derived
+    it independently before, and two of them got it wrong in different ways
+    (MAST_common#28) -- so take the night from here rather than subtracting again.
     """
-    return f"{when - datetime.timedelta(hours=12):%Y-%m-%d}"
+    return (when - datetime.timedelta(hours=12)).date()
+
+
+def observing_night(when: datetime.datetime) -> str:
+    """The observing night as a `yyyy-mm-dd` label, for a directory name."""
+    return f"{observing_night_date(when):%Y-%m-%d}"
 
 
 def utc_log_time(when: datetime.datetime) -> Text:
