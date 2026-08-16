@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 from common.canonical import CanonicalResponse
 from common.endpoints import (
+    EndpointDeclaration,
     Stability,
     Tier,
     UndeclaredEndpointError,
@@ -251,3 +252,126 @@ def test_wrapping_does_not_mutate_the_handlers_own_annotations():
     enveloped(Enveloping().with_parameters)
 
     assert Enveloping.with_parameters.__annotations__ == before
+
+
+# ----------------------------------------------------------------- handlers built at registration
+
+
+class WithFactory:
+    """A component whose handler must be built after construction, not defined at import.
+
+    Stands in for MAST_unit's spiral-search endpoint: the operator-facing defaults are the
+    unit's own configured fibre position, which `Config()` has not loaded when the class body
+    runs. Binding them into a closure's signature is what puts real numbers in Swagger.
+    """
+
+    def __init__(self, configured_center: int):
+        self.configured_center = configured_center
+
+    @endpoint(tier=Tier.OPERATION, factory=True)
+    def _new_path_endpoint(self):
+        configured = self.configured_center
+
+        def new_path(steps: int, center: int = configured):
+            return {"steps": steps, "center": center}
+
+        return new_path
+
+    @endpoint(tier=Tier.OPERATION, stability=Stability.DEPRECATED, factory=True)
+    def _old_path_endpoint(self):
+        def old_path():
+            return {}
+
+        return old_path
+
+    @endpoint(tier=Tier.OPERATION, factory=True)
+    def _not_a_handler(self):
+        return {"built": "nothing callable"}
+
+
+def test_a_factory_built_handler_is_declared_and_registers():
+    """The refusal must not fire on a handler that was built rather than defined."""
+    router = APIRouter()
+
+    add_api_route(router, "/unit/thing/new_path", endpoint=WithFactory(512)._new_path_endpoint(), methods=["PUT"])
+
+    assert [route.path for route in router.routes] == ["/unit/thing/new_path"]
+
+
+def test_the_factory_itself_stays_enumerable():
+    """Invariant 10's other half: a factory endpoint must not vanish from the surface.
+
+    `declared_endpoints` walks class attributes, and the handler is not one -- so the
+    declaration has to ride on the factory as well, or #39, #40 and #52 would each read a
+    surface with a hole in it exactly where the prefix used to leave one.
+    """
+    declared = declared_endpoints(WithFactory)
+
+    assert declared["_new_path_endpoint"].tier is Tier.OPERATION
+
+
+def test_the_built_handler_carries_the_declaration_too():
+    handler = WithFactory(512)._new_path_endpoint()
+
+    assert declaration_of(handler) == EndpointDeclaration(tier=Tier.OPERATION)
+
+
+def test_the_configured_default_reaches_the_openapi_schema():
+    """The reason factories exist at all -- an import-time default could not know this."""
+    router = APIRouter()
+    add_api_route(router, "/unit/thing/new_path", endpoint=WithFactory(512)._new_path_endpoint(), methods=["PUT"])
+    app = FastAPI()
+    app.include_router(router)
+
+    parameters = app.openapi()["paths"]["/unit/thing/new_path"]["put"]["parameters"]
+    center = next(parameter for parameter in parameters if parameter["name"] == "center")
+
+    assert center["schema"]["default"] == 512
+    # Two instances, two schemas: the default is per-unit, which a signature default is not.
+    assert (
+        next(parameter for parameter in _factory_parameters(WithFactory(4096)) if parameter["name"] == "center")["schema"][
+            "default"
+        ]
+        == 4096
+    )
+
+
+def _factory_parameters(component: WithFactory) -> list[dict]:
+    router = APIRouter()
+    add_api_route(router, "/unit/thing/new_path", endpoint=component._new_path_endpoint(), methods=["PUT"])
+    app = FastAPI()
+    app.include_router(router)
+    return app.openapi()["paths"]["/unit/thing/new_path"]["put"]["parameters"]
+
+
+def test_a_factory_built_route_answers_through_the_envelope():
+    router = APIRouter()
+    add_api_route(router, "/unit/thing/new_path", endpoint=WithFactory(512)._new_path_endpoint(), methods=["PUT"])
+    app = FastAPI()
+    app.include_router(router)
+
+    with TestClient(app) as client:
+        assert client.put("/unit/thing/new_path?steps=3").json()["value"] == {"steps": 3, "center": 512}
+
+
+def test_stability_rides_through_the_factory():
+    router = APIRouter()
+    add_api_route(router, "/unit/thing/old_path", endpoint=WithFactory(512)._old_path_endpoint(), methods=["PUT"])
+    app = FastAPI()
+    app.include_router(router)
+
+    assert app.openapi()["paths"]["/unit/thing/old_path"]["put"]["deprecated"] is True
+
+
+def test_a_factory_that_returns_no_handler_is_refused_where_it_happened():
+    """Without this the failure would surface inside FastAPI, naming neither the factory nor why."""
+    with pytest.raises(UndeclaredEndpointError) as raised:
+        WithFactory(512)._not_a_handler()
+
+    assert "factory=True" in str(raised.value)
+    assert "_not_a_handler" in str(raised.value)
+
+
+def test_the_factory_keeps_its_own_identity():
+    """`functools.wraps`: a traceback through the factory must still name the factory."""
+    assert WithFactory._new_path_endpoint.__name__ == "_new_path_endpoint"

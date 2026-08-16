@@ -25,7 +25,10 @@ What a marker gives that a name cannot:
 The prefix's retirement was ratified 2026-08-10, conditional on the marker actually
 delivering the quick-find property the prefix was chosen for: one literal `@endpoint(` grep
 returns the surface exactly, with no aliases and no conditional application. Keep it that
-way -- do not add a bare `@endpoint` form, and do not wrap this decorator in another.
+way -- do not add a bare `@endpoint` form, and do not wrap this decorator in another. A
+handler built at registration time (`factory=True`, below) is declared with the same token
+for that reason: a second decorator named anything else would put a hole in the grep on day
+one.
 
 `api_router` stays the human-scannable per-component index: path and verb remain visible
 there, one line per route. Only the *tier* moves to the definition site.
@@ -89,17 +92,58 @@ class UndeclaredEndpointError(TypeError):
     """Raised at import when a route is registered on a method carrying no declaration."""
 
 
-def endpoint(*, tier: Tier, stability: Stability = Stability.STABLE) -> Callable:
+def endpoint(*, tier: Tier, stability: Stability = Stability.STABLE, factory: bool = False) -> Callable:
     """Declare a method as part of the HTTP surface, at its definition site.
 
     Keyword-only on purpose: `@endpoint(Tier.INTERFACE)` would read as a positional tier and
     invite a bare `@endpoint`, which is exactly the "one literal token finds the surface"
     property this exists to protect.
+
+    `factory=True` declares a method that **builds and returns the handler** at registration
+    time, rather than being the handler itself:
+
+        @endpoint(tier=Tier.OPERATION, factory=True)
+        def _spiral_new_path_endpoint(self):
+            def endpoint_spiral_new_path(center_x: int | None = configured_x): ...
+            return endpoint_spiral_new_path
+
+        add_api_route(router, path, endpoint=self._spiral_new_path_endpoint())
+
+    Some defaults cannot be written into a signature: a signature default is evaluated at
+    import, long before `Config()` has loaded, so binding a unit's own configured values into
+    the OpenAPI schema means building the handler in a closure after construction. That is a
+    legitimate reason for a route to reach a function that is not a class attribute -- and it
+    is also precisely the shape the `endpoint_` prefix used to hide, since a nested function
+    carries no method name to scan.
+
+    The declaration therefore rides on **both**: the factory keeps it, so the MRO scan in
+    `declared_endpoints` still enumerates the surface; and every handler the factory produces
+    is stamped with it, so `add_api_route` accepts what it is handed. One `@endpoint(` grep
+    still finds this, which is why it is a flag on the existing decorator rather than a second
+    decorator with a name of its own.
     """
+    declaration = EndpointDeclaration(tier=tier, stability=stability)
 
     def mark(function: Callable) -> Callable:
-        setattr(function, MARKER, EndpointDeclaration(tier=tier, stability=stability))
-        return function
+        if not factory:
+            setattr(function, MARKER, declaration)
+            return function
+
+        @functools.wraps(function)
+        def build(*args: Any, **kwargs: Any) -> Callable:
+            handler = function(*args, **kwargs)
+            if not callable(handler):
+                raise UndeclaredEndpointError(
+                    f"'{getattr(function, '__qualname__', function)}' is declared "
+                    f"factory=True but returned {type(handler).__name__}, not a handler."
+                )
+            setattr(handler, MARKER, declaration)
+            return handler
+
+        # `functools.wraps` has already copied the factory's `__dict__`; this is what puts the
+        # declaration on the factory itself, so it is visible to the class-attribute scan.
+        setattr(build, MARKER, declaration)
+        return build
 
     return mark
 
