@@ -255,6 +255,20 @@ class Activities:
             idle = self.activities == 0
         return idle
 
+    def await_activity_clear(self, activity: IntFlag, *, timeout: float, interval: float = 0.2) -> bool:
+        """Wait, bounded, for `activity` to clear. True if it cleared, False if it timed out.
+
+        On timeout the activity is **left set**, so the component still reports it in `status`
+        and the caller can report the failure rather than hide it.
+        """
+        deadline = time.monotonic() + timeout
+        while self.is_active(activity):
+            if time.monotonic() >= deadline:
+                logger.error(f"{caller_name()}: {activity!r} did not clear within {timeout} seconds")
+                return False
+            time.sleep(interval)
+        return True
+
     def shutdown(self):
         pass
 
@@ -317,6 +331,7 @@ class CoverActivities(IntFlag):
     Closing = auto()
     StartingUp = auto()
     ShuttingDown = auto()
+    Aborting = auto()
 
 
 class FocuserActivities(IntFlag):
@@ -324,6 +339,7 @@ class FocuserActivities(IntFlag):
     Moving = auto()
     StartingUp = auto()
     ShuttingDown = auto()
+    Aborting = auto()
 
 
 class MountActivities(IntFlag):
@@ -335,6 +351,7 @@ class MountActivities(IntFlag):
     FindingHome = auto()
     Dancing = auto()
     Moving = auto()
+    Aborting = auto()
 
 
 class StageActivities(IntFlag):

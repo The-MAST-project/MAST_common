@@ -183,6 +183,24 @@ in-progress → canceled
 
 ## Conventions
 
+### Activity flags (`common/activities.py`)
+
+The `*Activities` enums are **shared across the unit, the spectrograph and control**, and their
+members are numbered by `auto()`. The raw bitmask goes on the wire as `ComponentStatus.activities`,
+alongside the names in `activities_verbal`. Two rules follow:
+
+- **Add new members at the end.** Inserting one anywhere else renumbers every member after it, and
+  any consumer comparing `activities` numerically silently starts reading a different flag.
+- **Removing a member is a cross-repo change**, not a tidy-up — same renumbering, plus whatever
+  read the flag. Check `MAST_control` and `MAST_gui` for numeric comparisons first; if a member has
+  to go, consider replacing `auto()` with explicit powers of two in that enum so the question never
+  arises again.
+
+**Do not declare a flag before something sets it.** A member nobody starts reads, to anyone scanning
+the enum, like a completion signal a consumer can wait on — and a waiter on it never returns. An
+enum is also co-owned: a flag unused by the unit may be load-bearing for the spectrograph, so
+"nothing sets it" has to be checked fleet-wide before concluding it is dead.
+
 ### `json_schema_extra` formatting
 In `json_schema_extra` dicts on Pydantic model fields, put one key-value entry per line, and never wrap a `"tooltip": "..."` value across lines — keep the whole tooltip pair on a single line regardless of length (prevents auto-formatter line-wrapping of tooltip content).
 
