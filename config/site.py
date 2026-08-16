@@ -48,7 +48,6 @@ class Site(BaseModel):
     unit_ids: str | list[str]
 
     def normalize_unit_specifier(self, spec) -> list[str]:
-        """"""
         ret = []
         specs = []
         if isinstance(spec, list):

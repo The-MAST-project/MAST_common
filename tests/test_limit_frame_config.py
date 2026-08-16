@@ -6,7 +6,7 @@ fixed), the rectangle-matches-mode validation, and — critically — that
 existing DB ``units`` documents without the section parse unchanged, so
 landing the feature cannot alter deployed behavior.
 
-Needs the config package's import chain installed (matplotlib, pymongo, ...)
+Needs the config package's import chain installed (pymongo, astroplan, ...)
 but no Mongo server and no hardware.
 """
 
