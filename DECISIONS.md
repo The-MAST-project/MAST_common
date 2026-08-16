@@ -2,6 +2,44 @@
 
 ---
 
+## [2026-08-16] A handler built at registration declares itself with the same token
+
+**Why:** MAST_unit#117 registers a route on a closure built after construction --
+`endpoint=self._spiral_new_path_endpoint()` -- rather than on a method. The reason is sound
+and cannot be worked around: the operator-facing defaults are that unit's own configured
+fibre position, and a signature default is evaluated at import, long before `Config()` has
+loaded. Building the handler in a closure is what puts real numbers in Swagger instead of a
+placeholder. But `add_api_route` refuses any callable carrying no declaration, so the two
+collide the moment that work and MAST_unit's `eli/endpoint-contract` meet: whichever merges
+second stops the process at import.
+
+Refusing the pattern outright was the alternative, and it was rejected -- it would trade a
+real operator affordance for a mechanism's convenience. A nested function is also exactly the
+shape the `endpoint_` prefix used to hide, having no method name to scan, so the mechanism
+owes it an answer rather than a prohibition.
+
+**What:** `@endpoint(..., factory=True)` declares a method that *builds and returns* the
+handler. The declaration then rides on both halves: the factory keeps it, so
+`declared_endpoints`' class-attribute scan still enumerates the surface; and each handler the
+factory produces is stamped as it is built, so `add_api_route` accepts what it is handed. A
+factory returning something that is not callable raises `UndeclaredEndpointError` naming the
+factory, rather than failing later inside FastAPI where neither the cause nor the site is
+visible.
+
+It is a **flag on the existing decorator, not a second decorator**. The prefix's retirement
+was ratified on the condition that one literal `@endpoint(` grep returns the surface exactly;
+an `@endpoint_factory(` would not match that grep, and would put a hole in the property on
+the day it was introduced.
+
+**Implications:** invariant 10 now covers the whole surface rather than the part that happens
+to be defined at import, and the enumeration MAST_unit#39, #40 and #52 consume stays
+complete. The unit's static routes-to-declarations check learns the call form
+(`endpoint=self.<factory>()`) alongside the attribute form. Config-derived OpenAPI defaults
+become a supported pattern rather than an accident, which is likely to recur: every per-unit
+value an operator should see pre-filled in Swagger has the same import-order problem.
+
+---
+
 ## [2026-08-11] The HTTP surface is declared at the definition site, not by a name
 
 **Why:** MAST_unit's `endpoint_` prefix was meant to make a component's HTTP surface visible
