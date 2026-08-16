@@ -1,0 +1,43 @@
+# What `import common` needs at runtime.
+#
+# A manifest, not a lockfile: it declares WHICH third-party packages this package
+# imports, and deliberately pins nothing. Consumers pin, and they legitimately
+# disagree -- MAST_spec runs astropy==7.0.0 while requirements-ci.txt here pins
+# 8.0.1. A pin in this file would have to win one of those arguments; a bare name
+# does not have to.
+#
+# Why it exists: this repo has no standalone installation, so until now nothing
+# told a consumer what its environment had to cover. astroplan -- imported by
+# config/site.py, and so reached by every `import common.config` -- was missing
+# from MAST_spec's requirements and from its venv, and the failure showed up as a
+# runtime ImportError with no manifest to check it against (MAST_common#34).
+#
+# Two ways to use it from a consumer:
+#   -r ../common/requirements.txt   alongside your own pins (pip takes the pin)
+#   or just diff it against your requirements when common's imports change.
+#
+# requirements-ci.txt remains the pinned set CI installs. When you add a
+# third-party import here, add it there too -- CI installs that file, not this one.
+#
+# Package names, where they differ from the import:
+#   python-ulid -> ulid
+#   pywin32     -> pywintypes, win32com
+astroplan
+astropy
+cachetools
+fastapi
+httpx
+humanfriendly
+numpy
+psutil
+pydantic
+pymongo
+python-ulid
+rich
+tomlkit
+watchdog
+
+# ascom.py and filer.py import pywintypes / win32com unguarded, so those two
+# modules are importable on Windows only (unit and spec machines). The marker
+# keeps this file resolvable on the Linux consumers, control and gui.
+pywin32; sys_platform == "win32"

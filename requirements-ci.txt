@@ -12,6 +12,10 @@
 # The two production platforms are Windows (unit, spec) and Linux (control, gui); common
 # runs on both, hence the marker below rather than a second file. Darwin is development
 # only and is not built here.
+#
+# requirements.txt is the unpinned manifest of the same set -- what `import common`
+# needs, for consumers to check their own environments against. Keep the two in step:
+# a new third-party import belongs in both, pinned here and bare there.
 astroplan==0.10.1
 astropy==8.0.1
 cachetools==7.1.4
