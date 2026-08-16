@@ -256,22 +256,10 @@ class Activities:
         return idle
 
     def await_activity_clear(self, activity: IntFlag, *, timeout: float, interval: float = 0.2) -> bool:
-        """Wait, **bounded**, for `activity` to clear. True if it cleared, False if it timed out.
+        """Wait, bounded, for `activity` to clear. True if it cleared, False if it timed out.
 
-        Every wait on an activity flag has to be bounded, and this is the one place that decides
-        how (API design guidelines §5.2). The pattern it replaces is a bare
-        `while self.is_active(...): time.sleep(0.2)` -- MAST_unit#80 found one in `Unit.abort()`,
-        where an autofocus stop that never lands wedges the abort endpoint for the lifetime of
-        the process, with nothing in `status` to say why.
-
-        Returning False rather than raising is deliberate. A timeout here is not an error in the
-        caller: it means the hardware did not come to rest when told to, which the caller reports
-        as a canonical error while **leaving the activity set** -- so the component stays visibly
-        `Aborting` in `/status` instead of quietly claiming to be idle. That visibility is the
-        whole point of the flag.
-
-        `time.monotonic`, not wall-clock: a clock adjustment mid-wait must not extend or collapse
-        the bound.
+        On timeout the activity is **left set**, so the component still reports it in `status`
+        and the caller can report the failure rather than hide it.
         """
         deadline = time.monotonic() + timeout
         while self.is_active(activity):
@@ -343,9 +331,6 @@ class CoverActivities(IntFlag):
     Closing = auto()
     StartingUp = auto()
     ShuttingDown = auto()
-    # Appended, deliberately: members are auto()-numbered and the raw bitmask ships on the wire
-    # as ComponentStatus.activities, so inserting one anywhere but the end renumbers the members
-    # after it (MAST_unit#148).
     Aborting = auto()
 
 
@@ -354,7 +339,7 @@ class FocuserActivities(IntFlag):
     Moving = auto()
     StartingUp = auto()
     ShuttingDown = auto()
-    Aborting = auto()  # appended, not inserted -- see CoverActivities
+    Aborting = auto()
 
 
 class MountActivities(IntFlag):
@@ -366,7 +351,7 @@ class MountActivities(IntFlag):
     FindingHome = auto()
     Dancing = auto()
     Moving = auto()
-    Aborting = auto()  # appended, not inserted -- see CoverActivities
+    Aborting = auto()
 
 
 class StageActivities(IntFlag):
