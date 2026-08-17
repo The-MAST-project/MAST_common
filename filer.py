@@ -171,7 +171,7 @@ class Filer:
                 if not src.exists():
                     self.error(f"{op}: path does not exist, ignoring: '{src.as_posix()}'")
                     return
-                if src.is_dir() and not src.is_symlink() and dst.is_dir():
+                if src.is_dir() and not src.is_symlink():
                     # shutil.move onto an EXISTING directory nests instead of merging:
                     # it moves the source INTO the destination, giving `<dst>/<src.name>`.
                     # That is how mast00 grew `Acquisitions/Acquisitions` and six
@@ -179,6 +179,12 @@ class Filer:
                     # Harmless while this only ever moved files (their destination is a
                     # full path that does not exist yet); the product-relocation sweep is
                     # the first caller to pass folders, which is what exposed it.
+                    #
+                    # Every directory goes this way, not only one whose destination already
+                    # exists. `_merge_into` creates the destination anyway, and routing the
+                    # other case through `shutil.move` carried the whole tree wholesale --
+                    # sequence counter and lock claims included, which is exactly what must
+                    # stay behind.
                     self._merge_into(src, dst, op)
                 elif src.is_file() or src.is_dir() or src.is_symlink():
                     dst.parent.mkdir(parents=True, exist_ok=True)
@@ -205,9 +211,16 @@ class Filer:
         between distinct products. Those are left where they are, and reported: the
         source stays on the ram area, where the next sweep retries it, which is
         recoverable. Overwriting would not be.
+
+        Bookkeeping (see `is_bookkeeping`) is never moved, and its presence is not a
+        failure: the source folder is expected to survive holding it.
         """
         dst.mkdir(parents=True, exist_ok=True)
+        kept_bookkeeping = False
         for entry in sorted(src.iterdir()):
+            if is_bookkeeping(entry.name):
+                kept_bookkeeping = True
+                continue
             target = dst / entry.name
             entry_is_dir = entry.is_dir() and not entry.is_symlink()
             if entry_is_dir and target.is_dir():
@@ -219,6 +232,11 @@ class Filer:
                 )
             else:
                 shutil.move(entry, target)
+
+        if kept_bookkeeping:
+            # Expected, not a failure. Reporting it would fire on every sweep of every
+            # folder that has a counter -- which is all of them.
+            return
 
         # Only succeeds once everything has gone; a collision above leaves it behind on
         # purpose, so the source survives for the next sweep instead of vanishing.
@@ -365,8 +383,10 @@ class Filer:
                 continue
             # A folder is a unit of relocation only if it directly holds files. Parents of
             # such folders are left alone, so a claimed leaf cannot be carried off inside
-            # an unclaimed ancestor.
-            if any(not (f.startswith(".") and f.endswith(".lock")) for f in filenames):
+            # an unclaimed ancestor. Bookkeeping does not count: a folder holding nothing
+            # but its own sequence counter has no product to relocate, and treating it as a
+            # candidate is what made every sweep retry, and fail, forever.
+            if any(not is_bookkeeping(f) for f in filenames):
                 candidates.append(real)
 
         moved = skipped = 0
@@ -547,6 +567,33 @@ def _flatten_paths(paths) -> list[str]:
 # all. Both verified on Windows, along with the shared/exclusive and crash-release
 # behaviour -- see the measurements on #56.
 #
+
+
+#: PathMaker's per-folder sequence counter. It belongs to the tree it is maintained in and
+#: must not be relocated: the destination keeps its own, so moving it is a guaranteed
+#: collision, and taking it off the ram side mid-night would reset the numbering there.
+SEQUENCE_FILE_NAME = "seq.txt"
+
+
+def is_bookkeeping(name: str) -> bool:
+    """True for files that are the mechanism rather than the product.
+
+    Two kinds, both of which must stay where they are:
+
+    * `seq.txt` -- the sequence counter (see `SEQUENCE_FILE_NAME`).
+    * `.<name>.lock` -- a MoveGuardian claim. Ram-local by design, and possibly still held.
+
+    Without this the sweeper treated a folder containing only a counter as a relocation
+    candidate, tried to merge it every pass, and reported two errors each time: the counter
+    colliding with the destination's, then the source folder "not empty". Observed on mast00
+    on 2026-08-17 flooding the log every 30 seconds, with 19 files stranded on the ram disk.
+
+    The counter divergence that caused is the part that matters: the ram side had reached 3
+    while the share still said 1. `D:` is a RAM disk, so on reboot its counter is gone and
+    numbering restarts at 0 -- straight into the folders already on the share. The durable
+    copy that exists to prevent exactly that was the stale one.
+    """
+    return name == SEQUENCE_FILE_NAME or (name.startswith(".") and name.endswith(".lock"))
 
 
 def _folder_lock_path(real_folder: str) -> str:

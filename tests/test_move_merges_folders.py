@@ -70,7 +70,14 @@ class TestMergingRatherThanNesting:
         assert {p.name for p in spec.glob("*.fits")} == {"seq=0001.fits", "seq=0003.fits"}, (
             "both nights' products must sit in ONE spec folder"
         )
-        assert (filer.shared_path / "Acquisitions" / "seq.txt").exists()
+        # This used to assert the counter was carried across. That was wrong: the
+        # destination maintains its own, so moving it is a guaranteed collision -- observed
+        # on mast00 on 2026-08-17 erroring twice per sweep, every 30 seconds, and leaving
+        # the ram tree undrainable. It stays put.
+        assert (filer.ram_path / "Acquisitions" / "seq.txt").exists(), "the counter stays on the ram side"
+        assert not (filer.shared_path / "Acquisitions" / "seq.txt").exists(), "and is not carried across"
+        assert (filer.ram_path / "Acquisitions").exists(), "so its folder legitimately survives"
+        assert not (filer.ram_path / "Acquisitions" / acq).exists(), "but the products are gone"
 
     def test_nested_folders_merge_at_every_level(self, filer):
         write(filer.ram_path / "a" / "b" / "c" / "from_ram.txt")
