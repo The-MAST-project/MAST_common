@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from enum import IntFlag, auto
+
 import pytest
 from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
@@ -11,11 +13,13 @@ from common.endpoints import (
     OPENAPI_TAGS,
     TIER_STABILITY,
     TIER_TAGS,
+    Completion,
     EndpointDeclaration,
     Stability,
     Tier,
     UndeclaredEndpointError,
     add_api_route,
+    completion_token,
     declaration_of,
     declared_endpoints,
     endpoint,
@@ -419,3 +423,75 @@ def test_a_factory_that_returns_no_handler_is_refused_where_it_happened():
 def test_the_factory_keeps_its_own_identity():
     """`functools.wraps`: a traceback through the factory must still name the factory."""
     assert WithFactory._new_path_endpoint.__name__ == "_new_path_endpoint"
+
+
+# --------------------------------------------------------------------- completion (#43 stage 2)
+
+
+class FakeActivities(IntFlag):
+    Slewing = auto()
+    Parking = auto()
+
+
+class Timed:
+    """One handler per completion form."""
+
+    @endpoint(tier=Tier.OPERATION, completion=Completion.IMMEDIATE)
+    def read_position(self):
+        return {"position": 1000}
+
+    @endpoint(tier=Tier.OPERATION, completion=Completion.BLOCKING)
+    def stop_tracking(self):
+        return {}
+
+    @endpoint(tier=Tier.OPERATION, completion=FakeActivities.Slewing)
+    def goto(self):
+        return {}
+
+    @endpoint(tier=Tier.OPERATION)
+    def undeclared(self):
+        return {}
+
+
+def _operation(name: str) -> dict:
+    router = APIRouter()
+    add_api_route(router, f"/{name}", endpoint=getattr(Timed(), name), methods=["PUT"])
+    app = FastAPI()
+    app.include_router(router)
+    return app.openapi()["paths"][f"/{name}"]["put"]
+
+
+def test_an_immediate_operation_says_so():
+    assert _operation("read_position")["x-completion"] == "immediate"
+
+
+def test_a_blocking_operation_says_so():
+    """Category C exists -- a declaration that could only name a flag could not describe it."""
+    assert _operation("stop_tracking")["x-completion"] == "blocking"
+
+
+def test_an_activity_flag_renders_as_the_name_a_client_polls():
+    """`activities_verbal` reports bare member names, so that is what the token has to match."""
+    assert _operation("goto")["x-completion"] == "activity:Slewing"
+
+
+def test_an_undeclared_completion_publishes_nothing():
+    """Absent rather than defaulted: the contract check reports it, silence would hide it."""
+    assert "x-completion" not in _operation("undeclared")
+
+
+def test_a_composite_flag_is_refused():
+    """ "Watch these two bits" is not a completion signal a client can act on."""
+    with pytest.raises(ValueError, match="one activity flag"):
+        completion_token(FakeActivities.Slewing | FakeActivities.Parking)
+
+
+def test_a_zero_valued_idle_is_refused():
+    """`Idle = 0` names the absence of activity, not the end of one."""
+
+    class WithIdle(IntFlag):
+        Idle = 0
+        Moving = auto()
+
+    with pytest.raises(ValueError, match="exactly one activity flag"):
+        completion_token(WithIdle.Idle)
