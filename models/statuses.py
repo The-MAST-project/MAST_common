@@ -87,7 +87,15 @@ class AscomStatus(BaseModel):
 
 
 # Covers stuff
+# The values are ASCOM's, from
 # https://ascom-standards.org/Help/Developer/html/T_ASCOM_DeviceInterface_CoverStatus.htm
+#
+# They are kept even though MAST_unit's covers now speak to PWI4 rather than ASCOM, because
+# they are the vocabulary every consumer already reads. What must NOT happen is a PWI4
+# `mirrorcover.overall_state` being cast into this enum: the two overlap numerically and
+# disagree. PWI4's 0 is `Open` where this says `NotPresent`, and PWI4's 3 is `Closing` where
+# this says `Open` -- so the cast silently reports a closing cover as open. Only 1 coincides.
+# `covers.py` maps by PWI4's state NAME for exactly this reason.
 class CoversState(Enum):
     NotPresent = 0
     Closed = 1
@@ -97,7 +105,9 @@ class CoversState(Enum):
     Error = 5
 
 
-class CoverStatus(PowerStatus, AscomStatus, ComponentStatus):
+# Not an AscomStatus: the covers are driven through PWI4's `mirrorcover` API (MAST_unit#134),
+# so there is no ASCOM driver to describe. Nothing outside the model ever read the field.
+class CoverStatus(PowerStatus, ComponentStatus):
     target_verbal: str | None = None
     state: CoversState | None = None
     state_verbal: str | None = None
