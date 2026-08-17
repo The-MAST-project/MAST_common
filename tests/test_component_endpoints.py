@@ -8,6 +8,8 @@ which carries no marker of its own -- is still registered.
 
 from __future__ import annotations
 
+from enum import IntFlag, auto
+
 import pytest
 from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
@@ -15,8 +17,11 @@ from fastapi.testclient import TestClient
 from common.activities import Activities
 from common.endpoints import (
     TIER_TAGS,
+    Completion,
     Tier,
+    UndeclaredEndpointError,
     declared_endpoints,
+    endpoint,
     register_component_endpoints,
 )
 from common.interfaces.components import Component
@@ -151,3 +156,52 @@ def test_the_generator_refuses_to_emit_an_empty_surface(monkeypatch):
 
     with pytest.raises(endpoints_module.UndeclaredEndpointError):
         register_component_endpoints(APIRouter(), Thing(), "/unit/thing")
+
+
+# ------------------------------------------------------ per-component completion (#43, #157)
+
+
+class ThingActivities(IntFlag):
+    StartingUp = auto()
+
+
+class FlaggingThing(Thing):
+    """A component whose startup is asynchronous, and says so on its own implementation."""
+
+    @endpoint(tier=Tier.INTERFACE, completion=ThingActivities.StartingUp)
+    def startup(self):
+        return {"started": True}
+
+
+class ContradictingThing(Thing):
+    @endpoint(tier=Tier.OPERATION, completion=Completion.IMMEDIATE)
+    def startup(self):
+        return {}
+
+
+def _schema_for(component) -> dict:
+    router = APIRouter()
+    register_component_endpoints(router, component, "/unit/thing")
+    app = FastAPI()
+    app.include_router(router)
+    return app.openapi()["paths"]
+
+
+def test_a_component_states_how_its_own_startup_finishes():
+    """The tier is uniform across components; the completion signal is not (#157)."""
+    paths = _schema_for(FlaggingThing())
+
+    assert paths["/unit/thing/startup"]["put"]["x-completion"] == "activity:StartingUp"
+
+
+def test_a_component_that_says_nothing_keeps_the_abc_declaration():
+    paths = _schema_for(Thing())
+
+    assert "x-completion" not in paths["/unit/thing/startup"]["put"]
+    assert paths["/unit/thing/startup"]["put"]["tags"] == [TIER_TAGS[Tier.INTERFACE]]
+
+
+def test_an_override_may_not_contradict_the_tier():
+    """Refining completion is the point; re-tiering an interface verb is the drift to prevent."""
+    with pytest.raises(UndeclaredEndpointError, match="not its tier"):
+        register_component_endpoints(APIRouter(), ContradictingThing(), "/unit/thing")

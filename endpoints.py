@@ -39,8 +39,8 @@ from __future__ import annotations
 import functools
 import inspect
 from collections.abc import Callable
-from dataclasses import dataclass
-from enum import StrEnum
+from dataclasses import dataclass, replace
+from enum import IntFlag, StrEnum
 from typing import Any
 
 from fastapi import APIRouter
@@ -130,6 +130,36 @@ OPENAPI_TAGS: list[dict[str, str]] = [
 ]
 
 
+class Completion(StrEnum):
+    """How a caller learns that an operation has finished (MAST_unit#42, invariant 3).
+
+    A third form is expressed by passing an activity flag itself rather than a member of this
+    enum: the operation returns at once and the caller watches that flag clear in `status`.
+    """
+
+    IMMEDIATE = "immediate"  # finished when the response arrives
+    BLOCKING = "blocking"  # the response is withheld until the hardware is done
+
+
+def completion_token(completion: Completion | IntFlag) -> str:
+    """The `x-completion` value published for a declaration.
+
+    An activity flag renders as `activity:<Name>`, and the name is deliberately the one that
+    appears in `activities_verbal` -- the field a client actually polls.
+
+    Exactly one member: "watch these two bits" is not a signal a client can act on, and a
+    zero-valued `Idle` names the absence of activity rather than the end of one. Counting
+    members rather than checking `name` for None, because a composite IntFlag reports a joined
+    name (`"Slewing|Parking"`) rather than None.
+    """
+    if isinstance(completion, Completion):
+        return completion.value
+    members = list(completion)
+    if len(members) != 1:
+        raise ValueError(f"a completion signal must name exactly one activity flag, got {completion!r}")
+    return f"activity:{members[0].name}"
+
+
 @dataclass(frozen=True)
 class EndpointDeclaration:
     tier: Tier
@@ -138,6 +168,9 @@ class EndpointDeclaration:
     #: body. Hand-registered routes keep their verb at the registration site, where the path
     #: is; `register_component_endpoints` has no such site, so the verb travels here.
     methods: tuple[str, ...] | None = None
+    #: How the caller learns the operation finished. `None` means undeclared, which the
+    #: contract check reports rather than silently treating as immediate.
+    completion: Completion | IntFlag | None = None
 
 
 class UndeclaredEndpointError(TypeError):
@@ -150,6 +183,7 @@ def endpoint(
     stability: Stability = Stability.STABLE,
     factory: bool = False,
     methods: tuple[str, ...] | None = None,
+    completion: Completion | IntFlag | None = None,
 ) -> Callable:
     """Declare a method as part of the HTTP surface, at its definition site.
 
@@ -180,7 +214,7 @@ def endpoint(
     still finds this, which is why it is a flag on the existing decorator rather than a second
     decorator with a name of its own.
     """
-    declaration = EndpointDeclaration(tier=tier, stability=stability, methods=methods)
+    declaration = EndpointDeclaration(tier=tier, stability=stability, methods=methods, completion=completion)
 
     def mark(function: Callable) -> Callable:
         if not factory:
@@ -364,6 +398,8 @@ def _register(
         **kwargs.get("openapi_extra", {}),
         "x-stability": TIER_STABILITY[declaration.tier],
     }
+    if declaration.completion is not None:
+        kwargs["openapi_extra"]["x-completion"] = completion_token(declaration.completion)
 
     # Additive: it puts `deprecated: true` on this operation and changes nothing else.
     if declaration.stability is Stability.DEPRECATED or declaration.tier is Tier.DEMO:
@@ -404,11 +440,34 @@ def register_component_endpoints(router: APIRouter, component: Any, base_path: s
         raise UndeclaredEndpointError("the Component ABC declares no interface verbs; the generated surface would be empty.")
 
     for name, declaration in declared.items():
-        methods = list(declaration.methods or ("GET",))
+        handler = getattr(component, name)
         _register(
             router,
             f"{base_path}/{name}",
-            endpoint=getattr(component, name),
-            declaration=declaration,
-            methods=methods,
+            endpoint=handler,
+            declaration=_with_component_completion(declaration, handler, name),
+            methods=list(declaration.methods or ("GET",)),
         )
+
+
+def _with_component_completion(declaration: EndpointDeclaration, handler: Callable, name: str) -> EndpointDeclaration:
+    """Let a component state how its own implementation of an interface verb finishes.
+
+    The tier is uniform across components; the completion signal is not -- the imager's
+    `startup` returns immediately where every other component's flags `StartingUp`
+    (MAST_unit#149). So the override may **refine completion** and must not **contradict the
+    tier**, which is what keeps this from widening into general drift. The split itself is a
+    recorded gap, MAST_unit#157.
+    """
+    override = declaration_of(handler)
+    if override is None:
+        return declaration
+
+    if override.tier is not declaration.tier:
+        raise UndeclaredEndpointError(
+            f"'{name}' declares {override.tier} on the implementation but {declaration.tier} on the ABC; "
+            f"an interface verb may refine its completion, not its tier."
+        )
+    if override.completion is None:
+        return declaration
+    return replace(declaration, completion=override.completion)
