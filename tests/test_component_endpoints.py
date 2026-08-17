@@ -20,8 +20,8 @@ from common.endpoints import (
     Completion,
     Tier,
     UndeclaredEndpointError,
-    endpoint,
     declared_endpoints,
+    endpoint,
     register_component_endpoints,
 )
 from common.interfaces.components import Component
