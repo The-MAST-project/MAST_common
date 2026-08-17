@@ -134,13 +134,23 @@ OPENAPI_TAGS: list[dict[str, str]] = [
 class EndpointDeclaration:
     tier: Tier
     stability: Stability = Stability.STABLE
+    #: HTTP verbs, for a route that is **generated** rather than written in an `api_router`
+    #: body. Hand-registered routes keep their verb at the registration site, where the path
+    #: is; `register_component_endpoints` has no such site, so the verb travels here.
+    methods: tuple[str, ...] | None = None
 
 
 class UndeclaredEndpointError(TypeError):
     """Raised at import when a route is registered on a method carrying no declaration."""
 
 
-def endpoint(*, tier: Tier, stability: Stability = Stability.STABLE, factory: bool = False) -> Callable:
+def endpoint(
+    *,
+    tier: Tier,
+    stability: Stability = Stability.STABLE,
+    factory: bool = False,
+    methods: tuple[str, ...] | None = None,
+) -> Callable:
     """Declare a method as part of the HTTP surface, at its definition site.
 
     Keyword-only on purpose: `@endpoint(Tier.INTERFACE)` would read as a positional tier and
@@ -170,7 +180,7 @@ def endpoint(*, tier: Tier, stability: Stability = Stability.STABLE, factory: bo
     still finds this, which is why it is a flag on the existing decorator rather than a second
     decorator with a name of its own.
     """
-    declaration = EndpointDeclaration(tier=tier, stability=stability)
+    declaration = EndpointDeclaration(tier=tier, stability=stability, methods=methods)
 
     def mark(function: Callable) -> Callable:
         if not factory:
@@ -330,6 +340,25 @@ def add_api_route(
     if "tags" in kwargs:
         raise TypeError(f"{path}: the tag is the tier, read from the declaration -- do not pass `tags`.")
 
+    _register(router, path, endpoint=endpoint, declaration=declaration, methods=methods, **kwargs)
+
+
+def _register(
+    router: APIRouter,
+    path: str,
+    *,
+    endpoint: Callable,
+    declaration: EndpointDeclaration,
+    methods: list[str] | None = None,
+    **kwargs: Any,
+) -> None:
+    """Apply the declaration to a route and register it.
+
+    Shared by `add_api_route`, which finds the declaration on the handler, and by
+    `register_component_endpoints`, which already holds it -- the generated interface verbs are
+    declared on the ABC, so the concrete override a component supplies carries no marker of its
+    own and there is nothing on it to look up.
+    """
     kwargs["tags"] = [TIER_TAGS[declaration.tier]]
     kwargs["openapi_extra"] = {
         **kwargs.get("openapi_extra", {}),
@@ -351,3 +380,35 @@ def add_api_route(
     kwargs.setdefault("response_model", CanonicalResponse)
 
     router.add_api_route(path, endpoint=enveloped(endpoint), methods=methods or ["GET"], **kwargs)
+
+
+def register_component_endpoints(router: APIRouter, component: Any, base_path: str) -> None:
+    """Register the component-interface verbs, generated from the `Component` ABC.
+
+    A route is in the interface contract **iff it came from this generator** -- membership is
+    provable by provenance rather than by five components each remembering to register the same
+    four verbs the same way. They did not: the same verb was registered through a wrapper in one
+    component and bare in another (MAST_unit#34, #40).
+
+    The verb set is read from the ABC's own declarations, not hard-coded here, so a fifth
+    lifecycle verb is one decorated method on `Component` and no edit to this function.
+
+    Layer 2 only. `Unit` is a `Component` too, but its lifecycle verbs are the unit's
+    orchestration surface and are declared `CONTRACT`; generating them from here would re-tier
+    them to `INTERFACE` and move them in Swagger. They stay hand-registered.
+    """
+    from common.interfaces.components import Component
+
+    declared = declared_endpoints(Component)
+    if not declared:
+        raise UndeclaredEndpointError("the Component ABC declares no interface verbs; the generated surface would be empty.")
+
+    for name, declaration in declared.items():
+        methods = list(declaration.methods or ("GET",))
+        _register(
+            router,
+            f"{base_path}/{name}",
+            endpoint=getattr(component, name),
+            declaration=declaration,
+            methods=methods,
+        )
