@@ -39,7 +39,7 @@ from __future__ import annotations
 import functools
 import inspect
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import IntFlag, StrEnum
 from typing import Any
 
@@ -440,11 +440,34 @@ def register_component_endpoints(router: APIRouter, component: Any, base_path: s
         raise UndeclaredEndpointError("the Component ABC declares no interface verbs; the generated surface would be empty.")
 
     for name, declaration in declared.items():
-        methods = list(declaration.methods or ("GET",))
+        handler = getattr(component, name)
         _register(
             router,
             f"{base_path}/{name}",
-            endpoint=getattr(component, name),
-            declaration=declaration,
-            methods=methods,
+            endpoint=handler,
+            declaration=_with_component_completion(declaration, handler, name),
+            methods=list(declaration.methods or ("GET",)),
         )
+
+
+def _with_component_completion(declaration: EndpointDeclaration, handler: Callable, name: str) -> EndpointDeclaration:
+    """Let a component state how its own implementation of an interface verb finishes.
+
+    The tier is uniform across components; the completion signal is not -- the imager's
+    `startup` returns immediately where every other component's flags `StartingUp`
+    (MAST_unit#149). So the override may **refine completion** and must not **contradict the
+    tier**, which is what keeps this from widening into general drift. The split itself is a
+    recorded gap, MAST_unit#157.
+    """
+    override = declaration_of(handler)
+    if override is None:
+        return declaration
+
+    if override.tier is not declaration.tier:
+        raise UndeclaredEndpointError(
+            f"'{name}' declares {override.tier} on the implementation but {declaration.tier} on the ABC; "
+            f"an interface verb may refine its completion, not its tier."
+        )
+    if override.completion is None:
+        return declaration
+    return replace(declaration, completion=override.completion)
