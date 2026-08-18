@@ -306,7 +306,7 @@ class Config:
             ret = UnitConfig(**combined_dict)
         except Exception as ex:
             logger.error(f"get_unit: failed to parse unit configuration for {unit_name=}: {ex}")
-            raise ex
+            raise
         return ret
 
     def set_unit(
