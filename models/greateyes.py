@@ -101,7 +101,19 @@ class ProbingModel(BaseModel):
 class GreateyesSettingsModel(BaseModel):
     enabled: bool | None = True
     binning: BinningModel | None = None
-    bytes_per_pixel: Literal[1, 2, 3, 4] | None = 2
+    # 1 is not a value the hardware accepts. The greateyes SDK's own header says
+    # `bytesPerPixel [2 .. 4]` ("for cameras with 16 bit adc bytesPerPixel is always 2"),
+    # and MAST_spec's BytesPerPixel enum likewise knows only Two, Three and Four.
+    #
+    # It was permitted here, and MAST_spec's manual deepspec/expose endpoint duly sent 1 --
+    # dormant for as long as nothing in that path applied it, then `SetBitDepth(1, addr=2)
+    # (status: one ore more parameters are out of range (8))` the moment something did. A
+    # value the SDK refuses belongs nowhere in this model: rejecting it here turns that into
+    # a validation error at the API boundary instead of a hardware failure three layers in.
+    #
+    # Every deepspec camera in the ns config carries 4, so nothing in service is narrowed
+    # out by this.
+    bytes_per_pixel: Literal[2, 3, 4] | None = 2
     temp: TemperatureSettingsModel | None = None
     crop: CropModeModel | None = None
     shutter: ShutterModel | None = None
