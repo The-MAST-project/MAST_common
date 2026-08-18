@@ -108,7 +108,9 @@ class Manifest(BaseModel):
     def from_site_colon_unit(cls, site_colon_unit: str, assignment):
         site_name, unit_id = site_colon_unit.split(":")
         sites = Config().sites
-        site = [s for s in sites if site_name == s.name][0]
+        site = next((s for s in sites if site_name == s.name), None)
+        if site is None:
+            raise ValueError(f"unknown site '{site_name}' in '{site_colon_unit}', known sites: {[s.name for s in sites]}")
 
         if unit_id.isdigit():
             unit_id = f"{int(unit_id):02}"
