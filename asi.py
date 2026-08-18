@@ -31,6 +31,8 @@ class Asi294mmBinning(IntEnum):
 
     one = 1
     two = 2
+
+
 ASI_294MM_WIDTH = 8288
 ASI_294MM_HEIGHT = 5644
 ASI_294MM_DEFAULT_GAIN = 170
