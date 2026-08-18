@@ -174,9 +174,8 @@ class DailyFileHandler(logging.FileHandler):
         # open may have failed (unreachable share), or close() may have dropped the
         # stream. Without this test such a handler would take the "nothing changed"
         # path forever and write to None on every record.
-        if self.stream is None or filename != self.current_path:
-            if not self._reopen(filename):
-                return  # share still unreachable; the console handler keeps the record
+        if (self.stream is None or filename != self.current_path) and not self._reopen(filename):
+            return  # share still unreachable; the console handler keeps the record
         logging.StreamHandler.emit(self, record=record)
 
     def _reopen(self, filename: str) -> bool:

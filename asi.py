@@ -7,6 +7,32 @@ from common.mast_logging import get_logger
 logger = get_logger(__name__)
 ASI_294MM_SUPPORTED_BINNINGS_LITERAL = Literal[1, 2]  # the binnings implemented by the camera firmware
 ASI_294MM_SUPPORTED_BINNINGS_SET = set(get_args(ASI_294MM_SUPPORTED_BINNINGS_LITERAL))
+
+
+class Asi294mmBinning(IntEnum):
+    """The same two binnings, for use as an HTTP **query parameter**.
+
+    `ASI_294MM_SUPPORTED_BINNINGS_LITERAL` cannot be one. Query values arrive as strings and
+    pydantic will not coerce `"1"` into `Literal[1, 2]`, so every request carrying an
+    explicitly-supplied binning is rejected before the handler runs:
+
+        {'type': 'literal_error', 'loc': ('query', 'binning'),
+         'msg': 'Input should be 1 or 2', 'input': '1'}
+
+    That made `binning` unusable on four MAST_unit endpoints -- it could only be omitted,
+    never set, so bin 2 was unreachable over HTTP. An IntEnum accepts `"1"`, still rejects
+    `"3"`, and keeps the two values in the OpenAPI schema.
+
+    Interchangeable with the literal everywhere else: members ARE ints, so they satisfy a
+    `Literal[1, 2]` field (`ImagerSettings.binning` takes one unchanged) and serialise as a
+    bare `1`. The literal stays for config models and internal signatures, where values come
+    from TOML as ints and the coercion problem does not arise.
+    """
+
+    one = 1
+    two = 2
+
+
 ASI_294MM_WIDTH = 8288
 ASI_294MM_HEIGHT = 5644
 ASI_294MM_DEFAULT_GAIN = 170

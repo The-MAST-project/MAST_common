@@ -19,6 +19,25 @@ from common.utils import function_name
 logger = get_logger(__name__)
 
 
+def resolve_site(site_name: str | None) -> Site:
+    """The `Site` named `site_name`, or the local site when no name is given.
+
+    Raises `ValueError` naming the offender, rather than leaving the caller with a bare
+    `IndexError`/`AssertionError` that says nothing about which site was wanted.
+    """
+    if not site_name:
+        site = Config().local_site
+        if site is None:
+            raise ValueError(f"no site named '{Config().local.site}' (from the config file) in the 'sites' collection")
+        return site
+
+    sites = Config().get_sites()
+    site = next((s for s in sites if s.name == site_name), None)
+    if site is None:
+        raise ValueError(f"unknown site '{site_name}', known sites: {[s.name for s in sites]}")
+    return site
+
+
 class ApiDomain(Enum):
     Unit = auto()
     Spec = auto()
@@ -352,17 +371,13 @@ class SpecApi(BaseApi):
         if self._initialized:
             return
 
-        if site_name:
-            site = [s for s in Config().get_sites() if s.name == site_name][0]
-        else:
-            site: Site | None = Config().local_site
+        site = resolve_site(site_name)
 
         service_conf = Config().get_service(service_name="spec")
         if service_conf is None:
             logger.error("Spec service configuration not found")
             return
         port = service_conf.port
-        assert site is not None
         super().__init__(hostname=site.spec_host, port=port, domain=ApiDomain.Spec)
         self._initialized = True
 
@@ -380,17 +395,13 @@ class ControllerApi(BaseApi):
         if self._initialized:
             return
 
-        if site_name:
-            site = [s for s in Config().get_sites() if s.name == site_name][0]
-        else:
-            site: Site | None = Config().local_site
+        site = resolve_site(site_name)
 
         service_conf = Config().get_service(service_name="control")
         if service_conf is None:
             logger.error("Control service configuration not found")
             return
         port = service_conf.port
-        assert site is not None
         super().__init__(hostname=site.controller_host, port=port, domain=ApiDomain.Control)
         self._initialized = True
 
@@ -413,11 +424,7 @@ class NotificationApi(BaseApi):
     def __init__(self, site_name: str | None = None):
         if self._initialized:
             return
-        if site_name:
-            site = [s for s in Config().get_sites() if s.name == site_name][0]
-        else:
-            site = Config().local_site
-        assert site is not None
+        site = resolve_site(site_name)
 
         service_conf = Config().get_service(service_name="control")
         if service_conf is None:
@@ -457,19 +464,12 @@ class SafetyApi(BaseApi):
         if self._initialized:
             return
 
-        site: Site | None = None
-        if site_name:
-            found = [s for s in Config().sites if s.name == site_name]
-            if found:
-                site = found[0]
-        else:
-            site = Config().local_site
+        site = resolve_site(site_name)
         service_conf = Config().get_service(service_name="safety")
 
         if port is None and service_conf is not None:
             port = service_conf.port
 
-        assert site is not None
         if ipaddr is None:
             if hostname is None:
                 hostname = f"{site.project}-{site.name}-safety"

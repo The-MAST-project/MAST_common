@@ -274,17 +274,13 @@ class Config:
         if unit_name not in [unit["name"] for unit in units]:
             return None
 
-        common_config = unit_config = None
-        try:
-            common_config = [unit for unit in units if unit["name"] == "common"][0]
-        except Exception as ex:
-            raise ValueError("get_unit: 'common' unit configuration not found") from ex
+        common_config = next((unit for unit in units if unit.get("name") == "common"), None)
+        if common_config is None:
+            raise ValueError("get_unit: 'common' unit configuration not found")
 
-        try:
-            found = [unit for unit in units if unit["name"] == unit_name]
-            unit_config = found[0]
-        except IndexError:
-            unit_config = None  # we may not hve a unit-specific entry in the DB
+        # None is legitimate here: a unit may have no unit-specific entry in the DB,
+        # in which case it is entirely described by 'common'.
+        unit_config = next((unit for unit in units if unit.get("name") == unit_name), None)
 
         combined_dict: dict = deepcopy(common_config)
         if unit_config:
@@ -306,7 +302,7 @@ class Config:
             ret = UnitConfig(**combined_dict)
         except Exception as ex:
             logger.error(f"get_unit: failed to parse unit configuration for {unit_name=}: {ex}")
-            raise ex
+            raise
         return ret
 
     def set_unit(
@@ -330,10 +326,11 @@ class Config:
         if not self._verify_unit_site_membership(site_name, unit_name):
             raise ValueError(f"{function_name()}: cannot set unit config, invalid site/unit membership")
 
-        # Find the 'common' unit config for diffing
-        try:
-            common_conf_dict = [unit for unit in self.db["units"] if unit["name"] == "common"][0]
-        except (IndexError, KeyError):  # no 'common' entry, or no 'units' collection at all
+        # Find the 'common' unit config for diffing.
+        # `.get` covers the case of no 'units' collection at all; `next(..., None)` the case
+        # of a collection without a 'common' entry.
+        common_conf_dict = next((unit for unit in self.db.get("units", []) if unit.get("name") == "common"), None)
+        if common_conf_dict is None:
             logger.error(f"{function_name()}: 'common' unit configuration not found")
             raise ValueError(f"{function_name()}: 'common' unit configuration not found")
 
@@ -443,7 +440,7 @@ class Config:
         user_configs: list[UserConfig] = []
 
         all_group_configs: list[GroupConfig] = [GroupConfig(**group) for group in self.fetch_config_section("groups")]
-        all_group_names = [group.name for group in all_group_configs]
+        group_config_by_name: dict[str, GroupConfig] = {group.name: group for group in all_group_configs}
 
         for user_dict in all_user_dicts:
             user_dict["capabilities"] = []
@@ -453,10 +450,10 @@ class Config:
                 user_config.groups.append("everybody")
 
             for group_name in user_config.groups:
-                if group_name not in all_group_names:
+                grp = group_config_by_name.get(group_name)
+                if grp is None:
                     logger.warning(f"unknown group '{group_name}' for user '{user_config.name}', ignored!")
                     continue
-                grp = [group_config for group_config in all_group_configs if group_config.name == group_name][0]
                 for cap in grp.capabilities or []:
                     user_config.capabilities.append(cap)
 

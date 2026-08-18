@@ -63,11 +63,10 @@ def parse_units(specifiers: list[str] | str) -> list[str]:
                     continue
 
             if site_name:
-                if site_name not in [s.name for s in sites]:
+                site = next((s for s in sites if s.name == site_name), None)
+                if site is None:
                     logger.error(f"{op}: Invalid site: '{site_name}', defined sites: {[s.name for s in sites]}")
                     continue
-                else:
-                    site = [s for s in sites if s.name == site_name][0]
             else:
                 site = local_site
                 site_name = site.name

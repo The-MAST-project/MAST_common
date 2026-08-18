@@ -216,8 +216,26 @@ class ImagerInterface(Component, ABC):
     def full_frame(self) -> ImagerRoi:
         """
         Get the full frame ROI of the imager.
+
+        `verbatim`, so the whole sensor is returned unchanged. The ordinary constructor
+        CONDITIONS the rectangle, and conditioning is not idempotent (MAST_common#17): it
+        loses 16 columns and 4 rows per pass and walks the origin inward, so a value that
+        goes round more than once ratchets --
+
+            sensor  8288 x 5644  ->  8272 x 5640 @7,1  ->  8256 x 5636 @14,2  ->  ...
+
+        Observed on mast00 on 2026-08-17 as three call sites disagreeing about the "full"
+        frame: acquisition at 8288x5644, the spiral at 8272x5640 (one pass), and
+        `/unit/expose` at 8240x5632@21,3 (three). Each spiral exposure re-conditions and
+        re-sends this as PHD2's limit frame, so it shrinks as a session runs.
+
+        Conditioning buys nothing here in any case: the constraints it enforces are width
+        mod 8 and height mod 2, and the full sensor already satisfies both (8288/8 = 1036,
+        5644/2 = 2822). And `verbatim`'s own docstring names PHD2's `set_limit_frame` as the
+        consumer that must receive the rectangle exactly as configured -- which is precisely
+        what this feeds.
         """
         if self.camera_x_size is None or self.camera_y_size is None:
             raise ValueError("Camera X and Y sizes must be set before getting full frame ROI")
 
-        return ImagerRoi(x=0, y=0, width=self.camera_x_size, height=self.camera_y_size)
+        return ImagerRoi.verbatim(x=0, y=0, width=self.camera_x_size, height=self.camera_y_size)
