@@ -88,7 +88,13 @@ class ReadoutModel(BaseModel):
     mode: ReadoutAmplifiers
     speed: ReadoutSpeed
 
+    # `cls` and the explicit @classmethod are load-bearing, not style: pydantic raises
+    # `PydanticUserError: @field_validator cannot be applied to instance methods` at CLASS
+    # DEFINITION time, so a first parameter named `self` breaks every import of this module
+    # -- and with it the whole spec service. ruff's N805 ("first argument should be named
+    # self") fires on validators written the correct way; the @classmethod stops it asking.
     @field_validator("mode")
+    @classmethod
     def readout_validator(cls, value):
         return value
 
@@ -113,11 +119,12 @@ class GreateyesSettingsModel(BaseModel):
     #
     # Every deepspec camera in the ns config carries 4, so nothing in service is narrowed
     # out by this.
-    bytes_per_pixel: Literal[2, 3, 4] | None = 2
+    bytes_per_pixel: Literal[2, 3, 4] | None = None
+    gain: GainSettingModel | None = None
+    readout: ReadoutModel | None = None
     temp: TemperatureSettingsModel | None = None
     crop: CropModeModel | None = None
     shutter: ShutterModel | None = None
-    readout: ReadoutModel | None = None
     probing: ProbingModel | None = None
     exposure_duration: float | None = None
     number_of_exposures: int | None = 1
