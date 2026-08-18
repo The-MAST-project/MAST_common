@@ -367,7 +367,7 @@ def init_log(
     if not daily_handlers:
         handler = DailyFileHandler(
             filename=file_name,
-            base_dir=Filer().accessible_shared_root(),
+            base_dir=Filer().machine_log_root(),
             mode="a",
         )
 

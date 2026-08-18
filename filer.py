@@ -114,11 +114,19 @@ class Filer:
             # is unmapped would put shared artifacts on a local disk under a name that
             # says otherwise -- the failure that lost frames on 2026-07-14.
             self.share_root = Location("Z:/", "MAST/")
+            # Already <share>/<hostname> here (or the C:/MAST/ fallback, which is this
+            # machine's disk and so is per-machine by construction).
+            self.machine = self.shared
         elif sys == "Linux":
             self.local = Location(None, "/Storage/mast-share/MAST")
             self.shared = self.local
             self.ram = None
             self.share_root = self.local
+            # Stated explicitly, because `shared` is the share ROOT on Linux with no
+            # hostname component -- so anything per-machine derived from it lands at the
+            # top of the share, beside every machine's folder instead of inside one.
+            # mast-ns-control's logs did exactly that for 89 nights (2025-10-28..2026-08-06).
+            self.machine = Location(None, f"/Storage/mast-share/MAST/{socket.gethostname().split('.')[0]}")
 
         self.tops = {
             FilerTop.Local: self.local,
@@ -131,6 +139,22 @@ class Filer:
         """`shared.root` if the share is reachable, else `local.root`.
         On Linux the two are identical, so this is a harmless no-op there."""
         return self.shared.root if is_accessible(self.shared.root) else self.local.root
+
+    def machine_log_root(self) -> str:
+        """`<share>/<hostname>` if the share is reachable, else `local.root`.
+
+        Distinct from `accessible_shared_root()`, which is NOT per-machine on Linux: there
+        `shared.root` is the share root itself, so a Linux host writing under it puts its
+        night folders at the top of the share rather than in its own folder. That is how
+        mast-ns-control ended up owning 89 `<date>` folders beside `plans/` and `tasks/`,
+        while every Windows machine nested correctly under its own name.
+
+        The reachability probe is on `share_root`, not on the returned path: this machine's
+        folder legitimately does not exist yet the first time it logs, and `is_accessible`
+        answers "is a directory there", so probing the target itself would send a new
+        machine's logs to the local disk forever. The caller creates the directory.
+        """
+        return self.machine.root if is_accessible(self.share_root.root) else self.local.root
 
     def info(self, msg):
         if self.logger:
