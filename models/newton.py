@@ -1,4 +1,4 @@
-from enum import Enum
+from enum import Enum, StrEnum
 from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
@@ -7,6 +7,23 @@ from common.config.power import PowerSwitchConfig
 from common.config.shutter import ShutterConfig
 
 NewtonAmplifierMode = Literal["em", "conventional"]
+
+
+class NewtonHSSpeed(StrEnum):
+    """The horizontal shift speeds the Newton offers, as the config and the API name them.
+
+    Here rather than in MAST_spec so the database, the config model and the endpoint all
+    validate against one definition -- the same reason NewtonAmplifierMode lives here.
+    MAST_spec maps these to the SDK's speed indices (0, 1, 2), which is the order the
+    camera reports them in: GetHSSpeed says [3.0, 1.0, 0.05] MHz for both amplifiers.
+
+    Being a StrEnum, the VALUE is what a document must carry -- "0.05 MHz", not the
+    member name.
+    """
+
+    MHz_3_0 = "3.0 MHz"
+    MHz_1_0 = "1.0 MHz"
+    MHz_0_05 = "0.05 MHz"
 
 
 class CoolerMode(Enum):
@@ -62,6 +79,10 @@ class NewtonSettingsConfig(BaseModel):
     amplifier_mode: NewtonAmplifierMode = "conventional"  # Default amplifier mode
     em_gain: int = 254  # Default EM gain value
     pre_amp_gain: int = 0  # Default pre-amplifier gain value
+    # The slowest speed, which is what every exposure has used. It was hardcoded in
+    # MAST_spec -- the one camera setting with nowhere to be configured -- so this is the
+    # value that was already in force, now stated somewhere it can be changed.
+    horizontal_shift_speed: NewtonHSSpeed = NewtonHSSpeed.MHz_0_05
     temperature: NewtonTemperatureConfig | None = None
     camera_enabled: bool = True
 
