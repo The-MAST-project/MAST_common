@@ -214,15 +214,29 @@ class DliPowerSwitch(Component):
         return self.abort()
 
     @property
+    def reachable(self) -> bool | None:
+        return self.detected
+
+    @property
+    def deployed(self) -> bool | None:
+        # A switch has nothing to deploy: it is usable the moment it answers. `True` rather than
+        # `None` so it does not hold its unit below `operational` waiting for a motion it does
+        # not have.
+        return True
+
+    @property
+    def why_not_reachable(self) -> list[str] | None:
+        if self.detected:
+            return []
+        return [f"power-switch: {self} not detected"]
+
+    @property
     def why_not_operational(self) -> list[str]:
-        errors = []
-        if not self.detected:
-            errors.append(f"power-switch: {self} not detected")
-        return errors
+        return list(self.why_not_reachable or []) + list(self.why_not_deployed or [])
 
     @property
     def operational(self) -> bool:
-        return self.detected
+        return bool(self.reachable) and bool(self.deployed)
 
     def endpoint_status(self) -> PowerSwitchStatus:
         return self.status()

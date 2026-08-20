@@ -76,6 +76,39 @@ class Component(ABC, Activities):
     def why_not_operational(self) -> list[str]:
         pass
 
+    # The two halves of `operational`, and the reasons behind each. Concrete and `None` by
+    # default so a component can adopt them one at a time: an unmigrated component keeps
+    # answering `operational` exactly as it does today and reports `None` here, which reads as
+    # "does not say" rather than as "no". Nothing in the ABC derives `operational` from these --
+    # a migrated component states the conjunction itself, so there is no path where the default
+    # and the override can call each other.
+    @property
+    def reachable(self) -> bool | None:
+        """Whether the component could accept a command: powered, enumerated, connected, answering.
+
+        Everything a machine needs in order to *report on itself* belongs here, and nothing that
+        moves anything. That is the boundary an explicit hardware startup is gating, so the terms
+        that make this true are exactly the ones permitted before it (MAST_unit#132, #144).
+        """
+        return None
+
+    @property
+    def deployed(self) -> bool | None:
+        """Whether the commanded end state has been reached: covers open, axes enabled, at a preset.
+
+        A component with nothing to deploy answers `True` rather than `None` -- there is no motion
+        to wait for, so it is not holding the machine back.
+        """
+        return None
+
+    @property
+    def why_not_reachable(self) -> list[str] | None:
+        return None
+
+    @property
+    def why_not_deployed(self) -> list[str] | None:
+        return None
+
     @property
     @abstractmethod
     def detected(self) -> bool:
