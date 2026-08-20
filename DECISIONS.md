@@ -304,6 +304,50 @@ malformed TOML, DB drift) each raised `ConfigError` and exited non-zero.
 
 ---
 
+## [2026-07-03] PHD2 guide-star exclusion region becomes persisted configuration (`phd2.exclude_region`)
+
+**Why:** Guiding must be able to lock *before* the FCU fold mirror is inserted, on
+stars the mirror will not occult. A guide star must pass PHD2's selection
+gates (unsaturated, SNR/mass minimums, HFD window), and MAST's strong coma smears
+the outer field, so surviving candidates cluster in the low-coma center of the
+frame — exactly the zone the mirror covers; selection is quality-biased toward
+the stars guaranteed to be lost. The custom PHD2 `set_exclude_region` API (MAST build
+`2.6.14dev1mastbuild4`) excludes a rectangle from guide-star auto-selection; the
+rectangle (mirror shadow + safety margin) is per-unit geometry and therefore
+belongs in the config DB, not in code.
+
+**What:** Added `ExcludeRegionConfig` to `config/phd2.py` and a
+`PHD2Config.exclude_region` field, shaped like `LimitFrameConfig`: a `mode`
+discriminator (`off` | `fixed`) naming the outcome directly, the rectangle in
+unbinned camera pixels, a `has_roi` accessor, the per-unit `depth` / `pad_px`
+knobs with their `derived_from_*` derivation record, and `json_schema_extra` UI
+metadata gated on `CAN_CHANGE_CONFIGURATION`. Two deliberate differences from the
+limit frame:
+
+- **`off` is the default and there is no `derived` counterpart** — unlike the limit
+  frame there is no sensible fallback rectangle; the mirror shadow must be measured
+  per unit before the feature can do anything but harm.
+- **A rectangle configured under `off` is legal, not a contradiction.** For the limit
+  frame a rect under a non-`fixed` mode is rejected so it can never be silently
+  ignored. Here that pair is the intended workflow: the shadow-measurement tool
+  writes each unit's band and derivation record as soon as it is measured, and the
+  region is switched on later, per unit. Rejecting it would force an operator to
+  delete a measurement in order to disable the feature, and would make "measured but
+  not yet enabled" inexpressible. `mode` alone decides what is sent.
+
+**Implications:** Existing DB documents parse unchanged (absent section ⇒ `off`).
+Consumers (`MAST_unit`'s `PHD2Connector.guide`) send `set_exclude_region` before
+every `guide` RPC — the rect under `fixed`, an explicit reset under `off` —
+mirroring the limit-frame set-or-reset discipline. The set call requires the
+mastbuild4 PHD2 build and fails loudly on older builds; the reset tolerates the
+method being absent (an older build has no exclusion state to reset). Real-sky
+validation on a provisioned unit rig is still pending; until then the safe state is
+the default (`off`). Guarded by `tests/test_exclude_region_config.py`: the mode
+contract, the `off`-with-rectangle asymmetry, the depth/pad staleness matrix, and
+legacy-document compatibility.
+
+---
+
 ## [2026-07-02] PHD2 limit frame becomes persisted configuration (`phd2.limit_frame`)
 
 **Why:** Whether PHD2 confines guide-star selection to a limit frame — and which
