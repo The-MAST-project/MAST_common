@@ -161,4 +161,8 @@ class Component(ABC, Activities):
             operational=self.operational,
             why_not_operational=self.why_not_operational,
             was_shut_down=self.was_shut_down,
+            reachable=self.reachable,
+            deployed=self.deployed,
+            why_not_reachable=self.why_not_reachable,
+            why_not_deployed=self.why_not_deployed,
         )

@@ -210,3 +210,21 @@ def test_the_power_switch_is_pure_presence():
     assert switch.reachable is False
     assert switch.operational is False
     assert switch.why_not_operational == ["power-switch: [mastps01:10.23.2.101] not detected"]
+
+
+def test_the_halves_reach_the_wire_through_component_status():
+    """One construction site, so a component that answers them cannot fail to publish them."""
+    status = Migrated(reachable=True, deployed=False).component_status()
+
+    assert status.reachable is True
+    assert status.deployed is False
+    assert status.why_not_deployed == ["migrated: not at a preset"]
+    assert status.operational is False
+
+
+def test_an_unmigrated_component_publishes_unreported_halves():
+    status = Unmigrated(operational=True).component_status()
+
+    assert status.reachable is None
+    assert status.deployed is None
+    assert status.operational is True
