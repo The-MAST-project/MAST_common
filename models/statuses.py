@@ -1,4 +1,5 @@
 import datetime
+from collections.abc import Iterable
 from enum import Enum, StrEnum
 from pathlib import Path
 from typing import Any
@@ -31,6 +32,65 @@ class PowerStatus(BaseModel):
     powered: bool = False
 
 
+class LifecycleState(StrEnum):
+    """Where a machine sits between "the process is up" and "the hardware is deployed".
+
+    `operational` alone cannot express the middle: it is the conjunction of being reachable
+    (powered, enumerated, connected, the driver answering) and being deployed (the end state
+    of a commanded motion), so a machine that has connected to everything and commanded
+    nothing reports `operational: false` with reasons that read like faults -- indistinguishable
+    from one whose hardware is broken (MAST_unit#144).
+
+    The two halves are independent, so the state space is their product rather than a chain:
+    `connect` / `disconnect` moves between unreachable and standby, `startup` / `shutdown`
+    between standby and operational.
+
+    Derived, never stored. A stored state is a second truth about the hardware alongside the
+    devices themselves, and the two drift.
+    """
+
+    Unreachable = "unreachable"
+    Standby = "standby"
+    Operational = "operational"
+    Faulted = "faulted"
+
+
+#: The ladder the aggregation walks. `Faulted` is deliberately absent: it is absorbing rather
+#: than ranked, so one faulted component makes the whole aggregate faulted regardless of the rest.
+_LIFECYCLE_RANK: dict[LifecycleState, int] = {
+    LifecycleState.Unreachable: 0,
+    LifecycleState.Standby: 1,
+    LifecycleState.Operational: 2,
+}
+
+
+def component_lifecycle_state(reachable: bool | None, deployed: bool | None) -> LifecycleState:
+    """The state one component's two predicates describe.
+
+    `deployed` while not `reachable` is a contradiction rather than a degree -- a commanded end
+    state reported by something that cannot be reached is a reporting fault, not a position.
+    """
+    if not reachable:
+        return LifecycleState.Faulted if deployed else LifecycleState.Unreachable
+    return LifecycleState.Operational if deployed else LifecycleState.Standby
+
+
+def aggregate_lifecycle_state(states: Iterable[LifecycleState]) -> LifecycleState:
+    """Weakest-wins over the components a machine requires.
+
+    Weakest rather than an average or a majority: a machine is only as usable as its least
+    usable required part, and reporting otherwise is how a half-deployed unit comes to look
+    ready for work. An empty set is `Unreachable` -- nothing has been reached, which is the
+    opposite of what `all([])` would say.
+    """
+    states = list(states)
+    if not states:
+        return LifecycleState.Unreachable
+    if LifecycleState.Faulted in states:
+        return LifecycleState.Faulted
+    return min(states, key=lambda state: _LIFECYCLE_RANK[state])
+
+
 class BaseStatus(BaseModel):
     """Base class for elements that can be detected/not-detected and operational/not-operational."""
 
@@ -38,6 +98,13 @@ class BaseStatus(BaseModel):
     detected: bool | None = None
     operational: bool | None = None
     why_not_operational: list[str] | None = None
+    #: `None` means "this component does not report the two halves yet", which is distinct from
+    #: `False`. Only a migrated component answers them; `operational` stays authoritative for
+    #: every consumer either way (see `LifecycleState`).
+    reachable: bool | None = None
+    deployed: bool | None = None
+    why_not_reachable: list[str] | None = None
+    why_not_deployed: list[str] | None = None
 
 
 class ComponentStatus(BaseStatus):
