@@ -154,7 +154,7 @@ class DliPowerSwitch(Component):
         try:
             idx = self.outlet_names.index(outlet_name)
         except ValueError:
-            raise
+            raise ValueError(f"{self}: no outlet named '{outlet_name}' (have {self.outlet_names})") from None
 
         result = self.get(f"restapi/relay/outlets/{idx}/state/")
         if isinstance(result, dict) and "error" in result:
@@ -176,7 +176,7 @@ class DliPowerSwitch(Component):
         try:
             idx = self.outlet_names.index(outlet_name)
         except ValueError:
-            raise
+            raise ValueError(f"{self}: no outlet named '{outlet_name}' (have {self.outlet_names})") from None
 
         self.put(url=f"restapi/relay/outlets/{idx}/state/", data={"value": state})
 
@@ -526,7 +526,7 @@ class SwitchedOutlet:
         elif domain == OutletDomain.SpecOutlets:
             conf = Config().get_specs().power_switch
             for switch_name in conf:
-                if all([outlet_name in conf[switch_name].outlets.values() for outlet_name in outlet_names]):
+                if all(outlet_name in conf[switch_name].outlets.values() for outlet_name in outlet_names):
                     return PowerSwitchFactory.get_instance(name=switch_name)
 
         raise ValueError(f"{op}: Cannot create power switch for {domain=}, {outlet_names=}, {unit_name=}")
@@ -551,7 +551,7 @@ class SwitchedOutlet:
         if self.power_switch is None:
             return None
 
-        return all([self.power_switch.get_outlet_state(name) for name in self.outlet_names])
+        return all(self.power_switch.get_outlet_state(name) for name in self.outlet_names)
 
     def power_on_or_off(self, new_state: bool):
         from common.utils import caller_name
