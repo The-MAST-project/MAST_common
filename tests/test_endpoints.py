@@ -138,9 +138,17 @@ def test_the_tag_is_the_tier():
 
 
 def test_a_caller_cannot_file_a_route_under_its_own_tag():
-    """No `tags` parameter at all, so a route cannot be grouped against its declaration."""
-    with pytest.raises(TypeError):
-        add_api_route(APIRouter(), "/unit/thing/status", endpoint=Component().status, tags=["Thing"])
+    """A `tags=` argument is ignored, not refused: the declaration wins and registration proceeds.
+
+    Refusing it would make adopting this helper a flag day for MAST_spec's 29 `tags=` call sites
+    and MAST_control's 9, which is a high price for a group name the declaration already knows.
+    """
+    router = APIRouter()
+    add_api_route(router, "/unit/thing/status", endpoint=Component().status, tags=["Thing"])
+    app = FastAPI()
+    app.include_router(router)
+
+    assert app.openapi()["paths"]["/unit/thing/status"]["get"]["tags"] == [TIER_TAGS[Tier.INTERFACE]]
 
 
 def test_the_tier_is_published_as_x_stability():

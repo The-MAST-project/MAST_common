@@ -354,9 +354,12 @@ def add_api_route(
     cannot be half-applied, because a missing declaration stops the process at import rather
     than shipping an untiered endpoint.
 
-    **There is no `tags` parameter.** The tag is the tier, read from the declaration, so a
-    route cannot be filed under one group and declared another. A caller still passing `tags=`
-    fails at import rather than silently overriding it.
+    **The tag is the tier**, read from the declaration, so a route cannot be filed under one
+    group and declared another. A caller passing `tags=` has it **ignored, with a warning** --
+    not refused. This module is consumed by every service in the fleet, and a refusal makes an
+    otherwise additive change breaking for any caller that still passes one: MAST_spec has 29
+    such call sites and MAST_control 9. The declaration wins either way; the difference is
+    whether adopting this helper has to be a flag day.
 
     Every handler is wrapped by `enveloped()` so it answers a `CanonicalResponse` and never
     a bare value, a `None` or an escaping exception (invariant 4, MAST_unit#34 stage 3). Doing
@@ -372,7 +375,7 @@ def add_api_route(
         )
 
     if "tags" in kwargs:
-        raise TypeError(f"{path}: the tag is the tier, read from the declaration -- do not pass `tags`.")
+        logger.warning("%s: the tag is the tier, read from the declaration -- ignoring tags=%r.", path, kwargs.pop("tags"))
 
     _register(router, path, endpoint=endpoint, declaration=declaration, methods=methods, **kwargs)
 
