@@ -15,7 +15,6 @@ from pydantic import BaseModel, Field, ValidationError
 from pydantic.config import ConfigDict
 
 from common.activities import Activities, PlanActivities, UnitActivities
-from common.const import SpecEndpoint, UnitEndpoint
 from common.mast_logging import get_logger
 from common.models.constraints import ConstraintsModel
 from common.models.events import EventModel
@@ -417,10 +416,10 @@ class Plan(BaseModel, Activities):
         self, units: list[UnitApi], spec: SpecApi | None = None
     ) -> tuple[list[GatherResponse], Any | None]:
         """Asynchronously fetch status information from multiple units and optionally a spectrograph."""
-        tasks = [self.api_coroutine(api=unit_api, method="GET", sub_url=UnitEndpoint.STATUS) for unit_api in units]
+        tasks = [self.api_coroutine(api=unit_api, method="GET", sub_url="status") for unit_api in units]
 
         if spec:
-            tasks.append(self.api_coroutine(api=spec, method="GET", sub_url=SpecEndpoint.STATUS))
+            tasks.append(self.api_coroutine(api=spec, method="GET", sub_url="status"))
         all_status_responses: list[GatherResponse] = await asyncio.gather(*tasks, return_exceptions=True)
 
         if spec:
@@ -612,7 +611,7 @@ class Plan(BaseModel, Activities):
                         self.api_coroutine(
                             operational_unit_api,
                             method="PUT",
-                            sub_url=UnitEndpoint.EXECUTE_ASSIGNMENT,
+                            sub_url="execute_assignment",
                             _json=unit_assignment.assignment.model_dump(),
                         )
                     )
@@ -828,10 +827,8 @@ class Plan(BaseModel, Activities):
         from common.activities import PlanActivities
 
         self.start_activity(PlanActivities.Aborting)
-        tasks = [
-            self.api_coroutine(unit_api, method="GET", sub_url=UnitEndpoint.ABORT) for unit_api in self.committed_unit_apis
-        ]
-        tasks.append(self.api_coroutine(self.spec_api, method="GET", sub_url=SpecEndpoint.ABORT))
+        tasks = [self.api_coroutine(unit_api, method="GET", sub_url="abort") for unit_api in self.committed_unit_apis]
+        tasks.append(self.api_coroutine(self.spec_api, method="GET", sub_url="abort"))
         self.end_activity(PlanActivities.Aborting)
 
 
