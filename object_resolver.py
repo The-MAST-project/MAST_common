@@ -363,9 +363,20 @@ def resolve_object_name(name: str, total_timeout: float = TOTAL_TIMEOUT_SECONDS)
 def _resolve_via_tns(name: str, credentials: tuple[str, str, str], timeout: float) -> ResolvedObject | None:
     """Ask TNS for a transient's own position. None if TNS has no such object.
 
-    NOT exercised against the live service -- no bot credentials exist yet -- so the
-    request shape is written from the TNS 2.0 API manual and tested against a fake
-    transport. Treat the first live call as the real test.
+    Verified against the live service on 2026-08-23, once bot credentials existed:
+    `SN 2023ixf` came back at 14.06071h +54.31165, which is the published position to
+    0.6" in RA and 0.2" in Dec, and `AT 2024gy` came back as `SN2024gy` -- TNS returning
+    the promoted prefix for a transient since classified, which is the reason TNS is
+    asked before Sesame for these names.
+
+    The marker is the part to get right, and it fails in a way that points at the wrong
+    thing. TNS enforces it only when it parses as a bot identity: omit it, or malform it,
+    and the request succeeds. A well-formed marker naming a bot the key does not belong
+    to gives `401 Unauthorized` with no detail -- the same response as a garbage key. So
+    a 401 here means the `tns_id`/`bot_name` in the vault disagree with the key at least
+    as often as it means the key is bad; check those before suspecting the key. Do not
+    "fix" a 401 by dropping the marker: TNS requires bots to identify themselves, and an
+    unmarked client is the one that gets rate-limited.
     """
     import httpx
 
