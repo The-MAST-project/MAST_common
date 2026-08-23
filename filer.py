@@ -140,6 +140,46 @@ class Filer:
         On Linux the two are identical, so this is a harmless no-op there."""
         return self.shared.root if is_accessible(self.shared.root) else self.local.root
 
+    def ensure_shared_root(self) -> bool:
+        """True if this machine's product root on the share is usable, creating it if that
+        is the only thing missing.
+
+        `shared.root` is `Z:/MAST/<hostname>/` on Windows, and nothing ever created it:
+        not this class, not provisioning. A machine whose directory is absent -- a new one,
+        or one that was renamed -- therefore defers every product forever. `mast-ns-spec`
+        spent from its rename until 2026-08-18 in exactly that state, with two months of
+        exposures piling up on a volatile ram disk behind an INFO-level log line, and they
+        all moved within seconds of the directory being created by hand.
+
+        Creating it is only safe when the *share* is demonstrably mounted, which is why
+        `share_root` is the thing probed rather than the parent of `shared.root`:
+
+        * share up, our directory missing -> create it, and say so;
+        * share down -> False, so the caller defers exactly as it did before. Creating a
+          local `Z:/...` directory in that state is the failure that lost frames on
+          2026-07-14;
+        * nothing per-machine in the path (Z: unmapped, or Linux, where `shared` is the
+          share itself) -> never create. There is no per-machine component to add, and
+          conjuring the share's own mount point would mask an unmounted share.
+        """
+        if is_accessible(self.shared.root):
+            return True
+
+        if self.share_root is None or self.shared.root in (self.share_root.root, self.local.root):
+            return False
+
+        if not is_accessible(self.share_root.root):
+            return False
+
+        try:
+            os.makedirs(self.shared.root, exist_ok=True)
+        except OSError as e:
+            self.error(f"ensure_shared_root: could not create '{self.shared.root}' on the share: {e}")
+            return False
+
+        self.info(f"ensure_shared_root: created this machine's product root '{self.shared.root}'")
+        return True
+
     def machine_log_root(self) -> str:
         """`<share>/<hostname>` if the share is reachable, else `local.root`.
 
@@ -332,7 +372,7 @@ class Filer:
             # cover a failure to *start* the mover, which is #52.
             self._enqueue_pending(src, dst)
 
-            if not is_accessible(self.shared.root):
+            if not self.ensure_shared_root():
                 # Don't occupy a worker that would only block on / fail against a dead
                 # share: leave it queued (the file stays safely in ram) for the sweeper.
                 self.info(f"move_ram_to_shared: shared area '{self.shared.root}' not accessible; deferring '{src}'")
@@ -510,7 +550,9 @@ class Filer:
 
     def _sweep_loop(self):
         while True:
-            if is_accessible(self.shared.root):
+            # ensure_shared_root() rather than a bare probe: the sweeper is what retries a
+            # backlog, and the backlog's usual cause is precisely a missing per-machine root.
+            if self.ensure_shared_root():
                 self._drain_pending()
             # Exit (freeing the thread) only when nothing is left; re-checked atomically
             # with _ensure_sweeper so a concurrent enqueue can't be stranded.
