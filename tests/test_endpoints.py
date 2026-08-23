@@ -15,6 +15,7 @@ from common.endpoints import (
     TIER_TAGS,
     Completion,
     EndpointDeclaration,
+    NotificationChannel,
     Stability,
     Tier,
     UndeclaredEndpointError,
@@ -456,6 +457,10 @@ class Timed:
     def goto(self):
         return {}
 
+    @endpoint(tier=Tier.OPERATION, completion=NotificationChannel.ASSIGNMENT)
+    def execute_assignment(self):
+        return {}
+
     @endpoint(tier=Tier.OPERATION)
     def undeclared(self):
         return {}
@@ -481,6 +486,11 @@ def test_a_blocking_operation_says_so():
 def test_an_activity_flag_renders_as_the_name_a_client_polls():
     """`activities_verbal` reports bare member names, so that is what the token has to match."""
     assert _operation("goto")["x-completion"] == "activity:Slewing"
+
+
+def test_a_notification_channel_names_the_stream_to_watch():
+    """Two channels exist, so a bare `notification` would not tell a client which one to read."""
+    assert _operation("execute_assignment")["x-completion"] == "notification:assignment_notification"
 
 
 def test_an_undeclared_completion_publishes_nothing():
