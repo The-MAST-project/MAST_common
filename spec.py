@@ -31,6 +31,20 @@ class FrameType(StrEnum):
     FLAT = "flat"
 
 
+# Which frame types are defined by the sensor seeing nothing. Here rather than in either
+# camera because it is a property of the frame type, not of a shutter: the Newton says it
+# with SetShutter(mode=2) and the greateyes with OpenShutter(0), and only the mapping is
+# theirs. Stated once, so the two cameras cannot come to different conclusions about what a
+# dark is.
+#
+# A bias and a dark differ in integration time, not in the shutter -- a bias is the read
+# noise floor at (near) zero seconds, a dark the thermal signal over a real duration. That
+# distinction is NOT enforced anywhere yet: nothing shortens the exposure for a bias, so
+# asking for one today gets a dark of whatever duration was requested. See MAST_spec's
+# expose_single_image docstring.
+CLOSED_SHUTTER_FRAMES = frozenset({FrameType.BIAS, FrameType.DARK})
+
+
 class SpecExposureSettings(BaseModel):
     """
     Defines the settings for spectrograph camera exposures
