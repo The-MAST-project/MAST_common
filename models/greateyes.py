@@ -1,4 +1,4 @@
-from enum import IntEnum
+from enum import IntEnum, StrEnum
 from typing import Literal
 
 from pydantic import BaseModel, field_validator
@@ -6,13 +6,23 @@ from pydantic import BaseModel, field_validator
 from common.spec import FrameType
 
 
-class Gain(IntEnum):
-    Low = 0  # Low ( Max. Dyn. Range )
-    High = 1  # Std ( High Sensitivity )
+class Gain(StrEnum):
+    """The sensor's gain, as the database and the API name it.
 
+    A StrEnum, so a document carries "low"/"high" and OpenAPI renders those as the options
+    rather than the SDK's 0/1. MAST_spec maps them to the integers SetupGain takes, next to
+    the vendor comment that documents the pairing:
 
-class GainSettingModel(BaseModel):
-    gain: Gain
+        0 -> Low ( Max. Dyn. Range )
+        1 -> Std ( High Sensitivity )
+
+    Not an IntEnum, for a second reason: `low` would be 0, and `gain or conf.gain` -- the
+    fallback both callers use -- treats 0 as unset, so asking explicitly for low gain would
+    silently get the configured value instead.
+    """
+
+    low = "low"
+    high = "high"
 
 
 class BinningModel(BaseModel):
@@ -120,7 +130,7 @@ class GreateyesSettingsModel(BaseModel):
     # Every deepspec camera in the ns config carries 4, so nothing in service is narrowed
     # out by this.
     bytes_per_pixel: Literal[2, 3, 4] | None = None
-    gain: GainSettingModel | None = None
+    gain: Gain | None = None
     readout: ReadoutModel | None = None
     temp: TemperatureSettingsModel | None = None
     crop: CropModeModel | None = None
