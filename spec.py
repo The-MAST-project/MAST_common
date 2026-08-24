@@ -38,11 +38,31 @@ class FrameType(StrEnum):
 # dark is.
 #
 # A bias and a dark differ in integration time, not in the shutter -- a bias is the read
-# noise floor at (near) zero seconds, a dark the thermal signal over a real duration. That
-# distinction is NOT enforced anywhere yet: nothing shortens the exposure for a bias, so
-# asking for one today gets a dark of whatever duration was requested. See MAST_spec's
-# expose_single_image docstring.
+# noise floor at (near) zero seconds, a dark the thermal signal over a real duration.
+# `integration_duration_for` below is the other half of that distinction.
 CLOSED_SHUTTER_FRAMES = frozenset({FrameType.BIAS, FrameType.DARK})
+
+
+def integration_duration_for(frame_type: FrameType, requested: float) -> float:
+    """The integration time a frame of this type should actually use.
+
+    Zero for a bias, whatever was asked for otherwise. A bias is the read noise floor with
+    no integration; a bias taken for five seconds is a dark, whatever the request said. So
+    the duration is not the caller's to choose once the frame type is `bias`, any more than
+    the shutter is.
+
+    Zero is a REQUEST FOR THE FLOOR, not a literal expectation. Neither camera can integrate
+    for exactly no time, and neither SDK offers a minimum-exposure query, so each clamps up
+    to whatever its configuration allows: Andor documents SetExposureTime as taking "the
+    nearest valid value not less than the given value", and greateyes takes whole
+    milliseconds from a documented range of [0..2^31]. What that floor turns out to be is a
+    property of the camera and its readout settings, not something this function can know.
+
+    Here rather than in either camera for the same reason as CLOSED_SHUTTER_FRAMES: it is a
+    property of the frame type. Deliberately pure and unlogged -- the cameras report the
+    clamp, because only they know what the hardware did with it.
+    """
+    return 0.0 if frame_type is FrameType.BIAS else requested
 
 
 class SpecExposureSettings(BaseModel):

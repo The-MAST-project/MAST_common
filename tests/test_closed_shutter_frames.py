@@ -17,7 +17,11 @@ import pytest
 
 spec = pytest.importorskip("common.spec", reason="common.spec import chain unavailable")
 
-from common.spec import CLOSED_SHUTTER_FRAMES, FrameType  # noqa: E402
+from common.spec import (  # noqa: E402
+    CLOSED_SHUTTER_FRAMES,
+    FrameType,
+    integration_duration_for,
+)
 
 
 class TestMembership:
@@ -50,3 +54,32 @@ class TestItCoversEveryFrameType:
         # A plain set is shared mutable state: any importer could add to it and change what
         # every camera in the process believes a dark is.
         assert isinstance(CLOSED_SHUTTER_FRAMES, frozenset)
+
+
+class TestIntegrationDuration:
+    """The other half of what separates a bias from a dark: the integration time."""
+
+    def test_a_bias_integrates_for_nothing(self):
+        assert integration_duration_for(FrameType.BIAS, 5.0) == 0.0
+
+    @pytest.mark.parametrize("frame_type", [FrameType.LIGHT, FrameType.DARK, FrameType.FLAT])
+    def test_everything_else_keeps_its_duration(self, frame_type):
+        assert integration_duration_for(frame_type, 5.0) == 5.0
+
+    def test_a_dark_is_not_shortened(self):
+        # The distinction the whole function exists for: a dark IS an integration, of the
+        # thermal signal. Only the shutter is shared with a bias.
+        assert integration_duration_for(FrameType.DARK, 300.0) == 300.0
+        assert FrameType.DARK in CLOSED_SHUTTER_FRAMES
+
+    def test_it_is_idempotent(self):
+        # Called at more than one resolution point per camera; applying it twice must not
+        # mean anything different from applying it once.
+        once = integration_duration_for(FrameType.BIAS, 5.0)
+        assert integration_duration_for(FrameType.BIAS, once) == once
+
+    def test_a_zero_request_survives_every_frame_type(self):
+        # Zero is a legal request in its own right -- "give me your floor" -- not only
+        # something a bias produces.
+        for frame_type in FrameType:
+            assert integration_duration_for(frame_type, 0.0) == 0.0
