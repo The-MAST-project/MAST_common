@@ -133,19 +133,40 @@ OPENAPI_TAGS: list[dict[str, str]] = [
 class Completion(StrEnum):
     """How a caller learns that an operation has finished (MAST_unit#42, invariant 3).
 
-    A third form is expressed by passing an activity flag itself rather than a member of this
-    enum: the operation returns at once and the caller watches that flag clear in `status`.
+    Two further forms are expressed by passing something other than a member of this enum: an
+    activity flag, meaning the operation returns at once and the caller watches that flag clear
+    in `status`; or a `NotificationChannel`, meaning it reports on the notification stream.
     """
 
     IMMEDIATE = "immediate"  # finished when the response arrives
     BLOCKING = "blocking"  # the response is withheld until the hardware is done
 
 
-def completion_token(completion: Completion | IntFlag) -> str:
+class NotificationChannel(StrEnum):
+    """Completion announced on the notification stream rather than by polling.
+
+    The other three forms all assume the caller learns completion by polling -- on return, on a
+    withheld response, or by watching an activity flag clear. Some operations report only on the
+    notification stream, which leaves that stream an undeclared second contract: such a route
+    declares nothing, and a reader cannot tell "nobody classified this" from "completion arrives
+    elsewhere".
+
+    A member names the **channel**, not merely the fact of one: there are two, so a bare
+    `notification` would already be ambiguous about which stream to watch. Renders as
+    `notification:<channel>`, mirroring the activity form's `activity:<Flag>`.
+    """
+
+    ASSIGNMENT = "assignment_notification"
+    UI = "ui_notification"
+
+
+def completion_token(completion: Completion | NotificationChannel | IntFlag) -> str:
     """The `x-completion` value published for a declaration.
 
     An activity flag renders as `activity:<Name>`, and the name is deliberately the one that
-    appears in `activities_verbal` -- the field a client actually polls.
+    appears in `activities_verbal` -- the field a client actually polls. A notification channel
+    renders as `notification:<channel>`, and the channel is the `Notifier` method a client
+    listens to, for the same reason: the token names what to watch, not what kind of thing it is.
 
     Exactly one member: "watch these two bits" is not a signal a client can act on, and a
     zero-valued `Idle` names the absence of activity rather than the end of one. Counting
@@ -154,6 +175,8 @@ def completion_token(completion: Completion | IntFlag) -> str:
     """
     if isinstance(completion, Completion):
         return completion.value
+    if isinstance(completion, NotificationChannel):
+        return f"notification:{completion.value}"
     members = list(completion)
     if len(members) != 1:
         raise ValueError(f"a completion signal must name exactly one activity flag, got {completion!r}")
@@ -168,9 +191,9 @@ class EndpointDeclaration:
     #: body. Hand-registered routes keep their verb at the registration site, where the path
     #: is; `register_component_endpoints` has no such site, so the verb travels here.
     methods: tuple[str, ...] | None = None
-    #: How the caller learns the operation finished. `None` means undeclared, which the
-    #: contract check reports rather than silently treating as immediate.
-    completion: Completion | IntFlag | None = None
+    #: How the caller learns the operation finished. `None` means undeclared, and publishes
+    #: nothing, so a consumer reading the schema can tell it apart from a classified route.
+    completion: Completion | NotificationChannel | IntFlag | None = None
 
 
 class UndeclaredEndpointError(TypeError):
@@ -183,7 +206,7 @@ def endpoint(
     stability: Stability = Stability.STABLE,
     factory: bool = False,
     methods: tuple[str, ...] | None = None,
-    completion: Completion | IntFlag | None = None,
+    completion: Completion | NotificationChannel | IntFlag | None = None,
 ) -> Callable:
     """Declare a method as part of the HTTP surface, at its definition site.
 
@@ -354,9 +377,12 @@ def add_api_route(
     cannot be half-applied, because a missing declaration stops the process at import rather
     than shipping an untiered endpoint.
 
-    **There is no `tags` parameter.** The tag is the tier, read from the declaration, so a
-    route cannot be filed under one group and declared another. A caller still passing `tags=`
-    fails at import rather than silently overriding it.
+    **The tag is the tier**, read from the declaration, so a route cannot be filed under one
+    group and declared another. A caller passing `tags=` has it **ignored, with a warning** --
+    not refused. This module is consumed by every service in the fleet, and a refusal makes an
+    otherwise additive change breaking for any caller that still passes one: MAST_spec has 29
+    such call sites and MAST_control 9. The declaration wins either way; the difference is
+    whether adopting this helper has to be a flag day.
 
     Every handler is wrapped by `enveloped()` so it answers a `CanonicalResponse` and never
     a bare value, a `None` or an escaping exception (invariant 4, MAST_unit#34 stage 3). Doing
@@ -372,7 +398,7 @@ def add_api_route(
         )
 
     if "tags" in kwargs:
-        raise TypeError(f"{path}: the tag is the tier, read from the declaration -- do not pass `tags`.")
+        logger.warning("%s: the tag is the tier, read from the declaration -- ignoring tags=%r.", path, kwargs.pop("tags"))
 
     _register(router, path, endpoint=endpoint, declaration=declaration, methods=methods, **kwargs)
 

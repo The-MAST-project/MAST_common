@@ -15,6 +15,7 @@ from common.endpoints import (
     TIER_TAGS,
     Completion,
     EndpointDeclaration,
+    NotificationChannel,
     Stability,
     Tier,
     UndeclaredEndpointError,
@@ -138,9 +139,17 @@ def test_the_tag_is_the_tier():
 
 
 def test_a_caller_cannot_file_a_route_under_its_own_tag():
-    """No `tags` parameter at all, so a route cannot be grouped against its declaration."""
-    with pytest.raises(TypeError):
-        add_api_route(APIRouter(), "/unit/thing/status", endpoint=Component().status, tags=["Thing"])
+    """A `tags=` argument is ignored, not refused: the declaration wins and registration proceeds.
+
+    Refusing it would make adopting this helper a flag day for MAST_spec's 29 `tags=` call sites
+    and MAST_control's 9, which is a high price for a group name the declaration already knows.
+    """
+    router = APIRouter()
+    add_api_route(router, "/unit/thing/status", endpoint=Component().status, tags=["Thing"])
+    app = FastAPI()
+    app.include_router(router)
+
+    assert app.openapi()["paths"]["/unit/thing/status"]["get"]["tags"] == [TIER_TAGS[Tier.INTERFACE]]
 
 
 def test_the_tier_is_published_as_x_stability():
@@ -448,6 +457,10 @@ class Timed:
     def goto(self):
         return {}
 
+    @endpoint(tier=Tier.OPERATION, completion=NotificationChannel.ASSIGNMENT)
+    def execute_assignment(self):
+        return {}
+
     @endpoint(tier=Tier.OPERATION)
     def undeclared(self):
         return {}
@@ -473,6 +486,11 @@ def test_a_blocking_operation_says_so():
 def test_an_activity_flag_renders_as_the_name_a_client_polls():
     """`activities_verbal` reports bare member names, so that is what the token has to match."""
     assert _operation("goto")["x-completion"] == "activity:Slewing"
+
+
+def test_a_notification_channel_names_the_stream_to_watch():
+    """Two channels exist, so a bare `notification` would not tell a client which one to read."""
+    assert _operation("execute_assignment")["x-completion"] == "notification:assignment_notification"
 
 
 def test_an_undeclared_completion_publishes_nothing():
