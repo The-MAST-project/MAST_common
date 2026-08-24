@@ -26,6 +26,11 @@ class DliPowerSwitch(Component):
     NUM_OUTLETS: int = 8
     _instantiated: ClassVar[list[str]] = []  # shared registry of instantiated switches
 
+    # 'Outlet power-off recovery state policy': what the PDU does when mains comes back.
+    # 0: all outlets off, 1: all on (sequenced), 2: back to the state they were in.
+    RECOVERY_MODE_URL: str = "restapi/relay/recovery_mode/"
+    DESIRED_RECOVERY_MODE: int = 2
+
     def __init__(self, hostname: str, ipaddr: str | None, conf: PowerSwitchConfig):
         Component.__init__(self, PowerSwitchActivities)
         self.hostname = hostname
@@ -68,11 +73,11 @@ class DliPowerSwitch(Component):
             result = self.get("restapi/relay/outlets/0/state/")
             self._detected = not (isinstance(result, dict) and "error" in result)
 
-            if self.detected:
-                if self.ipaddr is not None and self.ipaddr not in self._instantiated:
-                    self._instantiated.append(self.ipaddr)
-                    logger.info(f"{self} detected")
-                    self.upload_outlet_names()
+            if self.detected and self.ipaddr is not None and self.ipaddr not in self._instantiated:
+                self._instantiated.append(self.ipaddr)
+                logger.info(f"{self} detected")
+                self.upload_outlet_names()
+                self.assert_recovery_mode()
 
     def on_timer(self):
         self.probe()
@@ -154,7 +159,7 @@ class DliPowerSwitch(Component):
         try:
             idx = self.outlet_names.index(outlet_name)
         except ValueError:
-            raise
+            raise ValueError(f"{self}: no outlet named '{outlet_name}' (have {self.outlet_names})") from None
 
         result = self.get(f"restapi/relay/outlets/{idx}/state/")
         if isinstance(result, dict) and "error" in result:
@@ -169,6 +174,46 @@ class DliPowerSwitch(Component):
             # self.put(f'restapi/relay/outlets/{idx}/name/', data=json.dumps({'value': self.outlet_names[idx]}))
             self.put(f"restapi/relay/outlets/{idx}/name/", data=f"{self.outlet_names[idx]}")
 
+    def assert_recovery_mode(self):
+        """
+        Corrects the PDU's power-loss recovery mode, if it is not already right.
+
+        The V222 ships at `0` -- every outlet off when mains returns -- so a site power
+        blip brings the PDU back with all its loads dead, the UNIT-PC among them. The
+        machine one would use to fix it is the one that is off, so the unit stays dark
+        until someone power-cycles it by hand.
+
+        Pushed here beside the outlet names, rather than set once through the web UI,
+        because the UI setting does not survive a PDU swap, an RMA or a factory reset,
+        and nothing would report the regression until the next power cut. MAST_unit#50.
+        """
+        current = self.get(self.RECOVERY_MODE_URL)
+
+        # Unreadable is not the same as wrong, and the two failures do not look alike:
+        # get() answers {'error': ...} for a timeout, while common_get_put answers None
+        # for an HTTP or a JSON error -- which is what the something-that-is-not-a-V222
+        # at 10.23.2.102 gives (400, MAST_unit#50). Writing on the strength of either
+        # would push a value at a device we cannot even read back.
+        if not isinstance(current, int) or isinstance(current, bool):
+            logger.error(f"{self}: cannot read recovery_mode (got {current!r}), leaving it alone")
+            return
+
+        if current == self.DESIRED_RECOVERY_MODE:
+            return
+
+        logger.info(f"{self}: recovery_mode is {current}, setting it to {self.DESIRED_RECOVERY_MODE}")
+        self.put(self.RECOVERY_MODE_URL, data={"value": self.DESIRED_RECOVERY_MODE})
+
+        # put() cannot confirm its own write: the switch replies with a body that
+        # common_get_put reports as None even when the write took (see its JSONDecodeError
+        # branch), so the return value cannot tell success from failure. Read it back, or
+        # the log would claim a correction that may not have happened.
+        readback = self.get(self.RECOVERY_MODE_URL)
+        if readback == self.DESIRED_RECOVERY_MODE:
+            logger.info(f"{self}: recovery_mode corrected {current} -> {readback}")
+        else:
+            logger.error(f"{self}: failed to set recovery_mode to {self.DESIRED_RECOVERY_MODE}, it reads {readback!r}")
+
     def set_outlet_state(self, outlet_name: str, state: bool):
         if not self.detected:
             return
@@ -176,7 +221,7 @@ class DliPowerSwitch(Component):
         try:
             idx = self.outlet_names.index(outlet_name)
         except ValueError:
-            raise
+            raise ValueError(f"{self}: no outlet named '{outlet_name}' (have {self.outlet_names})") from None
 
         self.put(url=f"restapi/relay/outlets/{idx}/state/", data={"value": state})
 
@@ -526,7 +571,7 @@ class SwitchedOutlet:
         elif domain == OutletDomain.SpecOutlets:
             conf = Config().get_specs().power_switch
             for switch_name in conf:
-                if all([outlet_name in conf[switch_name].outlets.values() for outlet_name in outlet_names]):
+                if all(outlet_name in conf[switch_name].outlets.values() for outlet_name in outlet_names):
                     return PowerSwitchFactory.get_instance(name=switch_name)
 
         raise ValueError(f"{op}: Cannot create power switch for {domain=}, {outlet_names=}, {unit_name=}")
@@ -551,7 +596,7 @@ class SwitchedOutlet:
         if self.power_switch is None:
             return None
 
-        return all([self.power_switch.get_outlet_state(name) for name in self.outlet_names])
+        return all(self.power_switch.get_outlet_state(name) for name in self.outlet_names)
 
     def power_on_or_off(self, new_state: bool):
         from common.utils import caller_name

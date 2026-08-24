@@ -53,6 +53,11 @@ def filer(tmp_path, monkeypatch):
         self.ram = Location(None, f"{ram.as_posix()}/")
         self.shared = Location(None, f"{shared.as_posix()}/")
         self.local = self.shared
+        # `move_ram_to_shared` consults `ensure_shared_root()`, which needs the share above
+        # the per-machine root. `shared` doubles as `local` here, i.e. there is no
+        # per-machine component, so ensure_shared_root() declines to create anything and
+        # these tests keep testing what they always did. See test_ensure_shared_root.py.
+        self.share_root = Location(None, f"{tmp_path.as_posix()}/")
         self.tops = {FilerTop.Local: self.local, FilerTop.Shared: self.shared, FilerTop.Ram: self.ram}
         self.logger = logger
 
