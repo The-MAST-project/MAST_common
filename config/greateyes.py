@@ -1,6 +1,6 @@
-from typing import Literal
-
 from pydantic import BaseModel, model_validator
+
+from common.models.greateyes import Gain
 
 from .network import NetworkConfig
 from .power import OutletConfig
@@ -36,17 +36,6 @@ class GreateyesBinningConfig(BaseModel):
     y: int
 
 
-class GreateyesGainConfig(BaseModel):
-    """The sensor's gain setting, as ge.SetupGain takes it.
-
-    0 -> Low (max. dynamic range), 1 -> Std (high sensitivity), per the SDK header.
-    Mirrors GreateyesSettingsModel.gain so an exposure can override the site's choice,
-    and both spell it the same way.
-    """
-
-    gain: Literal[0, 1] = 0
-
-
 class GreateyesSettingConfig(BaseModel):
     """Configuration for Greateyes settings."""
 
@@ -59,11 +48,16 @@ class GreateyesSettingConfig(BaseModel):
     shutter: ShutterConfig
     readout: GreateyesReadoutConfig
     probing: GreateyesProbingConfig
+    # The same Gain the exposure settings and the endpoint use -- one type from the document
+    # to the SDK call, so `gain or conf.gain` in MAST_spec compares like with like. It was a
+    # nested object holding the SDK's 0/1, which meant the fallback put the wrong type into
+    # a field expecting the enum: a ValidationError the first time a site set one.
+    #
     # Optional, unlike its neighbours: no `sites` document carries a gain today, and a
     # required field would fail every camera's config load. While it is absent nothing
     # applies a gain, which is exactly the behaviour before this field existed. Set it and
     # every exposure applies it, unless the exposure names its own.
-    gain: GreateyesGainConfig | None = None
+    gain: Gain | None = None
 
     @model_validator(mode="after")
     def validate_greateyes_setting(self):
