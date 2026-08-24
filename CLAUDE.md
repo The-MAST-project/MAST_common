@@ -128,10 +128,20 @@ Two handlers: a Rich console (on by default) and `DailyFileHandler`, which write
 <base>/<observing-night>/mast-<machine_role>-log.txt
 ```
 
-**`<base>` is `Filer().accessible_shared_root()`** — the operational share
-(`Z:/MAST/<hostname>/` on Windows), falling back to `local.root` (`C:/MAST/`) when the share
-is unreachable. So a unit's log lands beside its products on the share, **not** on the
-machine that produced it. Do not go looking under `%LOCALAPPDATA%`: that is
+**`<base>` is `Filer().machine_log_root()`** — this machine's folder on the operational
+share (`Z:/MAST/<hostname>/` on Windows, `/Storage/mast-share/MAST/<hostname>` on Linux),
+falling back to `local.root` (`C:/MAST/`) when the share is unreachable. So a unit's log
+lands beside its products on the share, **not** on the machine that produced it.
+
+It is deliberately **not** `accessible_shared_root()`, which is not per-machine on Linux:
+there `shared.root` *is* the share root, so a Linux host writing under it puts its night
+folders at the top of the share instead of in its own folder. mast-ns-control — the only
+Linux machine, and the share's owner — did that for 89 nights, 2025-10-28 to 2026-08-06.
+Those `Z:/MAST/<date>/` folders are **control's logs, not any unit's**, despite 67 of them
+being named `mast-unit-log.txt`: the role resolved wrongly until `machine_role` landed
+(#16, 2026-08-03). They have since been moved under `mast-ns-control/`.
+
+Do not go looking under `%LOCALAPPDATA%`: that is
 `DailyFileHandler.default_base_dir()`, used only when a caller supplies no `base_dir`, and
 `init_log` always supplies one. Nothing in production takes that path, and on mast00 the
 directory does not exist at all. (This entry previously documented the default as though it
