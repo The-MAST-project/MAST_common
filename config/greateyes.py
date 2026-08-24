@@ -10,8 +10,23 @@ from .shutter import ShutterConfig
 class GreateyesTemperatureConfig(BaseModel):
     """Configuration for Greateyes temperature settings."""
 
-    target_cool: float = -5.0  # Default target temperature in Celsius
-    target_warm: float = 0.0  # Temperature hysteresis in Celsius
+    # int, not float: greateyes' TemperatureControl_SetTemperature passes the value straight
+    # to ctypes.c_int, so a whole degree is the only thing the hardware can be told. A float
+    # here is not a finer set point, it is a TypeError at the SDK call.
+    #
+    # These were float, and MAST_spec never noticed because it read the temperature through
+    # GreateyesSettingsModel -- whose target_cool is an int -- so building that model from
+    # this config quietly rounded on the way past. When MAST_spec#54 collapsed the two
+    # settings objects into this one, the rounding went with it and every deepspec camera
+    # raised `TypeError: 'float' object cannot be interpreted as an integer` during
+    # cool_down(), which runs from startup(): the spec service could not start at all.
+    #
+    # Stating it here rather than casting at the call site puts the constraint where the
+    # value is defined. Pydantic accepts an integral float from the database (-5.0 -> -5) and
+    # rejects a fractional one, so a set point the hardware cannot honour now fails when the
+    # config loads instead of when a camera tries to cool.
+    target_cool: int = -5  # Default target temperature in Celsius
+    target_warm: int = 0  # Temperature to warm up to, in Celsius
     check_interval: int = 30  # Interval to check temperature in seconds
 
 
