@@ -19,10 +19,14 @@ from __future__ import annotations
 import ctypes
 
 import pytest
+from pydantic import ValidationError
 
 config = pytest.importorskip("common.config.greateyes", reason="config import chain unavailable")
 
-from common.config.greateyes import GreateyesTemperatureConfig  # noqa: E402
+from common.config.greateyes import (  # noqa: E402
+    GreateyesSettingConfig,
+    GreateyesTemperatureConfig,
+)
 
 
 class TestTheSdkAccceptsThem:
@@ -50,3 +54,35 @@ class TestItRejectsWhatTheHardwareCannotHonour:
         """Better here than three layers down, mid-cooldown, on a running telescope."""
         with pytest.raises(Exception, match="(?i)int"):
             GreateyesTemperatureConfig(**{field: -5.5})
+
+
+# The same class of divergence, found by diffing GreateyesSettingsModel against
+# GreateyesSettingConfig field by field after the temperature bug: the model constrained
+# something the config did not, and MAST_spec now reads the config.
+SETTINGS = {
+    "temp": {"target_cool": -5, "target_warm": 0, "check_interval": 30},
+    "crop": {"col": 1056, "line": 1027, "enabled": False},
+    "shutter": {"open_time": 9, "close_time": 12},
+    "readout": {"speed": 250, "mode": 2},
+    "probing": {"boot_delay": 25, "interval": 60},
+}
+
+
+class TestBytesPerPixelIsConstrainedOnBothSides:
+    @pytest.mark.parametrize("depth", [2, 3, 4])
+    def test_the_sdk_range_is_accepted(self, depth):
+        assert GreateyesSettingConfig(**SETTINGS, bytes_per_pixel=depth).bytes_per_pixel == depth
+
+    @pytest.mark.parametrize("depth", [1, 5, 0])
+    def test_what_the_camera_refuses_is_refused_here(self, depth):
+        """`SetBitDepth(1)` returns "one ore more parameters are out of range (8)".
+
+        The SDK header says `bytesPerPixel [2 .. 4]`. GreateyesSettingsModel was narrowed to
+        match, but MAST_spec reads this config rather than that model, so a `sites` document
+        could still carry a depth the camera refuses.
+        """
+        with pytest.raises(ValidationError):
+            GreateyesSettingConfig(**SETTINGS, bytes_per_pixel=depth)
+
+    def test_the_default_matches_what_every_ns_camera_carries(self):
+        assert GreateyesSettingConfig(**SETTINGS).bytes_per_pixel == 4

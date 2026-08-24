@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, model_validator
 
 from common.models.greateyes import Gain
@@ -55,7 +57,13 @@ class GreateyesSettingConfig(BaseModel):
     """Configuration for Greateyes settings."""
 
     binning: GreateyesBinningConfig | None = None  # Binning configuration for the camera
-    bytes_per_pixel: int = 4  # Default bytes per pixel for Greateyes camera
+    # Literal[2, 3, 4], matching GreateyesSettingsModel and the SDK header's
+    # `bytesPerPixel [2 .. 4]`. A plain int here let a `sites` document carry a depth the
+    # camera refuses -- `SetBitDepth(1) (status: one ore more parameters are out of range
+    # (8))` -- which is the failure MAST_spec#54 fixed on the model side. The model is no
+    # longer the gate: MAST_spec reads this config directly now, so the constraint has to be
+    # on both or it is on neither.
+    bytes_per_pixel: Literal[2, 3, 4] = 4
     number_of_exposures: int = 1
     exposure_duration: float = 5.0  # Default exposure duration in seconds
     temp: GreateyesTemperatureConfig
