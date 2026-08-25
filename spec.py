@@ -44,7 +44,7 @@ class SpecExposureSettings(BaseModel):
     gain: int | None = None
     frame_type: FrameType = FrameType.LIGHT
 
-    def model_post_init(self, __context: Any):
+    def model_post_init(self, _context: Any):
 
         if self.image_full_name is not None:
             Path(self.image_full_name).parent.mkdir(parents=True, exist_ok=True)
