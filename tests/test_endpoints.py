@@ -2,17 +2,25 @@
 
 from __future__ import annotations
 
+from enum import IntFlag, auto
+
 import pytest
 from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 
 from common.canonical import CanonicalResponse
 from common.endpoints import (
+    OPENAPI_TAGS,
+    TIER_STABILITY,
+    TIER_TAGS,
+    Completion,
     EndpointDeclaration,
+    NotificationChannel,
     Stability,
     Tier,
     UndeclaredEndpointError,
     add_api_route,
+    completion_token,
     declaration_of,
     declared_endpoints,
     endpoint,
@@ -93,7 +101,7 @@ def test_registering_an_undeclared_method_fails_at_registration():
 def test_a_declared_route_registers_and_answers():
     component = Component()
     router = APIRouter()
-    add_api_route(router, "/unit/thing/status", endpoint=component.status, tags=["Thing"])
+    add_api_route(router, "/unit/thing/status", endpoint=component.status)
 
     app = FastAPI()
     app.include_router(router)
@@ -106,9 +114,9 @@ def test_a_declared_route_registers_and_answers():
 def _schema(*, deprecated_route: bool) -> dict:
     component = Component()
     router = APIRouter()
-    add_api_route(router, "/unit/thing/status", endpoint=component.status, tags=["Thing"])
+    add_api_route(router, "/unit/thing/status", endpoint=component.status)
     if deprecated_route:
-        add_api_route(router, "/unit/thing/connect", endpoint=component.connect, tags=["Thing"])
+        add_api_route(router, "/unit/thing/connect", endpoint=component.connect)
     app = FastAPI()
     app.include_router(router)
     return app.openapi()
@@ -123,11 +131,60 @@ def test_a_deprecated_declaration_marks_the_operation_and_nothing_else():
     assert "deprecated" not in schema["paths"]["/unit/thing/status"]["get"]
 
 
-def test_tags_are_passed_through_unchanged():
-    """#39 replaces subsystem tags with the tier; this helper must not pre-empt it."""
+def test_the_tag_is_the_tier():
+    """#39: one tag per route, and it is the tier -- the path prefix already carries the layer."""
     schema = _schema(deprecated_route=False)
 
-    assert schema["paths"]["/unit/thing/status"]["get"]["tags"] == ["Thing"]
+    assert schema["paths"]["/unit/thing/status"]["get"]["tags"] == [TIER_TAGS[Tier.INTERFACE]]
+
+
+def test_a_caller_cannot_file_a_route_under_its_own_tag():
+    """A `tags=` argument is ignored, not refused: the declaration wins and registration proceeds.
+
+    Refusing it would make adopting this helper a flag day for MAST_spec's 29 `tags=` call sites
+    and MAST_control's 9, which is a high price for a group name the declaration already knows.
+    """
+    router = APIRouter()
+    add_api_route(router, "/unit/thing/status", endpoint=Component().status, tags=["Thing"])
+    app = FastAPI()
+    app.include_router(router)
+
+    assert app.openapi()["paths"]["/unit/thing/status"]["get"]["tags"] == [TIER_TAGS[Tier.INTERFACE]]
+
+
+def test_the_tier_is_published_as_x_stability():
+    """The machine-readable half: a consumer's contract test can assert what it calls."""
+    schema = _schema(deprecated_route=True)
+
+    assert schema["paths"]["/unit/thing/status"]["get"]["x-stability"] == "interface"
+    assert schema["paths"]["/unit/thing/connect"]["get"]["x-stability"] == "operator"
+
+
+def test_a_demo_route_is_struck_through():
+    """DEMO is parked, so it renders deprecated without needing a stability of its own."""
+
+    class Demo:
+        @endpoint(tier=Tier.DEMO)
+        def dance(self):
+            return {}
+
+    router = APIRouter()
+    add_api_route(router, "/unit/mount/dance", endpoint=Demo().dance)
+    app = FastAPI()
+    app.include_router(router)
+    operation = app.openapi()["paths"]["/unit/mount/dance"]["get"]
+
+    assert operation["deprecated"] is True
+    assert operation["tags"] == [TIER_TAGS[Tier.DEMO]]
+    assert operation["x-stability"] == "demo"
+
+
+def test_every_tier_has_a_tag_a_stability_and_a_described_group():
+    """A tier added without its display metadata would raise a KeyError at registration."""
+    assert set(TIER_TAGS) == set(Tier)
+    assert set(TIER_STABILITY) == set(Tier)
+    assert [group["name"] for group in OPENAPI_TAGS] == [TIER_TAGS[tier] for tier in Tier]
+    assert all(group["description"] for group in OPENAPI_TAGS)
 
 
 def test_the_default_method_is_get():
@@ -375,3 +432,84 @@ def test_a_factory_that_returns_no_handler_is_refused_where_it_happened():
 def test_the_factory_keeps_its_own_identity():
     """`functools.wraps`: a traceback through the factory must still name the factory."""
     assert WithFactory._new_path_endpoint.__name__ == "_new_path_endpoint"
+
+
+# --------------------------------------------------------------------- completion (#43 stage 2)
+
+
+class FakeActivities(IntFlag):
+    Slewing = auto()
+    Parking = auto()
+
+
+class Timed:
+    """One handler per completion form."""
+
+    @endpoint(tier=Tier.OPERATION, completion=Completion.IMMEDIATE)
+    def read_position(self):
+        return {"position": 1000}
+
+    @endpoint(tier=Tier.OPERATION, completion=Completion.BLOCKING)
+    def stop_tracking(self):
+        return {}
+
+    @endpoint(tier=Tier.OPERATION, completion=FakeActivities.Slewing)
+    def goto(self):
+        return {}
+
+    @endpoint(tier=Tier.OPERATION, completion=NotificationChannel.ASSIGNMENT)
+    def execute_assignment(self):
+        return {}
+
+    @endpoint(tier=Tier.OPERATION)
+    def undeclared(self):
+        return {}
+
+
+def _operation(name: str) -> dict:
+    router = APIRouter()
+    add_api_route(router, f"/{name}", endpoint=getattr(Timed(), name), methods=["PUT"])
+    app = FastAPI()
+    app.include_router(router)
+    return app.openapi()["paths"][f"/{name}"]["put"]
+
+
+def test_an_immediate_operation_says_so():
+    assert _operation("read_position")["x-completion"] == "immediate"
+
+
+def test_a_blocking_operation_says_so():
+    """Category C exists -- a declaration that could only name a flag could not describe it."""
+    assert _operation("stop_tracking")["x-completion"] == "blocking"
+
+
+def test_an_activity_flag_renders_as_the_name_a_client_polls():
+    """`activities_verbal` reports bare member names, so that is what the token has to match."""
+    assert _operation("goto")["x-completion"] == "activity:Slewing"
+
+
+def test_a_notification_channel_names_the_stream_to_watch():
+    """Two channels exist, so a bare `notification` would not tell a client which one to read."""
+    assert _operation("execute_assignment")["x-completion"] == "notification:assignment_notification"
+
+
+def test_an_undeclared_completion_publishes_nothing():
+    """Absent rather than defaulted: the contract check reports it, silence would hide it."""
+    assert "x-completion" not in _operation("undeclared")
+
+
+def test_a_composite_flag_is_refused():
+    """ "Watch these two bits" is not a completion signal a client can act on."""
+    with pytest.raises(ValueError, match="one activity flag"):
+        completion_token(FakeActivities.Slewing | FakeActivities.Parking)
+
+
+def test_a_zero_valued_idle_is_refused():
+    """`Idle = 0` names the absence of activity, not the end of one."""
+
+    class WithIdle(IntFlag):
+        Idle = 0
+        Moving = auto()
+
+    with pytest.raises(ValueError, match="exactly one activity flag"):
+        completion_token(WithIdle.Idle)
