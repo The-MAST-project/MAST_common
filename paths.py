@@ -128,6 +128,29 @@ class PathMaker:
         spirals_folder.mkdir(parents=True, exist_ok=True)
         return str(spirals_folder)
 
+    def make_stability_folder(self, root: str | None = None) -> str:
+        """
+        <ram>/<observing-night>/Stability/<NNNN> -- one folder per campaign run.
+
+        Deliberately the same shape as `make_spirals_folder`, so the mover lands it at
+        `<share>/<hostname>/<observing-night>/Stability/<NNNN>`: on Windows
+        `Filer().shared.root` ALREADY carries the hostname, so a caller joining
+        `socket.gethostname()` itself would produce `Z:/MAST/mast02/mast02/...`.
+
+        The label is an observing night, not a calendar date. A campaign runs from dusk
+        to dawn and would otherwise split its own products across two folders at 02:00
+        local, mid-mesh -- with the two halves of one run under names that give no hint
+        they belong together.
+        """
+        if not root:
+            ram = Filer().ram
+            assert ram
+            root = ram.root
+        stability_folder = Path(self.make_observing_night_folder(root=root)) / "Stability"
+        stability_folder = stability_folder / PathMaker().make_seq(str(stability_folder))
+        stability_folder.mkdir(parents=True, exist_ok=True)
+        return str(stability_folder)
+
     @staticmethod
     def current_utc():
         return datetime.datetime.now(datetime.UTC).strftime("%H-%M-%S_%f")[:-3]
