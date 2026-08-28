@@ -324,6 +324,10 @@ class UnitActivities(IntFlag):
     # master: the only records carrying it are engineering shakedown logs, and those name
     # the flag rather than printing the bare number.
     FluxMetering = auto()  # acquire_and_find_max_flux: spiralling for peak fibre throughput
+    # Appended after FluxMetering for the same reason FluxMetering was appended after
+    # Exposing: this branch also claimed 8192 while it sat unmerged. It has never been on
+    # master either, so moving it to 32768 costs nothing.
+    StabilityCampaigning = auto()  # walking the mount-stability alt/az mesh
 
 
 class ImagerActivities(IntFlag):
