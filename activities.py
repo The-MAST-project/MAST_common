@@ -333,6 +333,12 @@ class UnitActivities(IntFlag):
     CalibratingFocus = auto()
     CalibratingOpticalCenter = auto()
     CalibratingStage = auto()
+    # Last, after the calibration flags, for the same reason they are last and FluxMetering
+    # was appended after Exposing. This one has now moved three times while it sat unmerged --
+    # 8192, then 32768, now 262144 -- which costs nothing only because it has never been on
+    # master: no numeric comparison anywhere has ever read it. The moment it lands that stops
+    # being true, and moving it again becomes a cross-repo change.
+    StabilityCampaigning = auto()  # walking the mount-stability alt/az mesh
 
 
 class ImagerActivities(IntFlag):
