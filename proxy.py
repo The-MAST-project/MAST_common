@@ -16,6 +16,7 @@ Falls back to ProxyContext.from_settings() for background tasks that have no
 incoming request; reads PROXY_EXTERNAL_IP / PROXY_PORT / PROXY_BASE from env.
 """
 
+import contextlib
 from urllib.parse import urlparse, urlunparse
 
 
@@ -54,15 +55,11 @@ class ProxyContext:
         if hasattr(request, "_proxy_context"):
             return request._proxy_context
 
-        if hasattr(request, "META"):
-            ctx = cls._from_django(request)
-        else:
-            ctx = cls._from_fastapi(request)
+        ctx = cls._from_django(request) if hasattr(request, "META") else cls._from_fastapi(request)
 
-        try:
+        # An immutable request object cannot carry the cache; returning uncached is correct.
+        with contextlib.suppress(AttributeError):
             request._proxy_context = ctx
-        except AttributeError:
-            pass  # immutable request objects — just return without caching
         return ctx
 
     @classmethod

@@ -75,8 +75,6 @@ def safety_get_sensor(
     Returns a tuple of (`value`, `is_safe`, `reasons_for_not_safe`) or None if there were errors
 
     """
-    ret = None
-
     if project_name is None:
         local_site = Config().local_site
         assert local_site is not None
@@ -95,7 +93,8 @@ def safety_get_sensor(
             age = datetime.datetime.now(datetime.UTC) - fromisoformat_zulu(latest_reading.time)
             if age > max_age:
                 logger.warning(
-                    f"safety_get_sensor: ignoring '{sensor.name}' reading, too old '{humanfriendly.format_timespan(age)}' > '{humanfriendly.format_timespan(max_age)}'"
+                    f"safety_get_sensor: ignoring '{sensor.name}' reading, too old "
+                    f"'{humanfriendly.format_timespan(age)}' > '{humanfriendly.format_timespan(max_age)}'"
                 )
                 return None
             else:
