@@ -624,7 +624,8 @@ class FluxMeteringStatus(BaseModel):
     best_index: int | None = None
     best_cell: tuple[int, int] | None = None
 
-    #: `converged`, `max_rings`, `max_radius`, `aborted`, `acquisition_failed` or `failed`.
+    #: `converged`, `max_rings`, `max_radius`, `aborted`, `disk_full`, `acquisition_failed`
+    #: or `failed`.
     #: Only `converged` says the arg-max is a peak rather than the best of a truncated search.
     terminal_state: str | None = None
     last_error: str | None = None
