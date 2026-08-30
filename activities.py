@@ -312,6 +312,7 @@ class UnitActivities(IntFlag):
     Solving = auto()
     Correcting = auto()
     Dancing = auto()
+    FluxMetering = auto()  # acquire_and_find_max_flux: spiralling for peak fibre throughput
 
 
 class ImagerActivities(IntFlag):
