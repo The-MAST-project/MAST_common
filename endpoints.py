@@ -39,8 +39,8 @@ from __future__ import annotations
 import functools
 import inspect
 from collections.abc import Callable
-from dataclasses import dataclass
-from enum import StrEnum
+from dataclasses import dataclass, replace
+from enum import IntFlag, StrEnum
 from typing import Any
 
 from fastapi import APIRouter
@@ -82,17 +82,132 @@ class Stability(StrEnum):
     DEPRECATED = "deprecated"
 
 
+#: Swagger group per tier. One tag per route, and it is the tier -- the path prefix already
+#: carries the layer (`/unit/<verb>` vs `/unit/<component>/<verb>`), so a subsystem tag would
+#: only repeat it while saying nothing about what a consumer may depend on.
+TIER_TAGS: dict[Tier, str] = {
+    Tier.CONTRACT: "Unit orchestration (contract)",
+    Tier.OPERATION: "Operator / diagnostic operations",
+    Tier.INTERFACE: "Component interface (contract)",
+    Tier.DEMO: "Demonstration (parked)",
+}
+
+#: The machine-readable half, published per operation as `x-stability`. A consumer's contract
+#: test can assert it calls only `contract` and `interface` routes and fail when it reaches
+#: for an operator verb -- which a human-readable tag cannot support.
+TIER_STABILITY: dict[Tier, str] = {
+    Tier.CONTRACT: "contract",
+    Tier.OPERATION: "operator",
+    Tier.INTERFACE: "interface",
+    Tier.DEMO: "demo",
+}
+
+#: `openapi_tags` for the app, in display order: importance and utility, so the operator
+#: surface sits above the uniform lifecycle verbs.
+OPENAPI_TAGS: list[dict[str, str]] = [
+    {
+        "name": TIER_TAGS[Tier.CONTRACT],
+        "description": "The programmatic surface for observing. Build clients on these.",
+    },
+    {
+        "name": TIER_TAGS[Tier.OPERATION],
+        "description": (
+            "Bespoke operator and diagnostic verbs, for driving a unit by hand. "
+            "**Not a contract** -- these may change without notice."
+        ),
+    },
+    {
+        "name": TIER_TAGS[Tier.INTERFACE],
+        "description": (
+            "The lifecycle verbs every component answers -- startup, shutdown, abort, status. "
+            "Uniform across components, and safe to build on."
+        ),
+    },
+    {
+        "name": TIER_TAGS[Tier.DEMO],
+        "description": "Demonstration routes, parked. Shown struck through; do not call them.",
+    },
+]
+
+
+class Completion(StrEnum):
+    """How a caller learns that an operation has finished (MAST_unit#42, invariant 3).
+
+    Two further forms are expressed by passing something other than a member of this enum: an
+    activity flag, meaning the operation returns at once and the caller watches that flag clear
+    in `status`; or a `NotificationChannel`, meaning it reports on the notification stream.
+    """
+
+    IMMEDIATE = "immediate"  # finished when the response arrives
+    BLOCKING = "blocking"  # the response is withheld until the hardware is done
+
+
+class NotificationChannel(StrEnum):
+    """Completion announced on the notification stream rather than by polling.
+
+    The other three forms all assume the caller learns completion by polling -- on return, on a
+    withheld response, or by watching an activity flag clear. Some operations report only on the
+    notification stream, which leaves that stream an undeclared second contract: such a route
+    declares nothing, and a reader cannot tell "nobody classified this" from "completion arrives
+    elsewhere".
+
+    A member names the **channel**, not merely the fact of one: there are two, so a bare
+    `notification` would already be ambiguous about which stream to watch. Renders as
+    `notification:<channel>`, mirroring the activity form's `activity:<Flag>`.
+    """
+
+    ASSIGNMENT = "assignment_notification"
+    UI = "ui_notification"
+
+
+def completion_token(completion: Completion | NotificationChannel | IntFlag) -> str:
+    """The `x-completion` value published for a declaration.
+
+    An activity flag renders as `activity:<Name>`, and the name is deliberately the one that
+    appears in `activities_verbal` -- the field a client actually polls. A notification channel
+    renders as `notification:<channel>`, and the channel is the `Notifier` method a client
+    listens to, for the same reason: the token names what to watch, not what kind of thing it is.
+
+    Exactly one member: "watch these two bits" is not a signal a client can act on, and a
+    zero-valued `Idle` names the absence of activity rather than the end of one. Counting
+    members rather than checking `name` for None, because a composite IntFlag reports a joined
+    name (`"Slewing|Parking"`) rather than None.
+    """
+    if isinstance(completion, Completion):
+        return completion.value
+    if isinstance(completion, NotificationChannel):
+        return f"notification:{completion.value}"
+    members = list(completion)
+    if len(members) != 1:
+        raise ValueError(f"a completion signal must name exactly one activity flag, got {completion!r}")
+    return f"activity:{members[0].name}"
+
+
 @dataclass(frozen=True)
 class EndpointDeclaration:
     tier: Tier
     stability: Stability = Stability.STABLE
+    #: HTTP verbs, for a route that is **generated** rather than written in an `api_router`
+    #: body. Hand-registered routes keep their verb at the registration site, where the path
+    #: is; `register_component_endpoints` has no such site, so the verb travels here.
+    methods: tuple[str, ...] | None = None
+    #: How the caller learns the operation finished. `None` means undeclared, and publishes
+    #: nothing, so a consumer reading the schema can tell it apart from a classified route.
+    completion: Completion | NotificationChannel | IntFlag | None = None
 
 
 class UndeclaredEndpointError(TypeError):
     """Raised at import when a route is registered on a method carrying no declaration."""
 
 
-def endpoint(*, tier: Tier, stability: Stability = Stability.STABLE, factory: bool = False) -> Callable:
+def endpoint(
+    *,
+    tier: Tier,
+    stability: Stability = Stability.STABLE,
+    factory: bool = False,
+    methods: tuple[str, ...] | None = None,
+    completion: Completion | NotificationChannel | IntFlag | None = None,
+) -> Callable:
     """Declare a method as part of the HTTP surface, at its definition site.
 
     Keyword-only on purpose: `@endpoint(Tier.INTERFACE)` would read as a positional tier and
@@ -122,7 +237,7 @@ def endpoint(*, tier: Tier, stability: Stability = Stability.STABLE, factory: bo
     still finds this, which is why it is a flag on the existing decorator rather than a second
     decorator with a name of its own.
     """
-    declaration = EndpointDeclaration(tier=tier, stability=stability)
+    declaration = EndpointDeclaration(tier=tier, stability=stability, methods=methods, completion=completion)
 
     def mark(function: Callable) -> Callable:
         if not factory:
@@ -251,21 +366,23 @@ def add_api_route(
     *,
     endpoint: Callable,
     methods: list[str] | None = None,
-    tags: list[str] | None = None,
     **kwargs: Any,
 ) -> None:
     """Register a route, refusing any handler that has not declared itself.
 
-    A drop-in for `router.add_api_route` with the same argument shape, so a component's
-    `api_router` keeps reading as a one-line-per-route index.
+    A drop-in for `router.add_api_route`, so a component's `api_router` keeps reading as a
+    one-line-per-route index.
 
     The refusal is the point. A convention that is merely documented decays -- this one
     cannot be half-applied, because a missing declaration stops the process at import rather
     than shipping an untiered endpoint.
 
-    `tags` is passed through untouched. Replacing subsystem tags with the tier is
-    MAST_unit#39's change, deliberately not made here: doing both at once would make stage
-    2's OpenAPI snapshot diff unreadable.
+    **The tag is the tier**, read from the declaration, so a route cannot be filed under one
+    group and declared another. A caller passing `tags=` has it **ignored, with a warning** --
+    not refused. This module is consumed by every service in the fleet, and a refusal makes an
+    otherwise additive change breaking for any caller that still passes one: MAST_spec has 29
+    such call sites and MAST_control 9. The declaration wins either way; the difference is
+    whether adopting this helper has to be a flag day.
 
     Every handler is wrapped by `enveloped()` so it answers a `CanonicalResponse` and never
     a bare value, a `None` or an escaping exception (invariant 4, MAST_unit#34 stage 3). Doing
@@ -280,8 +397,38 @@ def add_api_route(
             f"Add @endpoint(tier=Tier.<TIER>) at its definition (MAST_unit#42 invariant 10)."
         )
 
+    if "tags" in kwargs:
+        logger.warning("%s: the tag is the tier, read from the declaration -- ignoring tags=%r.", path, kwargs.pop("tags"))
+
+    _register(router, path, endpoint=endpoint, declaration=declaration, methods=methods, **kwargs)
+
+
+def _register(
+    router: APIRouter,
+    path: str,
+    *,
+    endpoint: Callable,
+    declaration: EndpointDeclaration,
+    methods: list[str] | None = None,
+    **kwargs: Any,
+) -> None:
+    """Apply the declaration to a route and register it.
+
+    Shared by `add_api_route`, which finds the declaration on the handler, and by
+    `register_component_endpoints`, which already holds it -- the generated interface verbs are
+    declared on the ABC, so the concrete override a component supplies carries no marker of its
+    own and there is nothing on it to look up.
+    """
+    kwargs["tags"] = [TIER_TAGS[declaration.tier]]
+    kwargs["openapi_extra"] = {
+        **kwargs.get("openapi_extra", {}),
+        "x-stability": TIER_STABILITY[declaration.tier],
+    }
+    if declaration.completion is not None:
+        kwargs["openapi_extra"]["x-completion"] = completion_token(declaration.completion)
+
     # Additive: it puts `deprecated: true` on this operation and changes nothing else.
-    if declaration.stability is Stability.DEPRECATED:
+    if declaration.stability is Stability.DEPRECATED or declaration.tier is Tier.DEMO:
         kwargs.setdefault("deprecated", True)
 
     # Declared explicitly, not left to the wrapper's return annotation. `functools.wraps`
@@ -294,4 +441,59 @@ def add_api_route(
     # filtering the payload inside it.
     kwargs.setdefault("response_model", CanonicalResponse)
 
-    router.add_api_route(path, endpoint=enveloped(endpoint), methods=methods or ["GET"], tags=tags, **kwargs)
+    router.add_api_route(path, endpoint=enveloped(endpoint), methods=methods or ["GET"], **kwargs)
+
+
+def register_component_endpoints(router: APIRouter, component: Any, base_path: str) -> None:
+    """Register the component-interface verbs, generated from the `Component` ABC.
+
+    A route is in the interface contract **iff it came from this generator** -- membership is
+    provable by provenance rather than by five components each remembering to register the same
+    four verbs the same way. They did not: the same verb was registered through a wrapper in one
+    component and bare in another (MAST_unit#34, #40).
+
+    The verb set is read from the ABC's own declarations, not hard-coded here, so a fifth
+    lifecycle verb is one decorated method on `Component` and no edit to this function.
+
+    Layer 2 only. `Unit` is a `Component` too, but its lifecycle verbs are the unit's
+    orchestration surface and are declared `CONTRACT`; generating them from here would re-tier
+    them to `INTERFACE` and move them in Swagger. They stay hand-registered.
+    """
+    from common.interfaces.components import Component
+
+    declared = declared_endpoints(Component)
+    if not declared:
+        raise UndeclaredEndpointError("the Component ABC declares no interface verbs; the generated surface would be empty.")
+
+    for name, declaration in declared.items():
+        handler = getattr(component, name)
+        _register(
+            router,
+            f"{base_path}/{name}",
+            endpoint=handler,
+            declaration=_with_component_completion(declaration, handler, name),
+            methods=list(declaration.methods or ("GET",)),
+        )
+
+
+def _with_component_completion(declaration: EndpointDeclaration, handler: Callable, name: str) -> EndpointDeclaration:
+    """Let a component state how its own implementation of an interface verb finishes.
+
+    The tier is uniform across components; the completion signal is not -- the imager's
+    `startup` returns immediately where every other component's flags `StartingUp`
+    (MAST_unit#149). So the override may **refine completion** and must not **contradict the
+    tier**, which is what keeps this from widening into general drift. The split itself is a
+    recorded gap, MAST_unit#157.
+    """
+    override = declaration_of(handler)
+    if override is None:
+        return declaration
+
+    if override.tier is not declaration.tier:
+        raise UndeclaredEndpointError(
+            f"'{name}' declares {override.tier} on the implementation but {declaration.tier} on the ABC; "
+            f"an interface verb may refine its completion, not its tier."
+        )
+    if override.completion is None:
+        return declaration
+    return replace(declaration, completion=override.completion)

@@ -28,8 +28,20 @@ from common.filer import Filer, is_windows_drive_mapped
 
 
 def _filer_as(system: str, hostname: str) -> Filer:
-    """A Filer built as though it were running on `system` as `hostname`."""
-    with patch("platform.system", return_value=system), patch("socket.gethostname", return_value=hostname):
+    """A Filer built as though it were running on `system` as `hostname`.
+
+    The drive probe is patched too, and it is not optional. `is_windows_drive_mapped`
+    reaches for `win32api`, which does not exist off Windows, so on a Linux or macOS
+    runner it answers False and the Windows branch takes its unmapped-share fallback --
+    `C:/MAST/`, with no hostname in it. The tests below would then be measuring the
+    fallback while claiming to measure the mapped share, which is how they came to fail on
+    every non-Windows runner. `True` is the state this file means by "on Windows".
+    """
+    with (
+        patch("platform.system", return_value=system),
+        patch("socket.gethostname", return_value=hostname),
+        patch("common.filer.is_windows_drive_mapped", return_value=True),
+    ):
         return Filer()
 
 

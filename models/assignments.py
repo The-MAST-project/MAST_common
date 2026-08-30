@@ -1,5 +1,5 @@
 import socket
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, computed_field, model_validator
 
@@ -173,7 +173,7 @@ class AssignmentNotification(BaseModel):
     # the symlink the controller creates under the run folder; not part of the source path.
     shared_subpath: str | None = None
 
-    def model_post_init(self):
+    def model_post_init(self, _context: Any):
         if self.initiator is None:
             from common.notifications import initiator
 

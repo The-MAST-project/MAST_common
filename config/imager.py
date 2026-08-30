@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from common import asi
 
@@ -37,6 +37,6 @@ class ImagerConfig(BaseModel):
     offset: OffsetConfig | None = None
     roi: RoiConfig | None = None
     temp_check_interval: int = 60
-    pixel_scale_at_bin1: float
+    pixel_scale_at_bin1: float = Field(gt=0.0, lt=10.0)
     format: asi.ValidOutputFormats
     gain: int

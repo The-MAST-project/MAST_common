@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 
 from common.activities import Activities
+from common.endpoints import Tier, endpoint
 from common.models.statuses import ComponentStatus
 
 
@@ -9,6 +10,7 @@ class Component(ABC, Activities):
         Activities.__init__(self)
         self.activities = activities_type(0)
 
+    @endpoint(tier=Tier.INTERFACE, methods=("PUT",))
     @abstractmethod
     def startup(self):
         """
@@ -16,6 +18,7 @@ class Component(ABC, Activities):
         :return:
         """
 
+    @endpoint(tier=Tier.INTERFACE, methods=("PUT",))
     @abstractmethod
     def shutdown(self):
         """
@@ -37,6 +40,7 @@ class Component(ABC, Activities):
     def powerdown(self):
         pass
 
+    @endpoint(tier=Tier.INTERFACE, methods=("PUT",))
     @abstractmethod
     def abort(self):
         """
@@ -45,6 +49,7 @@ class Component(ABC, Activities):
         :return:
         """
 
+    @endpoint(tier=Tier.INTERFACE, methods=("GET",))
     @abstractmethod
     def status(self):
         """
