@@ -11,6 +11,13 @@ class UserCapabilities(StrEnum):
     CAN_USE_CONTROLS = "canUseControls"
     CAN_CHANGE_USERS = "canChangeUsers"
     CAN_OWN_TASKS = "canOwnTasks"
+    # The 'planners' group in the config DB has carried this capability while the enum
+    # did not, so every `GroupConfig(**group)` over that document raised ValidationError
+    # -- taking down Config.get_users() and get_user() outright, and with them the
+    # controller's /config/users and /config/user endpoints. The capability is real and
+    # in use (MAST_gui's plans view and templates key on "canManagePlans"); only this
+    # member was missing.
+    CAN_MANAGE_PLANS = "canManagePlans"
 
 
 class UserConfig(BaseModel):
