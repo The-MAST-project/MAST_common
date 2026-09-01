@@ -39,7 +39,8 @@ class Target(BaseModel):
                 "unit": "hours",
                 "summary": True,
                 "required": True,
-                "tooltip": "Sexagesimal:<ul><li>&nbsp;<b>05:34:32.5</b><li>&nbsp;<b>05 34 32.5</b></li></ul>&nbsp;or decimal hours <ul><li>&nbsp;<b>5.575</b></li></ul>",
+                "tooltip": "Sexagesimal:<ul><li>&nbsp;<b>05:34:32.5</b><li>&nbsp;<b>05 34 32.5</b></li></ul>"
+                "&nbsp;or decimal hours <ul><li>&nbsp;<b>5.575</b></li></ul>",
             },
             "searchable": "range",
         },
@@ -54,7 +55,8 @@ class Target(BaseModel):
                 "unit": "degrees",
                 "summary": True,
                 "required": True,
-                "tooltip": "Sexagesimal:<ul><li>&nbsp;<b>+22:00:52.5</b></li><li>&nbsp;<b>-22 00 52.5</b></li></ul>&nbsp;or decimal degrees <ul><li>&nbsp;<b>22.014</b></li></ul>",
+                "tooltip": "Sexagesimal:<ul><li>&nbsp;<b>+22:00:52.5</b></li><li>&nbsp;<b>-22 00 52.5</b></li></ul>"
+                "&nbsp;or decimal degrees <ul><li>&nbsp;<b>22.014</b></li></ul>",
                 "error_message": "Sexagesimal (colon or space separated) or decimal degrees [-90:90]",
             },
             "searchable": "range",

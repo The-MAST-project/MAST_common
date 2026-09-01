@@ -62,6 +62,27 @@ class LocalConfig(BaseModel):
             return f"C:/{self.project.upper()}"
         return f"/var/{self.project.lower()}"
 
+    @property
+    def config_cache_dir(self) -> str:
+        """Where the configuration boot cache lives: per machine, always writable.
+
+        `C:/MAST/config-db-cache` on Windows and `~/MAST/config-db-cache` on Linux.
+
+        Deliberately not `data_root`, whose Linux branch is `/var/mast`: that directory
+        does not exist on the control host and `/var` is not writable by the service
+        account, so a cache there would silently never be written -- on the one platform
+        where nothing else would notice. (`data_root` has no callers at all today, so
+        its Linux value has never been exercised.)
+
+        Deliberately not any `Filer` root either. On Linux `Filer().local` is
+        `/Storage/mast-share/MAST`, the *share* -- one directory common to every Linux
+        host, which is exactly wrong for a cache whose whole purpose is to let a single
+        machine boot when the shared infrastructure is unreachable.
+        """
+        if platform.system() == "Windows":
+            return f"C:/{self.project.upper()}/config-db-cache"
+        return os.path.join(os.path.expanduser("~"), self.project.upper(), "config-db-cache")
+
 
 def _config_file_path() -> str:
     """Locate the bootstrap TOML file.
