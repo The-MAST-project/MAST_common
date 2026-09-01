@@ -2,6 +2,123 @@
 
 ---
 
+## [2026-08-31] A DB change takes effect within seconds, not at the next service restart
+
+**Why:** `Config` read MongoDB once, at `__init__`, and never again. Everything downstream
+read that frozen dict, so [2026-07-02] had to ratify the consequence -- "a DB change takes
+effect on the next service restart" -- as though it were a design choice. It was a
+side effect of the loading code.
+
+The two TTL caches that looked like they refreshed something were **inert**. `mongo_cache`
+(60 s) wrapped a loader reachable only from `__init__`, so its TTL never caused a re-read.
+`config_db_cache` (30 s) wrapped a method whose body was `return self.db`. That is why
+`set_unit` calling `clear_mongo_ttl_cache()` did not let a process see **its own write**,
+and why `MAST_control`'s 30 s "config refresh" timer (`controller.py:526`) rebuilt `Site`
+objects from an unchanging dict every 30 s for as long as the controller ran.
+
+**What:** a `ConfigSnapshot` published by whole-reference assignment, refreshed by a
+`config-watcher` daemon thread that follows a MongoDB change stream and falls back to
+polling. Five decisions inside it are load-bearing:
+
+- **An event is a trigger, never data.** A delete carries only `documentKey._id`, and
+  `_id` is projected out of every stored document, so an event cannot be applied
+  incrementally -- only used to decide which collection to re-read. Everything else
+  follows from this.
+- **No resume tokens, ever.** pymongo already resumes across ordinary blips. What it
+  cannot resume -- `invalidate`, `ChangeStreamHistoryLost`, a failover -- all want the
+  response the outer loop already makes: drop, re-read everything, reopen from now. Since
+  events are triggers, a gap costs latency, not correctness. A persisted token would buy
+  nothing (startup re-reads regardless) and would add a stale-token recovery path.
+- **`directConnection=True`.** `rs0`'s sole member advertises itself as the bare
+  `mast-ns-control:27017`, which per [2026-07-09] does not resolve off the controller's
+  subnet. Replica-set discovery would replace our FQDN seed with that name and every unit
+  would lose the database. Verified that change streams work over a direct connection.
+- **Change detection compares documents, not a fingerprint.** The obvious fingerprint,
+  `(count, max _id)` -- which the fleet's own `MAST_config_db` monitor uses -- cannot see
+  an in-place edit to an existing document, which is exactly what an operator changing a
+  value produces. The whole database is 18 KB; `!=` is exact and affordable.
+- **One event, one reload; coalescing lives on the notification side.** The first version
+  collected bursts by calling `try_next()` again, which blocks for the full idle timeout
+  when nothing further is waiting -- so it delayed *every* change by that timeout
+  (measured: 10.03 s against `rs0` for a change the server delivered in 0.02 s).
+
+Caching is now keyed on the **generation of the collections an accessor reads**, not on
+time. A time-keyed cache is wrong in both directions at once: too eager (rebuilds an
+unchanged model when the clock runs out) and too lazy (serves a stale one for the rest of
+the window). The generation key also gives accessors an identity property the design
+relies on -- within one generation an accessor returns *the same object* -- so **an
+operation uses the configuration it started with** simply by binding `conf = ...` once at
+entry. No copying, no locking, no "which view am I on" bookkeeping.
+
+Two behaviour changes ride along, both in `set_unit`: it now **reloads `units`
+synchronously** after a successful write, so a process finally sees its own write even
+with the watcher off; and it **raises `ConfigError` on write failure** instead of logging,
+because all three callers went on to log "saved ..." after a lost write.
+
+**Implications:** [2026-07-02]'s closing note is superseded. `start_watching()` is
+**opt-in** -- a thread holding a change-stream cursor needs an owner with a lifetime, and
+`Config()` is constructed by things that have none (a `manage.py` one-shot, a `--help`, a
+test), so each long-running service calls it once from its startup path. Consumers that
+snapshot config into `self.conf` at construction stay stale until converted; that is what
+makes the migration safe to do per repo, given nothing pins `common` to its consumers
+(#34). Anything mutating a value returned by an accessor is now a defect rather than a
+wart -- it would change the model for every reader and then be silently reverted at the
+next generation -- so read-modify-write goes through `update_unit()`, which hands the
+mutator a private copy. MAST_unit#195 tracks the one site that cannot simply be converted.
+
+---
+
+## [2026-08-31] The local config cache is a boot crutch, not a backend
+
+**Why:** [2026-06-21] deleted the local-JSON config backend and made MongoDB the only
+source, which was right: a file you could edit was a second authority that could disagree
+with the database. But it left an unreachable controller as a fatal startup error, and the
+failure was not even a clean refusal -- `MAST_unit`'s `app.py` takes its own listen
+address from the DB, so nssm restarted a process that died before it could listen. The
+operator saw a running service, an unanswered port, and a traceback they had to go find
+(#82).
+
+**What:** a directory of timestamped copies under `~mast/MAST/config-db-cache/`
+(`C:\MAST\config-db-cache\` on Windows), newest 10 kept, with a `latest` pointer. Written
+only by the watcher and only from a successful MongoDB read; read only at startup and only
+after MongoDB has already failed. Both sources failing is still fatal.
+
+It is not the backend [2026-06-21] deleted, and three properties keep that true: a
+hand-edit cannot reach any system that can reach MongoDB, because the first successful read
+overwrites it; it is never a source anything prefers; and a copy written against a
+different `mongo_uri` or database is refused, so a cache carried between machines cannot
+boot one on another site's configuration.
+
+Details that are decisions rather than mechanics:
+
+- **The filename carries a UTC timestamp, not the generation.** The generation is a
+  per-process counter that restarts at 0, so two machines would write different content
+  under one name and a restart would overwrite its own history. `time_stamp()` cannot be
+  reused for this: its ISO colons are illegal in Windows filenames, and the units are the
+  Windows machines.
+- **Startup picks the newest by filename sort, not by following `latest`.** On Windows
+  `latest` is a *copy* -- creating a symlink needs a privilege the service account does
+  not have -- so it cannot say which copy it is. `latest` is for a person reading the
+  directory.
+- **No maximum age.** A three-week-old cache that lets a unit close its covers beats a
+  fatal startup. Staleness is reported through `ConfigHealth`, not punished.
+- **`set_unit` refuses while degraded**, or a saved autofocus position would be diffed
+  against a cache with nothing behind it and silently lost.
+- **Not `LocalConfig.data_root`**, whose Linux branch is `/var/mast`: that directory does
+  not exist on the control host and `/var` is not writable by the service account, so the
+  cache would silently never be written on the one platform where nothing else would
+  notice. Not `Filer().local` either -- on Linux that is the *share*, one directory common
+  to every host, which is the opposite of what a per-machine boot cache needs.
+
+**Implications:** startup is now fatal only when both MongoDB and the cache fail, which is
+a deliberate narrowing of "a configuration failure at startup is fatal", not an abandonment
+of it. Degraded is loud: one ERROR naming the MongoDB failure and the cache's age, and
+`ConfigHealth` reports it for as long as it lasts. Services should surface `ConfigHealth`
+on their status endpoint -- a unit running on last week's configuration looks entirely
+normal otherwise.
+
+---
+
 ## [2026-08-16] A handler built at registration declares itself with the same token
 
 **Why:** MAST_unit#117 registers a route on a closure built after construction --
