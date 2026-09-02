@@ -82,9 +82,9 @@ class Stability(StrEnum):
     DEPRECATED = "deprecated"
 
 
-#: Swagger group per tier. One tag per route, and it is the tier -- the path prefix already
-#: carries the layer (`/unit/<verb>` vs `/unit/<component>/<verb>`), so a subsystem tag would
-#: only repeat it while saying nothing about what a consumer may depend on.
+#: Swagger group per tier, for every tier the area split does not touch. One tag per route
+#: throughout: Swagger renders an operation under each tag it carries, so a second tag would
+#: duplicate the row rather than nest it.
 TIER_TAGS: dict[Tier, str] = {
     Tier.CONTRACT: "Unit orchestration (contract)",
     Tier.OPERATION: "Operator / diagnostic operations",
@@ -102,32 +102,95 @@ TIER_STABILITY: dict[Tier, str] = {
     Tier.DEMO: "demo",
 }
 
-#: `openapi_tags` for the app, in display order: importance and utility, so the operator
-#: surface sits above the uniform lifecycle verbs.
-OPENAPI_TAGS: list[dict[str, str]] = [
-    {
+#: The operator tier's group name, one per area (MAST_unit#207). Parenthesised to match the
+#: two tier tags it sits beside, `Unit orchestration (contract)` and `Component interface
+#: (contract)`, so the nine headings read as one set. The area displaces the tier
+#: only here: 32 of the unit's 61 tagged operations are `OPERATION`, which under a single tag
+#: is one flat list spanning six components, and a path prefix labels a row without grouping
+#: it. The two contract tiers stay whole -- a consumer wants the programmatic surface in one
+#: place, and the lifecycle verbs are uniform across components by construction.
+OPERATION_AREA_TAG: str = "{area} (operator)"
+
+#: Tag group metadata per tier, for a service composing its own `openapi_tags`. A service that
+#: splits the operator tier by area (see `MAST_unit/src/app.py`) uses every entry but
+#: `Tier.OPERATION`, whose description covers the unsplit group `display_tag` still returns for
+#: a path with no area.
+TIER_GROUPS: dict[Tier, dict[str, str]] = {
+    Tier.CONTRACT: {
         "name": TIER_TAGS[Tier.CONTRACT],
         "description": "The programmatic surface for observing. Build clients on these.",
     },
-    {
+    Tier.OPERATION: {
         "name": TIER_TAGS[Tier.OPERATION],
         "description": (
             "Bespoke operator and diagnostic verbs, for driving a unit by hand. "
             "**Not a contract** -- these may change without notice."
         ),
     },
-    {
+    Tier.INTERFACE: {
         "name": TIER_TAGS[Tier.INTERFACE],
         "description": (
             "The lifecycle verbs every component answers -- startup, shutdown, abort, status. "
             "Uniform across components, and safe to build on."
         ),
     },
-    {
+    Tier.DEMO: {
         "name": TIER_TAGS[Tier.DEMO],
         "description": "Demonstration routes, parked. Shown struck through; do not call them.",
     },
-]
+}
+
+
+#: `openapi_tags` for a service that does not split the operator tier -- the four tier groups in
+#: display order, importance and utility first. The unit composes its own from these plus one
+#: group per area (`MAST_unit/src/app.py`, MAST_unit#207); MAST_spec and MAST_control adopt the
+#: endpoint helpers under MAST_spec#56 and MAST_control#31 and start here.
+OPENAPI_TAGS: list[dict[str, str]] = [TIER_GROUPS[tier] for tier in Tier]
+
+
+def area_of(path: str) -> str | None:
+    """The area a route belongs to: the path segment before its verb.
+
+    Every route in the fleet is `<base>/<verb>` or `<base>/<component>/<verb>`, so the segment
+    immediately before the verb names what a reader would file the route under -- the component
+    for a layer-2 route, and the service itself for a layer-1 one:
+
+        /mast/api/v1/unit/mount/park  -> "mount"
+        /mast/api/v1/unit/expose      -> "unit"
+
+    Positional rather than matched against `Const.BASE_*_PATH` on purpose. The rule then holds
+    for any base, which means a test registering a short path exercises the same derivation
+    production does -- and a service gets its groups from where its routes are mounted, with no
+    registration step to forget when a component is added.
+
+    `None` for a single-segment path, which has no segment before its verb.
+    """
+    segments = [segment for segment in path.split("/") if segment]
+    return segments[-2] if len(segments) >= 2 else None
+
+
+def operation_area_tag(area: str) -> str:
+    """The operator tier's group name for `area`, which is a path segment as `area_of` returns it.
+
+    The one place the tag string is built, so a service composing its `openapi_tags` names the
+    same group the router files its routes under rather than a literal that has to match one.
+    """
+    return OPERATION_AREA_TAG.format(area=area.capitalize())
+
+
+def display_tag(tier: Tier, path: str) -> str:
+    """The Swagger group a route is filed under: its area if it is an operator verb, else its tier.
+
+    The area is derived from the path the route is served at, so the group and the route cannot
+    disagree -- the same property #39 established when it made the tag the tier, applied to the
+    second axis. There is deliberately no way to override it.
+    """
+    if tier is not Tier.OPERATION:
+        return TIER_TAGS[tier]
+    area = area_of(path)
+    if area is None:
+        return TIER_TAGS[tier]
+    return operation_area_tag(area)
 
 
 class Completion(StrEnum):
@@ -419,7 +482,7 @@ def _register(
     declared on the ABC, so the concrete override a component supplies carries no marker of its
     own and there is nothing on it to look up.
     """
-    kwargs["tags"] = [TIER_TAGS[declaration.tier]]
+    kwargs["tags"] = [display_tag(declaration.tier, path)]
     kwargs["openapi_extra"] = {
         **kwargs.get("openapi_extra", {}),
         "x-stability": TIER_STABILITY[declaration.tier],
