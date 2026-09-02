@@ -5,21 +5,39 @@ but no coordinates, and record them), `mount/goto_object`, and eventually
 `unit/start_acquisition_and_guiding`, which takes J2000 only today. None of them are
 wired here.
 
-Order of enquiry, cheapest and most certain first:
+Two serial gates, then every service at once.
+
+The **gates** decide whether to touch the network at all, and both are free:
 
 1. **Moving targets are refused without a network call.** Comets and minor planets have
    no fixed J2000 -- only an ephemeris at an instant -- so a plausible answer would be
    worse than none. Refusing by pattern also stops such a name reaching a catalogue that
    might match it for unrelated reasons.
 2. **Cache.**
-3. **TNS**, for TNS-shaped names (`AT`/`SN` + year), because it is the authority for
-   transients and has them within minutes of the discovery report. A miss or an outage
-   falls through rather than failing: a name that merely looks like a transient may well
-   be an older object that Sesame knows.
-4. **Sesame** for everything else, through astropy, which queries SIMBAD then NED then
-   VizieR and stops at the first positive answer.
 
-A note on why TNS is first, since the reasoning was wrong at first and the correction
+Past them, **TNS, Sesame/CDS and Sesame/CfA are asked simultaneously**. Nothing is asked
+speculatively -- the gates already decided -- but once the decision is made there is no
+reason for one service to queue behind another. Two rules govern who wins:
+
+* The **Sesame mirrors race**; first positive answer wins. They are interchangeable, so
+  that is not a shortcut but the correct reading of "whichever answers first". A miss from
+  one is not the verdict -- only when every mirror says no is the miss definitive, and a
+  definitive miss is the one failure this module may remember.
+* **TNS is preferred, not raced.** For a TNS-shaped name (`AT`/`SN` + year) its verdict is
+  awaited before Sesame's is looked at. Taking whoever answers soonest would be WRONG:
+  Sesame is the faster of the two, so first-wins would systematically prefer the staler
+  source for exactly the names TNS exists to answer. A TNS miss or outage falls through --
+  a name that merely looks like a transient may be an older object Sesame knows -- and
+  because Sesame was started at the same instant, falling through costs nothing.
+
+This was sequential until 2026-08-26, and the arrangement hid a fallback that could not
+work. With the mirrors tried in turn behind TNS, the per-mirror cap had to be 4s to fit the
+budget -- but measured over 20 minutes from mast00, the CfA mirror's FASTEST response was
+9.27s (median 9.59s, and a third of responses near 20.5s). CDS answers in 1.97s. So the
+fallback existed in the code and never once in reality, and the cost of finding that out
+was borne by whoever was on shift when CDS refused a query.
+
+A note on why TNS is preferred, since the reasoning was wrong at first and the correction
 matters: it is NOT that Sesame returns a transient's host galaxy instead of the transient.
 Measured on 2026-08-12, SIMBAD gives SN2023ixf its own position, 4.39 arcmin from M101's
 nucleus. The real gap is recency -- a transient reported last night is in TNS and not yet
@@ -39,9 +57,7 @@ import re
 import threading
 import time
 from dataclasses import asdict, dataclass
-
-from astropy.coordinates import name_resolve
-from astropy.utils.data import conf as astropy_data_conf
+from urllib.parse import quote
 
 from common.mast_logging import get_logger
 
@@ -49,15 +65,40 @@ logger = get_logger(__name__)
 
 #: Whole-enquiry budget. The callers are operator-facing or sweep-driven; past this a
 #: human assumes it is broken, and a sweeper has other targets to get to.
+#:
+#: A DEADLINE over the whole enquiry, not a sum of its parts. Every service is asked at
+#: once, so the budget bounds the slowest arm rather than their total.
 TOTAL_TIMEOUT_SECONDS = 15.0
 
 #: One POST to one host.
 TNS_TIMEOUT_SECONDS = 5.0
 
-#: Per REQUEST, not per enquiry: astropy tries its Sesame mirrors in turn (CDS Strasbourg,
-#: then Harvard CfA), so the worst case is twice this. astropy's own default is 10s, which
-#: would make Sesame alone a 20s worst case and blow the budget above -- hence stating it.
-SESAME_TIMEOUT_SECONDS = 4.0
+#: Per MIRROR, and the two are asked simultaneously, so this is the loser's ceiling rather
+#: than a cost paid on every enquiry. Generous on purpose: measured from mast00 over 20
+#: minutes (70 samples, 2026-08-26), CDS answers in 1.97s median and never took 2.61s,
+#: while the CfA mirror is bimodal -- 9.59s median, but a third of responses land near
+#: 20.5s and nothing at all arrives between 10s and 20s. So a cap below ~10s makes CfA
+#: unreachable by construction, and one between 12s and 20s buys nothing over 12s.
+#:
+#: It was 4.0 when the mirrors were asked in turn, which meant the fallback could NEVER
+#: answer: CfA's fastest observed response was 9.27s. The fallback existed in the code and
+#: not in reality.
+SESAME_TIMEOUT_SECONDS = 25.0
+
+#: Sesame mirrors, asked CONCURRENTLY -- first positive answer wins.
+#:
+#: They are interchangeable: same protocol, same underlying databases, neither more
+#: authoritative, so racing them is not a shortcut but the correct reading of "whichever
+#: answers first". Asking them in turn made the whole enquiry as slow as the slower host
+#: whenever the first failed; asking together costs the happy path ~0.4s of thread and
+#: parse overhead and makes the fallback real.
+#:
+#: Note CDS's load is unchanged by this -- one query per enquiry either way. It is CfA that
+#: goes from near-zero traffic to one query per enquiry.
+SESAME_MIRRORS = (
+    ("cds", "https://cds.unistra.fr/cgi-bin/nph-sesame/-oI/A?"),
+    ("cfa", "http://vizier.cfa.harvard.edu/viz-bin/nph-sesame/-oI/A?"),
+)
 
 #: A fixed object's position does not change; the cost of caching it is a stale name, not
 #: a stale sky. Long, but not forever, so a corrected catalogue entry is eventually seen.
@@ -86,6 +127,21 @@ class MovingTargetError(ObjectNameError):
     """The name designates something with no fixed J2000 position."""
 
 
+class SesameMissError(ObjectNameError):
+    """Sesame answered, and there is no such object.
+
+    Distinct from any transport failure ON PURPOSE, and the distinction is the whole point
+    of `NEGATIVE_TTL_SECONDS`: only a service that actually answered may have its "no"
+    remembered. A timeout or an outage says nothing about whether the object exists.
+
+    This used to be inferred by matching astropy's error text ("unable to find coordinates
+    for name") against its other one ("All Sesame queries failed"). That worked but was
+    one upstream rewording away from silently caching outages as missing objects -- the
+    2026-08-12 `NGC 224` incident, in reverse. Reading it off the response structure
+    instead cannot drift: a miss is a 200 with no `%J` line in it.
+    """
+
+
 @dataclass(frozen=True)
 class ResolvedObject:
     """Where a name resolved to, and who said so."""
@@ -99,9 +155,85 @@ class ResolvedObject:
     """The identifier the service matched, when it reports one. Worth recording: a name
     that resolved via an alias is the case most likely to have resolved to the wrong
     thing."""
+    database: str | None = None
+    """For Sesame, which database answered and on which mirror -- `simbad@cds`.
+
+    `resolver` says "sesame", which is true but coarse: Sesame is three catalogues in a
+    trench coat, and SIMBAD and NED disagreeing about a name is precisely the shape of a
+    misresolution. Optional, so a result built without it is still valid."""
 
     def as_dict(self) -> dict:
         return asdict(self)
+
+
+class _Arm:
+    """One service being asked, on its own daemon thread.
+
+    Daemon threads rather than a `ThreadPoolExecutor` deliberately. The executor's threads
+    are joined at interpreter exit, so a losing arm still waiting on a 25s mirror would
+    hold up the shutdown of a service that already has its answer. These are abandoned the
+    moment they stop being interesting.
+    """
+
+    __slots__ = ("_done", "_error", "_value")
+
+    def __init__(self) -> None:
+        self._done = threading.Event()
+        self._value: ResolvedObject | None = None
+        self._error: BaseException | None = None
+
+    def _run(self, fn, args) -> None:
+        try:
+            self._value = fn(*args)
+        except BaseException as e:  # noqa: BLE001 -- carried to the waiter, never swallowed
+            # Deliberately BaseException, not Exception. Nothing raised on this thread has
+            # anywhere else to go: an escape would print to stderr and vanish, leaving the
+            # waiter to time out against an arm that died instantly.
+            self._error = e
+        finally:
+            self._done.set()
+
+    def wait(self, timeout: float) -> bool:
+        return self._done.wait(max(0.0, timeout))
+
+    @property
+    def finished(self) -> bool:
+        return self._done.is_set()
+
+    def result(self) -> ResolvedObject | None:
+        if self._error is not None:
+            raise self._error
+        return self._value
+
+
+def _spawn(fn, *args) -> _Arm:
+    arm = _Arm()
+    # getattr, because `fn` is not always a function: the tests substitute callable
+    # objects, which have no __name__, and a thread's label is not worth an AttributeError.
+    label = getattr(fn, "__name__", type(fn).__name__)
+    threading.Thread(target=arm._run, args=(fn, args), daemon=True, name=f"resolve-{label}").start()
+    return arm
+
+
+def _as_they_finish(arms, deadline: float):
+    """Yield (label, arm) as each finishes, giving up at `deadline`.
+
+    A short poll rather than a condition variable shared between arms: with at most three
+    of them the simplicity is worth more than the microseconds, and it keeps each arm
+    independent of the others' bookkeeping.
+    """
+    pending = list(arms)
+    while pending:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return
+        for entry in list(pending):
+            if entry[1].finished:
+                pending.remove(entry)
+                yield entry
+                break
+        else:
+            time.sleep(min(0.02, max(0.0, remaining)))
 
 
 # Comets: `C/2023 A3`, `1P/Halley`, `73P-C`. Minor planets: `(433)`, `433 Eros`,
@@ -221,35 +353,102 @@ def _tns_credentials() -> tuple[str, str, str] | None:
     return api_key.get_secret_value(), str(tns_id), str(bot_name)
 
 
-def _is_definitive_miss(error: Exception) -> bool:
+def _is_definitive_miss(error: BaseException) -> bool:
     """True when Sesame answered and said there is no such object.
 
-    False when it did not answer at all, which astropy reports through the same exception
-    type but a different message ("All Sesame queries failed ..." versus "Unable to find
-    coordinates for name ..."). The distinction matters because only the first may be
-    remembered: caching the second turns a passing service problem into a name that does
-    not exist for the next five minutes.
+    Now a type check rather than a string match. It used to read astropy's error text,
+    distinguishing "Unable to find coordinates for name ..." from "All Sesame queries
+    failed ...", which worked but was one upstream rewording away from remembering an
+    outage as a missing object.
 
-    That is not hypothetical. On 2026-08-12, after several queries in quick succession,
-    CDS refused one and `NGC 224` -- which is M31 -- came back unresolved and was then
-    remembered as such. It resolved in 0.83s on the next attempt.
-
-    Biased toward NOT caching: if astropy ever rewords the miss message this returns
-    False and nothing is remembered, which costs extra queries rather than correctness.
+    Why that matters, from 2026-08-12: after several queries in quick succession CDS
+    refused one, `NGC 224` -- which is M31 -- came back unresolved, and the miss was
+    cached. It resolved in 0.83s on the next attempt. Only a service that ANSWERED may
+    have its "no" remembered.
     """
-    return "unable to find coordinates for name" in str(error).lower()
+    return isinstance(error, SesameMissError)
+
+
+# Sesame's `-oI/A` reply is a per-database transcript. Each section opens with `#=<code>`
+# when that database answered or `#!<code>` when it did not, and a section that answered
+# carries `%J <ra_degrees> <dec_degrees>` and `%I.0 <primary identifier>`. Verified against
+# the live service 2026-08-26 for a hit, a miss, a name with spaces and an NED-only object.
+_SESAME_COORDINATES = re.compile(r"^%J\s+([-+\d.]+)\s+([-+\d.]+)", re.MULTILINE)
+_SESAME_SECTION = re.compile(r"^#[=!](\w+)=(\w+)", re.MULTILINE)
+_SESAME_IDENTIFIER = re.compile(r"^%I\.0\s+(.+?)\s*$", re.MULTILINE)
+
+
+def _parse_sesame(name: str, text: str, mirror: str) -> ResolvedObject | None:
+    """A result, or None when the transcript shows no database found anything.
+
+    None means a DEFINITIVE miss -- the service answered and said no. A malformed or
+    truncated reply raises instead, because "we could not read the answer" must never be
+    remembered as "the object does not exist".
+    """
+    coordinates = _SESAME_COORDINATES.search(text)
+    if coordinates is None:
+        return None
+
+    # Which database actually answered: the last section header before the coordinates.
+    # Worth recording -- SIMBAD and NED disagreeing about a name is exactly the shape of a
+    # misresolution, and the flat "sesame" it used to report could not show that.
+    database = None
+    for section in _SESAME_SECTION.finditer(text):
+        if section.start() > coordinates.start():
+            break
+        database = section.group(2)
+
+    identifier = _SESAME_IDENTIFIER.search(text[: coordinates.start()] + text[coordinates.start() :])
+    return ResolvedObject(
+        name=name,
+        ra_j2000_hours=float(coordinates.group(1)) / 15.0,
+        dec_j2000_degs=float(coordinates.group(2)),
+        resolver="sesame",
+        canonical_name=" ".join(identifier.group(1).split()) if identifier else None,
+        database=f"{database.lower()}@{mirror}" if database else mirror,
+    )
+
+
+def _query_sesame_mirror(name: str, mirror: str, url: str, timeout: float) -> ResolvedObject:
+    """One mirror. Returns a result, or raises -- `SesameMissError` for a definitive no."""
+    import httpx
+
+    response = httpx.get(url + quote(name), timeout=timeout, follow_redirects=True)
+    response.raise_for_status()
+    resolved = _parse_sesame(name, response.text, mirror)
+    if resolved is None:
+        raise SesameMissError(f"sesame/{mirror}: no database has '{name}'")
+    return resolved
 
 
 def _resolve_via_sesame(name: str, timeout: float) -> ResolvedObject:
-    """Ask Sesame, which asks SIMBAD then NED then VizieR and stops at the first answer."""
-    with astropy_data_conf.set_temp("remote_timeout", timeout):
-        coord = name_resolve.get_icrs_coordinates(name)
-    return ResolvedObject(
-        name=name,
-        ra_j2000_hours=float(coord.ra.hour),
-        dec_j2000_degs=float(coord.dec.deg),
-        resolver="sesame",
-    )
+    """Both mirrors at once; the first positive answer wins.
+
+    A miss from one mirror does NOT end the enquiry -- the other is still asked out, and
+    only when every mirror has said no is the miss definitive. The two are not quite
+    identical (CDS runs VizieR locally), and a `SesameMissError` is the one failure this module
+    is allowed to remember, so it must not be concluded from a single host.
+
+    Raises `SesameMissError` only if every mirror answered and none found anything; otherwise
+    the last transport failure, which is never remembered.
+    """
+    arms = [(mirror, _spawn(_query_sesame_mirror, name, mirror, url, timeout)) for mirror, url in SESAME_MIRRORS]
+    deadline = time.monotonic() + timeout
+    misses, failures = [], []
+
+    for mirror, arm in _as_they_finish(arms, deadline):
+        try:
+            return arm.result()
+        except SesameMissError as miss:
+            misses.append(str(miss))
+        except Exception as e:  # noqa: BLE001 -- one mirror's failure is not the verdict
+            failures.append(f"{mirror}: {type(e).__name__}: {e}")
+
+    if failures:
+        raise ObjectNameError(f"sesame: no mirror answered ({'; '.join(failures)})")
+    if misses:
+        raise SesameMissError(f"sesame: no database has '{name}' ({len(misses)} mirror(s) agreed)")
+    raise ObjectNameError(f"sesame: no mirror answered within {timeout:g}s")
 
 
 def _describe(result: ResolvedObject) -> str:
@@ -257,25 +456,29 @@ def _describe(result: ResolvedObject) -> str:
     return f"ra={result.ra_j2000_hours:.6f}h dec={result.dec_j2000_degs:+.6f}d via {result.resolver}{canonical}"
 
 
-def _try_tns(name: str, deadline: float, attempts: list[str]) -> ResolvedObject | None:
-    """TNS's answer, or None to fall through to Sesame.
+def _try_tns_arm(name: str, deadline: float) -> ResolvedObject | None:
+    """TNS's answer, or None to fall through to Sesame. Runs on its own thread.
 
-    Never raises: a TNS outage, a missing credential or a miss all mean "ask Sesame", and
-    a name that merely looks like a transient may be an older object Sesame knows.
+    Raises nothing the caller has to special-case: a TNS outage, a missing credential or a
+    miss all mean the same thing -- use Sesame -- and a name that merely looks like a
+    transient may be an older object Sesame knows. The failure reason is carried on the
+    exception for `_collect_tns` to record.
     """
     credentials = _tns_credentials()
     if credentials is None:
         # Not fatal and not a reason to refuse: Sesame carries transients once they are
         # catalogued, and a fresh one is simply not found, which is safe.
-        attempts.append("tns: no credentials in the vault")
-        logger.info(f"'{name}' looks like a TNS name but the vault has no TNS credentials; trying Sesame")
-        return None
+        raise ObjectNameError("no credentials in the vault")
+    return _resolve_via_tns(name, credentials, min(TNS_TIMEOUT_SECONDS, deadline - time.monotonic()))
 
+
+def _collect_tns(arm: _Arm, attempts: list[str]) -> ResolvedObject | None:
+    """TNS's result, or None -- for any reason at all -- meaning "use Sesame"."""
     try:
-        resolved = _resolve_via_tns(name, credentials, min(TNS_TIMEOUT_SECONDS, deadline - time.monotonic()))
-    except Exception as e:  # noqa: BLE001 -- any TNS failure falls through to Sesame
+        resolved = arm.result()
+    except Exception as e:  # noqa: BLE001 -- every TNS failure falls through to Sesame
         attempts.append(f"tns: {e}")
-        logger.info(f"TNS could not resolve '{name}' ({e}); trying Sesame")
+        logger.info(f"TNS did not answer ({e}); using Sesame")
         return None
 
     if resolved is None:
@@ -283,21 +486,50 @@ def _try_tns(name: str, deadline: float, attempts: list[str]) -> ResolvedObject 
     return resolved
 
 
-def _try_sesame(name: str, remaining: float, attempts: list[str]) -> tuple[ResolvedObject | None, bool]:
+def _collect_sesame(name: str, arm: _Arm, attempts: list[str]) -> tuple[ResolvedObject | None, bool]:
     """(result, definitive). `definitive` says whether a failure may be remembered.
 
     Never raises: an unexpected exception from a catalogue client must not surprise a
     caller that is already handling ObjectNameError.
     """
     try:
-        return _resolve_via_sesame(name, min(SESAME_TIMEOUT_SECONDS, remaining)), True
-    except name_resolve.NameResolveError as e:
+        return arm.result(), True
+    except SesameMissError as e:
         attempts.append(f"sesame: {e}")
-        return None, _is_definitive_miss(e)
+        return None, True
+    except ObjectNameError as e:
+        attempts.append(f"sesame: {e}")
+        return None, False
     except Exception as e:
         attempts.append(f"sesame: {type(e).__name__}: {e}")
         logger.exception(f"unexpected failure resolving '{name}' through Sesame")
         return None, False
+
+
+def _remembered(asked: str) -> ResolvedObject | None:
+    """The remembered answer, or None if nothing is remembered.
+
+    Raises for a remembered MISS -- that is the point of `NEGATIVE_TTL_SECONDS`, and only
+    a definitive miss is ever put there, never a timeout or an outage.
+    """
+    hit, cached = _cache.get(asked)
+    if not hit:
+        return None
+    if cached is None:
+        logger.info(f"'{asked}' unresolved (remembered from a recent attempt)")
+        raise ObjectNameError(f"'{asked}' could not be resolved (remembered from a recent attempt)")
+    logger.debug(f"resolved '{asked}' from cache: {_describe(cached)}")
+    return cached
+
+
+def _await_tns(arm: _Arm | None, deadline: float, total_timeout: float, attempts: list[str]) -> ResolvedObject | None:
+    """TNS's answer if it has one within the budget, else None meaning "use Sesame"."""
+    if arm is None:
+        return None
+    if not arm.wait(max(0.0, deadline - time.monotonic())):
+        attempts.append(f"tns: still running at the {total_timeout:g}s deadline")
+        return None
+    return _collect_tns(arm, attempts)
 
 
 def resolve_object_name(name: str, total_timeout: float = TOTAL_TIMEOUT_SECONDS) -> ResolvedObject:
@@ -322,30 +554,40 @@ def resolve_object_name(name: str, total_timeout: float = TOTAL_TIMEOUT_SECONDS)
             "ephemeris at an instant, so it cannot be resolved to coordinates here"
         )
 
-    hit, cached = _cache.get(asked)
-    if hit:
-        if cached is None:
-            logger.info(f"'{asked}' unresolved (remembered from a recent attempt)")
-            raise ObjectNameError(f"'{asked}' could not be resolved (remembered from a recent attempt)")
-        logger.debug(f"resolved '{asked}' from cache: {_describe(cached)}")
-        return cached
+    remembered = _remembered(asked)
+    if remembered is not None:
+        return remembered
 
     attempts: list[str] = []
 
-    if is_tns_name(asked):
-        resolved = _try_tns(asked, deadline, attempts)
-        if resolved is not None:
-            _cache.put(asked, resolved, TNS_TTL_SECONDS)
-            logger.info(f"resolved '{asked}': {_describe(resolved)} in {time.monotonic() - started:.2f}s")
-            return resolved
+    # Everything that needs the network starts NOW, together. The gates above are what
+    # decide whether to ask at all, so nothing is asked speculatively -- but once the
+    # decision is made there is no reason for one service to queue behind another.
+    sesame_arm = _spawn(_resolve_via_sesame, asked, min(SESAME_TIMEOUT_SECONDS, total_timeout))
+    tns_arm = _spawn(_try_tns_arm, asked, deadline) if is_tns_name(asked) else None
 
-    remaining = deadline - time.monotonic()
-    if remaining <= 0:
+    # TNS is preferred, not merely first past the post, so its verdict is awaited before
+    # Sesame's is looked at. Racing them and taking whoever answers soonest would be
+    # WRONG: Sesame is the faster of the two, so first-wins would systematically prefer
+    # the staler source for exactly the names TNS exists to answer -- a transient reported
+    # last night is in TNS and not yet in SIMBAD.
+    #
+    # Running them together still pays. On a TNS miss or outage Sesame's answer is already
+    # in hand instead of being started from cold, and the worst case becomes the slower of
+    # the two rather than their sum.
+    resolved = _await_tns(tns_arm, deadline, total_timeout, attempts)
+    if resolved is not None:
+        _cache.put(asked, resolved, TNS_TTL_SECONDS)
+        logger.info(f"resolved '{asked}': {_describe(resolved)} in {time.monotonic() - started:.2f}s")
+        return resolved
+
+    if not sesame_arm.wait(max(0.0, deadline - time.monotonic())):
         # Not cached: running out of budget says nothing about whether the object exists.
+        attempts.append(f"sesame: still running at the {total_timeout:g}s deadline")
         logger.warning(f"'{asked}' not resolved within {total_timeout:g}s -- tried {'; '.join(attempts)}")
         raise ObjectNameError(f"'{asked}' not resolved within {total_timeout:g}s ({'; '.join(attempts)})")
 
-    resolved, definitive = _try_sesame(asked, remaining, attempts)
+    resolved, definitive = _collect_sesame(asked, sesame_arm, attempts)
     if resolved is not None:
         _cache.put(asked, resolved, CATALOGUE_TTL_SECONDS)
         logger.info(f"resolved '{asked}': {_describe(resolved)} in {time.monotonic() - started:.2f}s")
