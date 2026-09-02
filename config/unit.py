@@ -1,7 +1,6 @@
 from pydantic import BaseModel, model_validator
 
 from common.asi import ASI_294MM_SUPPORTED_BINNINGS_LITERAL
-from common.mast_logging import get_logger
 
 from .calibration import CalibrationConfig
 from .covers import CoversConfig
@@ -97,8 +96,8 @@ class UnitConfig(BaseModel):
         #     raise ValueError(
         #         f"if any of {self.imager.imager_type=} or {self.guider.method=} is 'phd2', then BOTH must be 'phd2'"
         #     )
-        logger = get_logger(__name__)
-        logger.debug(f"Validated UnitConfig for unit '{self.name}', focuser: '{self.focuser}'")
+        # logger = get_logger(__name__)
+        # logger.debug(f"Validated UnitConfig for unit '{self.name}', focuser: '{self.focuser}'")
         return self
 
     def focus_seed_position(self) -> int | None:
