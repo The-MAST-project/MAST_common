@@ -18,7 +18,6 @@ from typing import Any, ClassVar, NamedTuple
 import numpy as np
 from astropy.coordinates import Angle
 from astropy.units import deg, hourangle  # type: ignore
-from cachetools import cached  # type: ignore
 
 from common.filer import Filer
 from common.mast_logging import get_logger

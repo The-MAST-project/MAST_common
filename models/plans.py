@@ -74,7 +74,8 @@ class Plan(BaseModel, Activities):
                 "label": "Mockup",
                 "widget": "checkbox",
                 "hidden": True,
-                "tooltip": "If true, the plan will not be executed but only go through the scheduling phase (for testing and debugging)",
+                "tooltip": "If true, the plan will not be executed but only go through "
+                "the scheduling phase (for testing and debugging)",
             },
             "searchable": True,
         },
@@ -336,7 +337,8 @@ class Plan(BaseModel, Activities):
          the ULID is extracted from the filename and set as the plan's ulid (if not already set or not he same).
         If the filename does not comply with the expected naming convention:
         - if it contains a ulid field, it is used and the file is copied to the same directory with the correct name.
-        - if it does not contain a ulid field, a new ULID is generated and the file is copied to the same directory with the correct name.
+        - if it does not contain a ulid field, a new ULID is generated and the file is
+          copied to the same directory with the correct name.
 
         Args:
             toml_file: Path to a TOML format plan definition file.

@@ -69,7 +69,8 @@ class PowerSwitchStatus(BaseModel):
 
     def __repr__(self):
         return (
-            f"PowerSwitchStatus(host='{self.host}', ipaddr='{self.ipaddr}', detected={self.detected}, operational={self.operational}, "
+            f"PowerSwitchStatus(host='{self.host}', ipaddr='{self.ipaddr}', "
+            f"detected={self.detected}, operational={self.operational}, "
             + f"why_not_operational={self.why_not_operational})"
         )
 

@@ -24,7 +24,6 @@ def parse_units(specifiers: list[str] | str) -> list[str]:
     :return: list of site:unit-id pairs
     """
     op = function_name()
-    errors: list[str] = []
     ret: list[str] = []
     if isinstance(specifiers, str):
         specifiers = [specifiers]

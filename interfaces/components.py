@@ -31,7 +31,8 @@ class Component(ABC, Activities):
     def is_shutting_down(self) -> bool:
         """
         Indicates whether the component is currently in the process of shutting down.
-        This can be used by the controller to determine whether it needs to wait for shutdown to complete before starting up again.
+        This can be used by the controller to determine whether it needs to wait for
+        shutdown to complete before starting up again.
         :return:
         """
 
@@ -109,7 +110,8 @@ class Component(ABC, Activities):
 
         The GUI server caches a copy of this master status structure and serves it to clients on request.
         Notifications of field changes are sent to the GUI server with:
-        - an initiator object that indicates which component is sending the notification (e.g. site: 'wis', 'units', 'mastw'), and
+        - an initiator object that indicates which component is sending the
+          notification (e.g. site: 'wis', 'units', 'mastw'), and
         - a 'notification_path' that indicates where in the master status structure the change occurred.
 
         Examples:
