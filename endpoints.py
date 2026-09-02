@@ -102,12 +102,14 @@ TIER_STABILITY: dict[Tier, str] = {
     Tier.DEMO: "demo",
 }
 
-#: The operator tier's group name, one per area (MAST_unit#207). The area displaces the tier
+#: The operator tier's group name, one per area (MAST_unit#207). Parenthesised to match the
+#: two tier tags it sits beside, `Unit orchestration (contract)` and `Component interface
+#: (contract)`, so the nine headings read as one set. The area displaces the tier
 #: only here: 32 of the unit's 61 tagged operations are `OPERATION`, which under a single tag
 #: is one flat list spanning six components, and a path prefix labels a row without grouping
 #: it. The two contract tiers stay whole -- a consumer wants the programmatic surface in one
 #: place, and the lifecycle verbs are uniform across components by construction.
-OPERATION_AREA_TAG: str = "{area} — operator"
+OPERATION_AREA_TAG: str = "{area} (operator)"
 
 #: Tag group metadata per tier, for a service composing its own `openapi_tags`. A service that
 #: splits the operator tier by area (see `MAST_unit/src/app.py`) uses every entry but

@@ -211,7 +211,7 @@ def test_only_the_operator_tier_is_split_by_area():
     """#207: the two contract tiers stay one group each, and DEMO is three parked routes."""
     path = "/mast/api/v1/unit/mount/park"
 
-    assert display_tag(Tier.OPERATION, path) == "Mount — operator"
+    assert display_tag(Tier.OPERATION, path) == "Mount (operator)"
     assert display_tag(Tier.CONTRACT, path) == TIER_TAGS[Tier.CONTRACT]
     assert display_tag(Tier.INTERFACE, path) == TIER_TAGS[Tier.INTERFACE]
     assert display_tag(Tier.DEMO, path) == TIER_TAGS[Tier.DEMO]
@@ -231,7 +231,7 @@ def test_the_registered_tag_is_the_area_the_route_is_served_at():
 
     operation = app.openapi()["paths"]["/mast/api/v1/unit/mount/park"]["put"]
 
-    assert operation["tags"] == ["Mount — operator"]
+    assert operation["tags"] == ["Mount (operator)"]
     assert operation["x-stability"] == "operator"
 
 
