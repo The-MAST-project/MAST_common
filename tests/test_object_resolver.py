@@ -12,16 +12,17 @@ name that cannot have a fixed position.
 
 from __future__ import annotations
 
+import threading
 import time
 
 import pytest
-from astropy.coordinates import name_resolve
 
 from common import object_resolver as res
 from common.object_resolver import (
     MovingTargetError,
     ObjectNameError,
     ResolvedObject,
+    SesameMissError,
     is_tns_name,
     resolve_object_name,
 )
@@ -101,14 +102,22 @@ class TestMovingTargetsAreRefused:
 
 
 class TestOrderOfEnquiry:
-    def test_a_tns_name_asks_tns_first(self, sesame, tns):
+    def test_tns_wins_a_tns_name_even_though_sesame_was_asked_too(self, sesame, tns):
+        """Both are asked at once, and TNS is PREFERRED rather than merely first.
+
+        This inverts what the test here used to assert -- "Sesame must not be asked once
+        TNS has answered" -- which was true of the sequential arrangement and is the point
+        of the parallel one. Preference, not a race: Sesame is the faster of the two, so
+        taking whoever answers soonest would systematically pick the staler source for
+        exactly the names TNS exists to answer.
+        """
         tns.answer = ResolvedObject("SN2023ixf", 14.06, 54.31, resolver="tns", canonical_name="SN 2023ixf")
 
         result = resolve_object_name("SN2023ixf")
 
         assert tns.calls == ["SN2023ixf"]
-        assert sesame.calls == [], "Sesame must not be asked once TNS has answered"
-        assert result.resolver == "tns"
+        assert sesame.calls == ["SN2023ixf"], "Sesame is asked concurrently, so a TNS miss costs no extra round trip"
+        assert result.resolver == "tns", "but TNS's answer is the one that counts"
 
     def test_a_tns_miss_falls_through_to_sesame(self, sesame, tns):
         """A name that merely looks like a transient may be an older object Sesame knows.
@@ -163,13 +172,13 @@ class TestProvenance:
 
 class TestFailure:
     def test_an_unresolvable_name_raises(self, sesame):
-        sesame.fail_with = name_resolve.NameResolveError("no match")
+        sesame.fail_with = SesameMissError("sesame: no database has it (2 mirror(s) agreed)")
         with pytest.raises(ObjectNameError, match="could not be resolved"):
             resolve_object_name("Zaphod Beeblebrox")
 
     def test_the_error_names_what_was_tried(self, sesame, tns):
         tns.answer = None
-        sesame.fail_with = name_resolve.NameResolveError("no match")
+        sesame.fail_with = SesameMissError("sesame: no database has it (2 mirror(s) agreed)")
         with pytest.raises(ObjectNameError) as excinfo:
             resolve_object_name("SN2099zzz")
         assert "tns" in str(excinfo.value) and "sesame" in str(excinfo.value)
@@ -203,9 +212,7 @@ class TestCache:
         """So a sweeper does not re-ask CDS on every pass for a name that will not
         resolve -- but only briefly, or a transient reported minutes from now stays
         unresolvable for as long as the miss is held."""
-        sesame.fail_with = name_resolve.NameResolveError(
-            "Unable to find coordinates for name 'Nothing Here' using https://cds.unistra.fr/..."
-        )
+        sesame.fail_with = SesameMissError("sesame: no database has 'Nothing Here' (2 mirror(s) agreed)")
         with pytest.raises(ObjectNameError):
             resolve_object_name("Nothing Here")
         with pytest.raises(ObjectNameError, match="remembered"):
@@ -220,9 +227,7 @@ class TestCache:
         astropy reports both cases as NameResolveError; only the message distinguishes
         them. A service that did not answer says nothing about whether the object exists.
         """
-        sesame.fail_with = name_resolve.NameResolveError(
-            "All Sesame queries failed. Unable to retrieve coordinates. See errors per URL below:"
-        )
+        sesame.fail_with = ObjectNameError("sesame: no mirror answered (cds: ConnectTimeout; cfa: ReadTimeout)")
         with pytest.raises(ObjectNameError):
             resolve_object_name("NGC 224")
 
@@ -249,36 +254,57 @@ class TestCache:
 
 
 class TestBudget:
-    def test_sesame_is_given_less_than_its_own_default(self):
-        """astropy tries its mirrors in turn and `remote_timeout` is per REQUEST, so its
-        10s default would make Sesame alone a 20s worst case -- past the whole budget."""
-        assert res.SESAME_TIMEOUT_SECONDS * 2 + res.TNS_TIMEOUT_SECONDS <= res.TOTAL_TIMEOUT_SECONDS
+    def test_the_budget_bounds_the_slowest_arm_not_their_sum(self):
+        """Every service is asked at once, so the enquiry costs the slowest of them.
 
-    def test_a_slow_tns_does_not_borrow_sesame_time(self, sesame, tns, monkeypatch):
-        """The budget is a deadline, not a sum: whatever TNS spends is gone.
-
-        A clock that actually advances, not a frozen one -- freezing `monotonic` moves the
-        deadline along with `now`, so nothing ever expires and the test passes vacuously.
+        This replaces `SESAME * 2 + TNS <= TOTAL`, which was the right sum when the two
+        mirrors were tried in turn behind TNS. Under that arithmetic the Sesame cap had to
+        be 4s to fit -- and 4s is below the CfA mirror's FASTEST observed response (9.27s),
+        so the fallback could never once have answered. Racing them lets the cap be the
+        loser's ceiling instead of a per-enquiry cost.
         """
+        assert res.SESAME_TIMEOUT_SECONDS > res.TOTAL_TIMEOUT_SECONDS, (
+            "the per-mirror cap is deliberately larger than the whole-enquiry deadline: "
+            "it bounds a loser that nobody is waiting on, while TOTAL bounds the caller"
+        )
+        assert res.TNS_TIMEOUT_SECONDS < res.TOTAL_TIMEOUT_SECONDS
 
-        class Clock:
-            def __init__(self):
-                self.t = 1000.0
+    def test_a_slow_tns_no_longer_starves_sesame(self, sesame, tns, monkeypatch):
+        """The reason for asking them together.
 
-            def __call__(self):
-                return self.t
-
-        clock = Clock()
-        monkeypatch.setattr(time, "monotonic", clock)
+        Sequentially, TNS spending the budget left nothing for Sesame and the enquiry
+        failed having never asked it -- which is what this test used to pin. Now Sesame was
+        started at the same instant, so a TNS that never returns costs its answer nothing.
+        """
+        started = threading.Event()
 
         def slow_tns(name, credentials, timeout):
-            clock.t += 99  # TNS burned the whole budget
+            started.set()
+            time.sleep(5)  # still going long after the deadline below
 
         monkeypatch.setattr(res, "_resolve_via_tns", slow_tns)
 
+        result = resolve_object_name("SN2024zzz", total_timeout=0.4)
+
+        assert started.is_set(), "TNS was asked"
+        assert sesame.calls == ["SN2024zzz"], "and so was Sesame, at the same time"
+        assert result.resolver == "sesame", "so its answer was there when TNS ran out of budget"
+
+    def test_nothing_is_asked_once_the_deadline_has_passed(self, sesame, tns, monkeypatch):
+        """A deadline still means something: if no arm has answered by then, the enquiry
+        fails rather than waiting on. Running out of budget says nothing about whether the
+        object exists, so it is never remembered."""
+
+        def slow_sesame(name, timeout):
+            time.sleep(5)
+
+        monkeypatch.setattr(res, "_resolve_via_sesame", slow_sesame)
+
         with pytest.raises(ObjectNameError, match="not resolved within"):
-            resolve_object_name("SN2024zzz")
-        assert sesame.calls == [], "Sesame must not be asked after the deadline has passed"
+            resolve_object_name("M31", total_timeout=0.3)
+
+        hit, _ = res._cache.get("M31")
+        assert not hit, "a timeout must not be cached as a miss"
 
 
 class TestLogging:
@@ -308,7 +334,7 @@ class TestLogging:
         assert "SN 2023ixf" in line, "the canonical name it matched -- an alias match is the likeliest misresolution"
 
     def test_a_failure_is_logged_with_what_was_tried(self, sesame, caplog):
-        sesame.fail_with = name_resolve.NameResolveError("Unable to find coordinates for name 'Nope' using ...")
+        sesame.fail_with = SesameMissError("sesame: no database has 'Nope' (2 mirror(s) agreed)")
         with caplog.at_level("WARNING", logger="mast.common.object_resolver"), pytest.raises(ObjectNameError):
             resolve_object_name("Nope")
 
@@ -319,7 +345,7 @@ class TestLogging:
     def test_a_failure_says_whether_it_will_be_retried(self, sesame, caplog):
         """The distinction that matters to whoever reads the log at 03:00: a definitive
         miss is a bad name, a non-conclusive one is a service that did not answer."""
-        sesame.fail_with = name_resolve.NameResolveError("All Sesame queries failed. Unable to retrieve coordinates.")
+        sesame.fail_with = ObjectNameError("sesame: no mirror answered (cds: ConnectTimeout; cfa: ReadTimeout)")
         with caplog.at_level("WARNING", logger="mast.common.object_resolver"), pytest.raises(ObjectNameError):
             resolve_object_name("NGC 224")
 
