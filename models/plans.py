@@ -829,7 +829,15 @@ class Plan(BaseModel, Activities):
         from common.activities import PlanActivities
 
         self.start_activity(PlanActivities.Aborting)
-        tasks = [self.api_coroutine(unit_api, method="GET", sub_url="abort") for unit_api in self.committed_unit_apis]
+        # PUT for the units: abort changes state, and every other state-changing unit route
+        # is PUT-only. MAST_unit accepted both while this migrated (MAST_unit#48); it is
+        # PUT-only from the change that lands with this one, so THIS must ship first or
+        # together -- a unit on the new route answers 405 to a GET, on the fleet's abort
+        # path, which is the last verb that should fail quietly.
+        tasks = [self.api_coroutine(unit_api, method="PUT", sub_url="abort") for unit_api in self.committed_unit_apis]
+        # The spectrograph stays on GET: MAST_spec's abort route has not been checked for
+        # PUT, and breaking it to tidy the units would trade one silent failure for another.
+        # Same migration, separately (MAST_common#51, removal on #113).
         tasks.append(self.api_coroutine(self.spec_api, method="GET", sub_url="abort"))
         self.end_activity(PlanActivities.Aborting)
 
