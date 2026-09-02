@@ -598,6 +598,72 @@ class FluxMeteringResult(BaseModel):
     commanded_offset_px: tuple[float, float] | None = None
 
 
+class SpiralStepCorrelation(BaseModel):
+    """The shift between the imager frames of two steps of one finished run.
+
+    Produced by `spiral_correlate_steps`, not by the run itself: a run correlates exactly
+    one pair -- its reference against its arg-max -- so this is the only way to ask what
+    lies between any other two steps, and the only way to ask it at all of a run already
+    on the share.
+
+    Everything here is measured against the ORIGINAL run's parameters, read back from its
+    `result.json`. Nothing is taken from the live configuration or from where the mount
+    happens to point now, because a re-correlation is either faithful to the run it
+    describes or it is worthless.
+    """
+
+    date: str
+    seq: str
+    hostname: str | None = None
+    created_at: str | None = None
+
+    step_a: int
+    step_b: int
+    frame_a: str | None = None
+    frame_b: str | None = None
+    cell_a: tuple[int, int] | None = None
+    cell_b: tuple[int, int] | None = None
+    ring_a: int | None = None
+    ring_b: int | None = None
+    offset_arcsec_a: tuple[float, float] | None = None
+    offset_arcsec_b: tuple[float, float] | None = None
+    flux_a: float | None = None
+    flux_b: float | None = None
+
+    #: a -> b, in detector pixels.
+    dx: float | None = None
+    dy: float | None = None
+    confidence: float | None = None
+    #: True when both steps are the same cell, where a zero shift is the right answer and
+    #: `measure_shift`'s fixed-pattern alarm would otherwise misread it.
+    at_origin: bool | None = None
+    low_confidence: bool | None = None
+    magnitude_px: float | None = None
+    max_reliable_shift_px: float | None = None
+    beyond_limit: bool | None = None
+
+    #: The DIFFERENCE between the two steps' commanded offsets, in pixels -- not either
+    #: step's own. That difference against (dx, dy) is what says whether the measurement
+    #: means anything: disagreeing signs invert the convention, disagreeing magnitudes
+    #: measure the plate scale.
+    #:
+    #: `None`, with `commanded_offset_source` saying why, whenever the run did not record
+    #: the plate scale and declination it used. Runs written before those were persisted
+    #: cannot have this recomputed -- the live values belong to a different pointing and a
+    #: possibly different configuration -- and no check at all beats one that is quietly
+    #: wrong.
+    commanded_offset_px: tuple[float, float] | None = None
+    commanded_offset_source: str | None = None
+
+    #: The run's own geometry, echoed so the answer can be re-derived from this file alone.
+    usable_fraction: float | None = None
+    fiber_x: int | None = None
+    fiber_y: int | None = None
+    fiber_source: str | None = None
+    pixel_scale_at_bin1: float | None = None
+    dec_degrees: float | None = None
+
+
 class FluxMeteringStatus(BaseModel):
     """A flux-metering run, in progress or finished.
 
