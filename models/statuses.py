@@ -494,6 +494,213 @@ class ImagerStatus(PowerStatus, ComponentStatus):
     backend: ImagerBackendStatus | None = None
 
 
+class FluxMeteringExposure(BaseModel):
+    """One imager frame and one ThorCam frame, taken in parallel.
+
+    Both pairs of timestamps are kept so the overlap is checkable afterwards rather than
+    assumed: the imager path goes through PHD2 and does not necessarily begin the instant it
+    is asked.
+    """
+
+    flux: float
+    saturated_pixels: int = 0
+    saturated: bool = False
+    imager_frame: str | None = None
+    flux_frame: str | None = None
+    imager_started_utc: str | None = None
+    imager_ended_utc: str | None = None
+    flux_started_utc: str | None = None
+    flux_ended_utc: str | None = None
+
+
+class FluxMeteringStep(BaseModel):
+    """One spiral step: several exposure pairs at one pointing, reduced to one flux.
+
+    `cell`, `ring` and `offset_arcsec` are None when PWI4 reported no spiral offset -- a
+    step that happened at an unknown position, recorded as such rather than guessed at,
+    because an unknown cell is not the same as cell (0, 0).
+
+    `flux` is the **median** of the exposures', not the mean: a cosmic ray, a gust or a
+    tracking glitch moves a mean and leaves a median alone, and the arg-max is decided where
+    the coupling curve is flattest and therefore least able to absorb an outlier.
+
+    `imager_frame` is the frame the correlation would use if this step turns out to be the
+    arg-max: the one paired with the ThorCam sample **closest to the median**, so the
+    measured shift comes from the same instant as the flux that chose the step. With an odd
+    number of exposures the median is itself a sample, and this is exactly that pair.
+    """
+
+    index: int
+    cell: tuple[int, int] | None = None
+    ring: int | None = None
+    offset_arcsec: tuple[float, float] | None = None
+
+    flux: float
+    exposures: list[FluxMeteringExposure] = Field(default_factory=list)
+    #: Index into `exposures` of the pair nearest the median.
+    representative: int = 0
+    #: How many of this step's exposures clipped. The step's own `saturated` reflects the
+    #: representative one, since that is the frame and the flux the result rests on.
+    saturated_exposures: int = 0
+
+    saturated_pixels: int = 0
+    saturated: bool = False
+    imager_frame: str | None = None
+    flux_frame: str | None = None
+    imager_started_utc: str | None = None
+    imager_ended_utc: str | None = None
+    flux_started_utc: str | None = None
+    flux_ended_utc: str | None = None
+
+
+class FluxMeteringResult(BaseModel):
+    """What a finished flux-metering run measured.
+
+    `dx`/`dy` is the deliverable: the offset, in detector pixels, between where acquisition
+    put the star and where the fibre actually is, so `fiber_true = fiber_assumed + (dx, dy)`.
+
+    Read `argmax_saturated` before believing it. A saturated peak is a plateau rather than a
+    maximum, so the arg-max is arbitrary among the clipped cells.
+    """
+
+    dx: float | None = None
+    dy: float | None = None
+    confidence: float | None = None
+    #: `measure_shift`'s fixed-pattern alarm. Expected, and not an alarm, when the arg-max is
+    #: the origin -- there the mount genuinely did not move.
+    at_origin: bool | None = None
+    low_confidence: bool | None = None
+    magnitude_px: float | None = None
+    max_reliable_shift_px: float | None = None
+    beyond_limit: bool | None = None
+
+    #: The configured fibre position the run measured against, and where it came from. Worth
+    #: keeping: once a correction is applied by hand, later runs measure the residual against
+    #: the NEW value, and pooling them without this would silently mix two quantities.
+    fiber_x: int | None = None
+    fiber_y: int | None = None
+    fiber_source: str | None = None
+    #: Stated rather than left as arithmetic, so a sign error is visible on the first run.
+    proposed_fiber_x: float | None = None
+    proposed_fiber_y: float | None = None
+
+    argmax_index: int | None = None
+    argmax_cell: tuple[int, int] | None = None
+    argmax_ring: int | None = None
+    argmax_frame: str | None = None
+    argmax_offset_arcsec: tuple[float, float] | None = None
+    argmax_saturated: bool = False
+    saturated_frame_count: int = 0
+
+    #: The commanded offset at the arg-max cell, in pixels. It should equal (dx, dy) in both
+    #: magnitude and sign: disagreeing signs mean the convention is inverted, disagreeing
+    #: magnitudes mean the plate scale is wrong. The run carries its own check.
+    commanded_offset_px: tuple[float, float] | None = None
+
+
+class SpiralStepCorrelation(BaseModel):
+    """The shift between the imager frames of two steps of one finished run.
+
+    Produced by `spiral_correlate_steps`, not by the run itself: a run correlates exactly
+    one pair -- its reference against its arg-max -- so this is the only way to ask what
+    lies between any other two steps, and the only way to ask it at all of a run already
+    on the share.
+
+    Everything here is measured against the ORIGINAL run's parameters, read back from its
+    `result.json`. Nothing is taken from the live configuration or from where the mount
+    happens to point now, because a re-correlation is either faithful to the run it
+    describes or it is worthless.
+    """
+
+    date: str
+    seq: str
+    hostname: str | None = None
+    created_at: str | None = None
+
+    step_a: int
+    step_b: int
+    frame_a: str | None = None
+    frame_b: str | None = None
+    cell_a: tuple[int, int] | None = None
+    cell_b: tuple[int, int] | None = None
+    ring_a: int | None = None
+    ring_b: int | None = None
+    offset_arcsec_a: tuple[float, float] | None = None
+    offset_arcsec_b: tuple[float, float] | None = None
+    flux_a: float | None = None
+    flux_b: float | None = None
+
+    #: a -> b, in detector pixels.
+    dx: float | None = None
+    dy: float | None = None
+    confidence: float | None = None
+    #: True when both steps are the same cell, where a zero shift is the right answer and
+    #: `measure_shift`'s fixed-pattern alarm would otherwise misread it.
+    at_origin: bool | None = None
+    low_confidence: bool | None = None
+    magnitude_px: float | None = None
+    max_reliable_shift_px: float | None = None
+    beyond_limit: bool | None = None
+
+    #: The DIFFERENCE between the two steps' commanded offsets, in pixels -- not either
+    #: step's own. That difference against (dx, dy) is what says whether the measurement
+    #: means anything: disagreeing signs invert the convention, disagreeing magnitudes
+    #: measure the plate scale.
+    #:
+    #: `None`, with `commanded_offset_source` saying why, whenever the run did not record
+    #: the plate scale and declination it used. Runs written before those were persisted
+    #: cannot have this recomputed -- the live values belong to a different pointing and a
+    #: possibly different configuration -- and no check at all beats one that is quietly
+    #: wrong.
+    commanded_offset_px: tuple[float, float] | None = None
+    commanded_offset_source: str | None = None
+
+    #: The run's own geometry, echoed so the answer can be re-derived from this file alone.
+    usable_fraction: float | None = None
+    fiber_x: int | None = None
+    fiber_y: int | None = None
+    fiber_source: str | None = None
+    pixel_scale_at_bin1: float | None = None
+    dec_degrees: float | None = None
+
+
+class FluxMeteringStatus(BaseModel):
+    """A flux-metering run, in progress or finished.
+
+    Carries the whole step list, so the flux curve can be plotted from the status alone
+    rather than by fetching the run's products off the share.
+    """
+
+    active: bool = False
+    phase: str = "idle"
+    folder: str | None = None
+    started_at: str | None = None
+    ended_at: str | None = None
+
+    #: The reference exposure the correlation measures FROM, chosen the same way a
+    #: step's is: the pair nearest the median flux of its own burst.
+    reference_frame: str | None = None
+
+    index: int = 0
+    cell: tuple[int, int] | None = None
+    ring: int | None = None
+    frames: int = 0
+    saturated_frames: int = 0
+
+    best_flux: float | None = None
+    best_index: int | None = None
+    best_cell: tuple[int, int] | None = None
+
+    #: `converged`, `max_rings`, `max_radius`, `aborted`, `disk_full`, `acquisition_failed`
+    #: or `failed`.
+    #: Only `converged` says the arg-max is a peak rather than the best of a truncated search.
+    terminal_state: str | None = None
+    last_error: str | None = None
+
+    steps: list[FluxMeteringStep] = Field(default_factory=list)
+    result: FluxMeteringResult | None = None
+
+
 class FullUnitStatus(ComponentStatus, PowerStatus):
     """Full unit status with all components, returned from the unit itself."""
 
@@ -508,6 +715,7 @@ class FullUnitStatus(ComponentStatus, PowerStatus):
     focuser: FocuserStatus | None = None
     stage: StageStatus | None = None
     guider: GuiderStatus | None = None
+    flux_metering: FluxMeteringStatus | None = None
     errors: list[str] | None = None
     autofocus: dict | None = None
     corrections: list | None = None
