@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 
 from common.activities import Activities
+from common.endpoints import Tier, endpoint
 from common.models.statuses import ComponentStatus
 
 
@@ -9,6 +10,7 @@ class Component(ABC, Activities):
         Activities.__init__(self)
         self.activities = activities_type(0)
 
+    @endpoint(tier=Tier.INTERFACE, methods=("PUT",))
     @abstractmethod
     def startup(self):
         """
@@ -16,6 +18,7 @@ class Component(ABC, Activities):
         :return:
         """
 
+    @endpoint(tier=Tier.INTERFACE, methods=("PUT",))
     @abstractmethod
     def shutdown(self):
         """
@@ -28,7 +31,8 @@ class Component(ABC, Activities):
     def is_shutting_down(self) -> bool:
         """
         Indicates whether the component is currently in the process of shutting down.
-        This can be used by the controller to determine whether it needs to wait for shutdown to complete before starting up again.
+        This can be used by the controller to determine whether it needs to wait for
+        shutdown to complete before starting up again.
         :return:
         """
 
@@ -36,6 +40,7 @@ class Component(ABC, Activities):
     def powerdown(self):
         pass
 
+    @endpoint(tier=Tier.INTERFACE, methods=("PUT",))
     @abstractmethod
     def abort(self):
         """
@@ -44,6 +49,7 @@ class Component(ABC, Activities):
         :return:
         """
 
+    @endpoint(tier=Tier.INTERFACE, methods=("GET",))
     @abstractmethod
     def status(self):
         """
@@ -104,7 +110,8 @@ class Component(ABC, Activities):
 
         The GUI server caches a copy of this master status structure and serves it to clients on request.
         Notifications of field changes are sent to the GUI server with:
-        - an initiator object that indicates which component is sending the notification (e.g. site: 'wis', 'units', 'mastw'), and
+        - an initiator object that indicates which component is sending the
+          notification (e.g. site: 'wis', 'units', 'mastw'), and
         - a 'notification_path' that indicates where in the master status structure the change occurred.
 
         Examples:

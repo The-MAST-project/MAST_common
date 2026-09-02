@@ -391,7 +391,9 @@ class PowerSwitchFactory:
             cls._factory_instance._power_switch_instances = {}
 
         # logger.debug(
-        #     f"{op}: Using _power_switch_instances id={id(cls._factory_instance._power_switch_instances):08X}, keys={list(cls._factory_instance._power_switch_instances.keys())} looking for '{ipaddr}'"
+        #     f"{op}: Using _power_switch_instances "
+        #     f"id={id(cls._factory_instance._power_switch_instances):08X}, "
+        #     f"keys={list(cls._factory_instance._power_switch_instances.keys())} looking for '{ipaddr}'"
         # )
 
         with cls._lock:
