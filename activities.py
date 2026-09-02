@@ -312,6 +312,7 @@ class UnitActivities(IntFlag):
     Solving = auto()
     Correcting = auto()
     Dancing = auto()
+    StabilityCampaigning = auto()  # walking the mount-stability alt/az mesh
 
 
 class ImagerActivities(IntFlag):
