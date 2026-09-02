@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 from common.canonical import CanonicalResponse
 from common.endpoints import (
     OPENAPI_TAGS,
+    TIER_GROUPS,
     TIER_STABILITY,
     TIER_TAGS,
     Completion,
@@ -20,9 +21,11 @@ from common.endpoints import (
     Tier,
     UndeclaredEndpointError,
     add_api_route,
+    area_of,
     completion_token,
     declaration_of,
     declared_endpoints,
+    display_tag,
     endpoint,
     enveloped,
 )
@@ -183,8 +186,53 @@ def test_every_tier_has_a_tag_a_stability_and_a_described_group():
     """A tier added without its display metadata would raise a KeyError at registration."""
     assert set(TIER_TAGS) == set(Tier)
     assert set(TIER_STABILITY) == set(Tier)
-    assert [group["name"] for group in OPENAPI_TAGS] == [TIER_TAGS[tier] for tier in Tier]
-    assert all(group["description"] for group in OPENAPI_TAGS)
+    assert set(TIER_GROUPS) == set(Tier)
+    assert [group["name"] for group in TIER_GROUPS.values()] == [TIER_TAGS[tier] for tier in Tier]
+    assert all(group["description"] for group in TIER_GROUPS.values())
+    assert [TIER_GROUPS[tier] for tier in Tier] == OPENAPI_TAGS
+
+
+@pytest.mark.parametrize(
+    ("path", "expected"),
+    [
+        ("/mast/api/v1/unit/mount/park", "mount"),
+        ("/mast/api/v1/unit/expose", "unit"),
+        ("/mast/api/v1/spec/stage/position", "stage"),
+        ("/unit/thing/status", "thing"),
+        ("/status", None),
+    ],
+)
+def test_the_area_is_the_segment_before_the_verb(path, expected):
+    """#207: a layer-2 route files under its component, a layer-1 one under the service."""
+    assert area_of(path) == expected
+
+
+def test_only_the_operator_tier_is_split_by_area():
+    """#207: the two contract tiers stay one group each, and DEMO is three parked routes."""
+    path = "/mast/api/v1/unit/mount/park"
+
+    assert display_tag(Tier.OPERATION, path) == "Mount — operator"
+    assert display_tag(Tier.CONTRACT, path) == TIER_TAGS[Tier.CONTRACT]
+    assert display_tag(Tier.INTERFACE, path) == TIER_TAGS[Tier.INTERFACE]
+    assert display_tag(Tier.DEMO, path) == TIER_TAGS[Tier.DEMO]
+
+
+def test_an_operator_route_with_no_area_keeps_the_flat_tier_tag():
+    """A single-segment path has no segment before its verb, so there is no area to name."""
+    assert display_tag(Tier.OPERATION, "/status") == TIER_TAGS[Tier.OPERATION]
+
+
+def test_the_registered_tag_is_the_area_the_route_is_served_at():
+    """#207: the group cannot disagree with the path, because it is derived from it."""
+    router = APIRouter()
+    add_api_route(router, "/mast/api/v1/unit/mount/park", endpoint=Component().connect, methods=["PUT"])
+    app = FastAPI()
+    app.include_router(router)
+
+    operation = app.openapi()["paths"]["/mast/api/v1/unit/mount/park"]["put"]
+
+    assert operation["tags"] == ["Mount — operator"]
+    assert operation["x-stability"] == "operator"
 
 
 def test_the_default_method_is_get():
