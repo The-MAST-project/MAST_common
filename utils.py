@@ -29,6 +29,31 @@ logger = get_logger(__name__)
 
 
 class RepeatTimer(Timer):
+    """A Timer that fires repeatedly until cancelled, and never keeps a process alive.
+
+    The daemon flag is the whole reason this __init__ exists. threading.Thread inherits
+    daemon-ness from whichever thread constructs it, and these are constructed on MainThread,
+    so without this they are non-daemon. run() below loops until `finished` is set, and that
+    only happens if someone calls cancel() -- which, for a component nobody shut down, never
+    happens. At interpreter shutdown threading._shutdown joins every non-daemon thread, so the
+    process waits forever for a loop that will not end.
+
+    That is not theoretical. On mast-ns-spec, 2026-09-06, four processes left over from bare
+    `python -c "import ..."` commands were found alive for hours, each parked at
+    threading._shutdown with its camera timers still running -- and each still holding a
+    greateyes camera connection, which takes one client. One of them had held a Deepspec
+    camera across three service starts, so that band failed to come up every time and the
+    investigation went to the config, the network and the SDK before anyone looked at who
+    owned the socket (MAST_spec#77).
+
+    Daemon threads are killed abruptly at exit rather than joined. That is the right trade for
+    these: every RepeatTimer in the fleet drives a periodic probe or status sample, so being
+    cut off mid-tick costs nothing and never exiting costs an instrument."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.daemon = True
+
     def run(self):
         self.function(*self.args, **self.kwargs)
         while not self.finished.wait(self.interval):
