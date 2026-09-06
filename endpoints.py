@@ -400,6 +400,7 @@ def enveloped(handler: Callable) -> Callable:
     - **An async handler needs an async wrapper.** Three of the unit's handlers are
       `async def`; a sync wrapper would put the coroutine object into `value` and FastAPI
       would try to serialise it.
+    - **The signature is resolved here, in the handler's own namespace.** See below.
     """
     if inspect.iscoroutinefunction(handler):
 
@@ -420,6 +421,32 @@ def enveloped(handler: Callable) -> Callable:
                 return _as_canonical_error(getattr(handler, "__qualname__", "handler"), exception)
 
     wrapper.__annotations__ = {**getattr(handler, "__annotations__", {}), "return": CanonicalResponse}
+
+    # Resolve the signature HERE, against the handler's own globals, and pin it on the wrapper.
+    #
+    # Without this, a handler in a module using `from __future__ import annotations` breaks
+    # OpenAPI generation. FastAPI's get_typed_signature does two things that disagree once a
+    # wrapper is in play: `inspect.signature(call)` follows `__wrapped__` and returns the
+    # HANDLER's parameters -- whose annotations are strings -- while `call.__globals__` is the
+    # WRAPPER's, which is this module. So `spec_name: SpecName` arrives as the string
+    # "SpecName" and is looked up in common.endpoints, where it does not exist. Pydantic then
+    # fails at schema build with "is not fully defined", not at import, so nothing catches it
+    # until /docs or /openapi.json is fetched (MAST_spec#87).
+    #
+    # `inspect.signature(..., eval_str=True)` evaluates those strings in the handler's module,
+    # where the names do exist. Setting `__signature__` also stops `inspect.signature` unwrapping
+    # past the wrapper, so FastAPI reads real types instead of strings and resolves nothing.
+    #
+    # Best effort: a handler whose annotations genuinely cannot be resolved -- a name imported
+    # only under TYPE_CHECKING, say -- keeps the previous behaviour rather than failing the
+    # process at registration. FastAPI could not have resolved it either.
+    try:
+        wrapper.__signature__ = inspect.signature(handler, eval_str=True)  # type: ignore[attr-defined]
+    except Exception:  # noqa: BLE001 -- any resolution failure leaves the pre-existing behaviour
+        logger.debug(
+            "could not resolve the signature of %s; leaving it unresolved", getattr(handler, "__qualname__", handler)
+        )
+
     return wrapper
 
 
