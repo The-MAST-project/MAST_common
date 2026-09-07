@@ -102,13 +102,15 @@ class CanonicalResponse(BaseModel):
 ```
 Use `response.succeeded` / `response.failed` / `response.is_error`. `CanonicalResponse_Ok` is a convenience constant for `value="ok"`.
 
-### `ApiClient` (`common/api.py`)
-Wraps `httpx` for inter-service HTTP calls. `UnitApi`, `SpecApi`, `ControllerApi` are typed wrappers around `ApiClient`. `ApiResponse` converts JSON dicts to attribute-access objects.
+### `BaseApi` (`common/api.py`)
+Wraps `httpx` for inter-service HTTP calls. `UnitApi`, `SpecApi`, `ControllerApi`, `NotificationApi` and `SafetyApi` subclass it, each fixing its own host and base path; `ApiDomain` enumerates the addressable services. `ApiResponse` converts JSON dicts to attribute-access objects. Endpoint names are passed as string literals: `spec_api.put(method="abort")`.
 
 ## Component Architecture (`common/interfaces/components.py`)
 
 All hardware components (Mount, Focuser, Camera, Covers, Stage, Spectrographs) implement the `Component` ABC which combines:
-- `ABC` — requires `startup()`, `shutdown()`, `is_shutting_down`, `status`, `is_operational`
+- `ABC` — requires `startup()`, `shutdown()`, `powerdown()`, `abort()`, `status()`, and the
+  properties `name`, `operational`, `why_not_operational`, `detected`, `connected`,
+  `is_shutting_down`, `was_shut_down`
 - `Activities` — bitflag-based activity tracking (`IntFlag`) with timing
 
 `ComponentStatus` is the Pydantic status model: `detected`, `connected`, `operational`, `activities`, `why_not_operational`.

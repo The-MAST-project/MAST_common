@@ -295,6 +295,10 @@ class NewtonActivities(IntFlag):
     ReadingOut = auto()
     Saving = auto()
     SettingParameters = auto()
+    # At the end, per the rule above: auto() numbers by position, so inserting anywhere else
+    # renumbers every member after it and any consumer comparing `activities` numerically
+    # silently starts reading a different flag.
+    Aborting = auto()
 
 
 class UnitActivities(IntFlag):
@@ -438,6 +442,11 @@ class GreatEyesActivities(IntFlag):
     SettingParameters = auto()
     Probing = auto()
     StoppingMeasurement = auto()
+    # Appended, not inserted -- see NewtonActivities.Aborting. Distinct from
+    # StoppingMeasurement, which is the SDK's own stop of an ongoing measurement: Aborting
+    # spans the operator's request, and outlives that stop when a readout is already in
+    # flight and has to be discarded.
+    Aborting = auto()
 
 
 class CalibrationLampActivities(IntFlag):

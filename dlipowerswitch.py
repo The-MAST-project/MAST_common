@@ -21,6 +21,11 @@ TriStateBool = bool | None
 
 logger = get_logger(__name__)
 
+# Failures that mean "the connection we had went away", not "the switch is unreachable".
+# A pooled keep-alive the PDU closed while idle surfaces as one of these on first use;
+# retrying on a fresh connection succeeds. Deliberately excludes TimeoutException.
+_STALE_CONNECTION_ERRORS = (httpx.RemoteProtocolError, httpx.ConnectError, httpx.ReadError, httpx.WriteError)
+
 
 class DliPowerSwitch(Component):
     NUM_OUTLETS: int = 8
@@ -51,6 +56,18 @@ class DliPowerSwitch(Component):
 
         self.timeout = 1
         self.base_url = f"http://{self.ipaddr}/"
+
+        # One client for the life of the switch, rather than one per request.
+        #
+        # get() and put() used to open a fresh httpx.Client each call, which meant a new
+        # TCP connection and -- because the PDU uses Digest auth -- a 401 challenge round
+        # trip before the real request, every single time. Measured against
+        # mast-spec-ps2: 150 ms per outlet read with a fresh client, 15 ms with a reused
+        # one. GET /spec/status performs several dozen outlet reads, so this was the
+        # dominant term in its ~11 s latency.
+        #
+        # httpx.Client is thread-safe for requests, and pools connections.
+        self._http_client = httpx.Client(trust_env=False, auth=self.auth)
 
         self.lock = Lock()
         self.max_age_seconds = 30  # seconds
@@ -92,15 +109,25 @@ class DliPowerSwitch(Component):
     def get(self, url: str, params: dict | None = None) -> dict | object:
         url = self.base_url + url
 
-        with httpx.Client(trust_env=False, auth=self.auth) as client:
+        for attempt in (1, 2):
             try:
                 # logger.info(f"GET {url=}")
-                response = client.get(url=url, params=params, timeout=self.timeout)
+                response = self._http_client.get(url=url, params=params, timeout=self.timeout)
                 self._detected = True
+                break
             except httpx.TimeoutException:
                 # logger.error(f"timeout after {self.timeout} seconds, {url=}")
                 self._detected = False
                 return {"error": "timeout"}
+            except _STALE_CONNECTION_ERRORS as e:
+                # A pooled connection the PDU closed while idle. Retried once, because the
+                # failure says nothing about whether the switch is reachable -- treating it
+                # as undetected would be wrong. A timeout is NOT retried: that one already
+                # waited, and retrying only doubles the wait.
+                if attempt == 1:
+                    continue
+                self._detected = False
+                return {"error": f"{e}"}
             except httpx.HTTPError as e:
                 # logger.error(f"exception: {e}")
                 self._detected = False
@@ -110,21 +137,29 @@ class DliPowerSwitch(Component):
     def put(self, url: str, data: str | dict | None = None) -> object:
         url = self.base_url + url
 
-        with httpx.Client(trust_env=False, auth=self.auth) as client:
+        request_data = {"value": data} if isinstance(data, str) else data
+        for attempt in (1, 2):
             try:
                 # logger.info(f"PUT {url=}, {data=}")
-                request_data = {"value": data} if isinstance(data, str) else data
-                response = client.put(
+                response = self._http_client.put(
                     url=url,
                     headers=self.headers,
                     data=request_data,
                     timeout=self.timeout,
                 )
                 self._detected = True
+                break
             except httpx.TimeoutException:
                 # logger.error(f"timeout after {self.timeout} seconds, {url=}")
                 self._detected = False
                 return {"error": "timeout"}
+            except _STALE_CONNECTION_ERRORS as e:
+                # Safe to retry: every write here sets an outlet to an absolute state, so
+                # applying it twice lands in the same place as applying it once.
+                if attempt == 1:
+                    continue
+                self._detected = False
+                return {"error": f"{e}"}
             except httpx.HTTPError as e:
                 logger.error(f"exception: {e}")
                 self._detected = False
