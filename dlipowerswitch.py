@@ -27,7 +27,6 @@ logger = get_logger(__name__)
 _STALE_CONNECTION_ERRORS = (httpx.RemoteProtocolError, httpx.ConnectError, httpx.ReadError, httpx.WriteError)
 
 
-
 class DliPowerSwitch(Component):
     NUM_OUTLETS: int = 8
     _instantiated: ClassVar[list[str]] = []  # shared registry of instantiated switches
