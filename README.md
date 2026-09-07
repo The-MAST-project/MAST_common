@@ -31,6 +31,9 @@ package from within each host project.
   observation plans, targets, spectrograph assignments.
 - **API plumbing** (`api.py`, `canonical.py`, `const.py`) — `ApiClient`
   wrappers and the `CanonicalResponse` envelope returned by all endpoints.
+  `docs/scripting-the-api.md` is the consumer-side guide: commanding a unit
+  or the spectrograph from a Python script, with no clone and no MAST
+  package.
 - **Infrastructure** — logging (`mast_logging.py`), notifications, process
   watching, filesystem helpers, safety checks.
 
