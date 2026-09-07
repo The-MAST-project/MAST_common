@@ -44,7 +44,14 @@ class GreateyesReadoutConfig(BaseModel):
 
 
 class GreateyesProbingConfig(BaseModel):
-    boot_delay: int = 25  # seconds to wait after booting the camera
+    # Seconds to wait after power-cycling the camera. The live value comes from the config
+    # DB (specs.deepspec.common.settings.probing), so this default only applies when that
+    # field is absent -- but it is kept in step with it so a missing field cannot silently
+    # reintroduce a delay we know is too short. Raised 25 -> 60 on 2026-09-07: a camera was
+    # measured still dead to TCP 28.5 s after its power cycle, and 25 s left the SDK connect
+    # firing into a dead port, blocking 21 s and failing, so bring-up needed a second probe
+    # cycle (61 s for the array against 48 s).
+    boot_delay: int = 60
     interval: int = 60  # seconds to check the camera status
 
 
