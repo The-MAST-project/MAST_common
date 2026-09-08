@@ -26,6 +26,19 @@ class SolvingSolution(BaseModel):
     rotation_angle_degs: float | None = None
     pixel_scale: float | None = None
 
+    #: The WCS CD matrix of the solved frame, degrees per pixel, straight from its FITS
+    #: header. Kept because `rotation_angle_degs` alone cannot convert a pixel offset to a
+    #: sky offset: it says how the field is turned but not whether it is MIRRORED, and a
+    #: wrong parity flips the RA sign of every derived offset while leaving the magnitude
+    #: right -- which is the hardest kind of error to notice. The CD matrix carries
+    #: rotation, scale and parity together.
+    #:
+    #: Per DOWNSAMPLED pixel where the backend downsamples before solving.
+    cd1_1: float | None = None
+    cd1_2: float | None = None
+    cd2_1: float | None = None
+    cd2_2: float | None = None
+
 
 class SolvingResult(BaseModel):
     succeeded: bool | None = None

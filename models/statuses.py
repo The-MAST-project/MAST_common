@@ -596,6 +596,21 @@ class FluxMeteringResult(BaseModel):
     #: magnitude and sign: disagreeing signs mean the convention is inverted, disagreeing
     #: magnitudes mean the plate scale is wrong. The run carries its own check.
     commanded_offset_px: tuple[float, float] | None = None
+    #: Which plate scale the conversion above used -- the one solved from this run's own
+    #: reference frame, or the configured fallback. Recorded because the two can disagree,
+    #: and because a configured value has already been wrong once (MAST_unit#138).
+    commanded_offset_source: str | None = None
+
+    #: `dx, dy` on the SKY: dRA*cos(dec) and dDec in arcsec. What makes the measurement
+    #: mean anything off this detector -- a fibre offset in pixels is interpretable only by
+    #: someone holding the same camera at the same rotation. Derived from the solved frame's
+    #: CD matrix, so rotation AND parity are honoured: a bare rotation angle cannot say
+    #: whether the field is mirrored, and the wrong parity flips dRA's sign while leaving its
+    #: magnitude right. `sky_offset_source` records which, and why they are absent when the
+    #: reference did not solve.
+    sky_dx_arcsec: float | None = None
+    sky_dy_arcsec: float | None = None
+    sky_offset_source: str | None = None
 
 
 class SpiralStepCorrelation(BaseModel):
