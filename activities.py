@@ -316,6 +316,7 @@ class UnitActivities(IntFlag):
     Solving = auto()
     Correcting = auto()
     Dancing = auto()
+    Exposing = auto()  # do_expose: the whole repeat series, not one frame
 
 
 class ImagerActivities(IntFlag):
