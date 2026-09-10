@@ -1,10 +1,22 @@
 from abc import ABC, abstractmethod
-from enum import StrEnum
+from enum import IntFlag, StrEnum, auto
+from typing import Literal
 
 from astropy.coordinates import Angle
 from pydantic import BaseModel
 
 from common.const import Const
+
+
+class SolverId(IntFlag):
+    PlaneWaveCli = auto()
+    PlaneWaveShm = auto()
+    AstrometryDotNet = auto()
+    MastrometryDotNet = auto()
+    # Astap = auto()
+
+
+SolverIdNames = Literal["PlaneWaveCli", "PlaneWaveShm", "AstrometryDotNet", "MastrometryDotNet"]
 
 
 class SolvingConfidenceLevel(StrEnum):
