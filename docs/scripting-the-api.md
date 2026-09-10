@@ -13,20 +13,72 @@ over both. See *Keeping this current*.
 | service | base URL | what it drives |
 |---|---|---|
 | unit | `http://mastNN:8000/mast/api/v1/unit` | one telescope: mount, focuser, stage, covers, imager, guider |
-| spec | `http://mast-ns-spec:8000/mast/api/v1/spec` | the shared spectrograph: DeepSpec, HighSpec, filter wheels, stages, shutter, chiller |
+| spec | `http://mast-ns-spec:8001/mast/api/v1/spec` | the shared spectrograph: DeepSpec, HighSpec, filter wheels, stages, shutter, chiller |
 
-`mastNN` is always a physical unit — `mast01`, `mast02`, and so on. Port 8000 is the default a
-service falls back to; the real port is a `services` entry in the configuration database, so
-when a machine does not answer there, confirm the port before concluding the service is down.
+`mastNN` is always a physical unit — `mast01`, `mast02`, and so on. Those two ports are what the
+`services` entries in the configuration database say today (`unit` 8000, `spec` 8001, and
+`control` 8002 for the service this page does not cover). 8000 is only the fallback a service
+uses when it cannot read that entry, so when a machine does not answer where you expected,
+confirm the port before concluding the service is down.
 
 Three things to know before the first call:
 
 - **There is no authentication.** Anything that can reach the port can slew a telescope. That
-  safety rests entirely on the closed VLAN the units live on, so run scripts from a machine on
-  that network and do not proxy these ports anywhere.
+  safety rests on the network the units live on, not on anything the service checks, so keep
+  these ports off any wider network and reach them the way the next section describes.
 - **It is plain HTTP.** No certificate, no TLS, nothing to configure.
 - **A unit does not answer ping.** `GET .../unit/status` is the reachability test; a timeout
   there means unreachable, not necessarily down.
+
+## Reaching a service from outside Neot Smadar
+
+The site gateway filters the service ports. Measured from the institute network, against
+`mast-ns-control` and `mast-ns-spec`:
+
+| port | service | from outside the segment |
+|---|---|---|
+| 22 | SSH | passes |
+| 8000 | unit | passes |
+| 8001 | spec | filtered — the connection hangs until it times out |
+| 8002 | control | filtered |
+
+So a script running anywhere but inside the Neot Smadar segment cannot open the spectrograph at
+all, and its reach to a unit is an artifact of one port happening to be allowed rather than
+anything anyone promised. **The canonical way in is an SSH tunnel**: SSH is open to the site, so
+forward the port you need over it and talk to `127.0.0.1`.
+
+```bash
+ssh -N -L 18001:mast-ns-spec:8001 mast-ns-control     # the spectrograph
+ssh -N -L 18000:mast01:8000       mast-ns-control     # one unit
+```
+
+`mast-ns-control` is the jump host — it sits on the units' VLAN, so it can reach every `mastNN`
+and `mast-ns-spec`. The forward is per target port, so two services mean two forwards on two
+distinct local ports. Leave the command running; `-N` means it opens the tunnel and nothing else.
+
+With that up, everything on this page works against the local end. Swagger included:
+
+```
+http://127.0.0.1:18001/docs                       the spectrograph's Try it out page
+http://127.0.0.1:18001/mast/api/v1/spec/status    its base URL
+```
+
+**Credentials are not in this file and are not in the repository.** Put the login in
+`~/.ssh/config` so no script ever carries it, and ask Eli Brody (`@elibrody-weizmann`) if you
+need one:
+
+```
+Host mast-ns-control
+    HostName mast-ns-control.weizmann.ac.il
+    User <your MAST login>
+    IdentityFile ~/.ssh/id_ed25519
+    ServerAliveInterval 30
+```
+
+Two things a tunnel does not do. It **does not add authentication** — the service still answers
+anyone who reaches it, and the tunnel just makes that anyone you. And it **does not put you on
+site**: everything under *Before commanding hardware* applies with more force from a desk, where
+nothing in view tells you what the telescope is doing.
 
 ## Look before you write: Try it out
 
@@ -123,24 +175,36 @@ unbounded poll turns it into a hung script instead of an error someone can read.
 ## Boilerplate
 
 One dependency: `python -m pip install httpx`. (`requests` works the same way, and so does
-`urllib.request` if a script must have no dependencies at all.)
+`urllib.request` if a script must have no dependencies at all.) The tunnel adds none — it shells
+out to the `ssh` already on the machine, and reads its login from `~/.ssh/config`.
 
 ```python
 """Minimal client for a MAST unit or the spec machine. Copy this and adapt it."""
 
 from __future__ import annotations
 
+import socket
+import subprocess
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any
 
 import httpx
 
-DEFAULT_PORT = 8000
+UNIT_PORT = 8000
+SPEC_PORT = 8001
 UNIT_BASE_PATH = "/mast/api/v1/unit"
 SPEC_BASE_PATH = "/mast/api/v1/spec"
 SPEC_HOST = "mast-ns-spec"
+JUMP_HOST = "mast-ns-control"
+LOCAL_BIND_HOST = "127.0.0.1"
+SSH_TUNNEL_OPTIONS = ("-o", "BatchMode=yes", "-o", "ExitOnForwardFailure=yes", "-o", "ServerAliveInterval=30")
 REQUEST_TIMEOUT_SECONDS = 20.0
 POLL_INTERVAL_SECONDS = 2.0
+TUNNEL_READY_TIMEOUT_SECONDS = 15.0
+TUNNEL_POLL_INTERVAL_SECONDS = 0.1
+TUNNEL_EXIT_TIMEOUT_SECONDS = 5.0
 ERROR_BODY_CHARS = 400
 
 
@@ -148,20 +212,67 @@ class MastApiError(RuntimeError):
     """A MAST service reported errors, or could not be reached."""
 
 
+def free_local_port() -> int:
+    with socket.socket() as probe:
+        probe.bind((LOCAL_BIND_HOST, 0))
+        return probe.getsockname()[1]
+
+
+class SshTunnel:
+    """A local port forwarded to `host:port` inside the segment, over SSH to a jump host."""
+
+    def __init__(self, host: str, port: int, jump_host: str = JUMP_HOST) -> None:
+        self.host = host
+        self.port = port
+        self.jump_host = jump_host
+        self.local_port = free_local_port()
+        self._process: subprocess.Popen[bytes] | None = None
+
+    def __enter__(self) -> SshTunnel:
+        forward = f"{LOCAL_BIND_HOST}:{self.local_port}:{self.host}:{self.port}"
+        self._process = subprocess.Popen(["ssh", "-N", *SSH_TUNNEL_OPTIONS, "-L", forward, self.jump_host])
+        self._wait_until_bound(self._process)
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        self.close()
+
+    def close(self) -> None:
+        if self._process is None:
+            return
+        self._process.terminate()
+        self._process.wait(timeout=TUNNEL_EXIT_TIMEOUT_SECONDS)
+        self._process = None
+
+    def _wait_until_bound(self, process: subprocess.Popen[bytes]) -> None:
+        deadline = time.monotonic() + TUNNEL_READY_TIMEOUT_SECONDS
+        while time.monotonic() < deadline:
+            code = process.poll()
+            if code is not None:
+                raise MastApiError(f"ssh {self.jump_host}: forwarding {self.host}:{self.port} exited with {code}")
+            try:
+                with socket.create_connection((LOCAL_BIND_HOST, self.local_port), timeout=TUNNEL_POLL_INTERVAL_SECONDS):
+                    return
+            except OSError:
+                time.sleep(TUNNEL_POLL_INTERVAL_SECONDS)
+        self.close()
+        raise MastApiError(f"ssh {self.jump_host}: no forward on {self.local_port} after {TUNNEL_READY_TIMEOUT_SECONDS} s")
+
+
 class MastService:
     """One MAST HTTP service: a unit, or the spectrograph."""
 
-    def __init__(self, host: str, base_path: str, port: int = DEFAULT_PORT) -> None:
-        self.host = host
+    def __init__(self, host: str, base_path: str, port: int, *, name: str | None = None) -> None:
+        self.name = name or host
         self.base_url = f"http://{host}:{port}{base_path}"
         self._client = httpx.Client(timeout=REQUEST_TIMEOUT_SECONDS, trust_env=False)
 
     @classmethod
-    def unit(cls, name: str, port: int = DEFAULT_PORT) -> MastService:
+    def unit(cls, name: str, port: int = UNIT_PORT) -> MastService:
         return cls(name, UNIT_BASE_PATH, port)
 
     @classmethod
-    def spec(cls, host: str = SPEC_HOST, port: int = DEFAULT_PORT) -> MastService:
+    def spec(cls, host: str = SPEC_HOST, port: int = SPEC_PORT) -> MastService:
         return cls(host, SPEC_BASE_PATH, port)
 
     def get(self, method: str, **params: Any) -> Any:
@@ -180,11 +291,11 @@ class MastService:
             status = self.status()
             scope = status.get(component) if component else status
             if scope is None:
-                raise MastApiError(f"{self.host}: no '{component}' in status — the component did not build")
+                raise MastApiError(f"{self.name}: no '{component}' in status — the component did not build")
             if activity not in (scope.get("activities_verbal") or []):
                 return
             time.sleep(POLL_INTERVAL_SECONDS)
-        raise MastApiError(f"{self.host}: '{activity}' still set after {timeout_seconds} s")
+        raise MastApiError(f"{self.name}: '{activity}' still set after {timeout_seconds} s")
 
     def _request(self, verb: str, method: str, params: dict[str, Any]) -> Any:
         url = f"{self.base_url}/{method}"
@@ -205,10 +316,22 @@ class MastService:
         return body.get("value")
 
 
+@contextmanager
+def tunneled_unit(name: str, jump_host: str = JUMP_HOST) -> Iterator[MastService]:
+    with SshTunnel(name, UNIT_PORT, jump_host) as tunnel:
+        yield MastService(LOCAL_BIND_HOST, UNIT_BASE_PATH, tunnel.local_port, name=name)
+
+
+@contextmanager
+def tunneled_spec(host: str = SPEC_HOST, jump_host: str = JUMP_HOST) -> Iterator[MastService]:
+    with SshTunnel(host, SPEC_PORT, jump_host) as tunnel:
+        yield MastService(LOCAL_BIND_HOST, SPEC_BASE_PATH, tunnel.local_port, name=host)
+
+
 def main() -> None:
-    unit = MastService.unit("mast01")
-    status = unit.status()
-    print(f"operational={status['operational']} activities={status['activities_verbal']}")
+    with tunneled_unit("mast01") as unit:
+        status = unit.status()
+        print(f"operational={status['operational']} activities={status['activities_verbal']}")
 
 
 if __name__ == "__main__":
@@ -248,6 +371,12 @@ spec.put("acquire", spec_name="Highspec", exposure_duration=10, lamp_on=False, n
 Spec activities appear in its own `status` under `activities_verbal`, so a wait there follows
 the same shape with `component=None`.
 
+Both examples take `MastService.unit(...)` / `MastService.spec()`, which go straight at the
+machine. Off-segment they become `tunneled_unit("mast01")` and `tunneled_spec()`, used as a
+`with` block; nothing else in either example changes. What the tunnel's readiness check proves
+is that `ssh` bound the local port — a target that is down still fails on the first call,
+because `ssh` accepts the local connection before it tries the far end.
+
 ## Before commanding hardware
 
 - **This moves a real telescope.** The units sit under a rolling roof that is not remotely
@@ -264,17 +393,21 @@ A working script comes out of this page if the agent does these, in order:
 
 1. Read this whole file first. It is the contract; do not infer the shape of the API from
    anything else in the repository.
-2. Confirm the target answers before writing anything long:
-   `curl -m 6 http://mast01:8000/mast/api/v1/unit/status`. If it times out, stop and report —
-   the script is not the problem, the network path is.
-3. Fetch `/openapi.json` from that same host and read the **real** parameter names, verbs and
+2. Establish where it is running from. Inside the Neot Smadar segment every port is reachable
+   directly; outside it, open the SSH tunnel first and address `127.0.0.1` — the spectrograph is
+   not reachable any other way. Never put a login in the script; `~/.ssh/config` holds it.
+3. Confirm the target answers before writing anything long:
+   `curl -m 6 http://mast01:8000/mast/api/v1/unit/status`, or the tunneled equivalent
+   `curl -m 6 http://127.0.0.1:18001/mast/api/v1/spec/status`. If it times out, stop and report
+   — the script is not the problem, the network path is.
+4. Fetch `/openapi.json` from that same host and read the **real** parameter names, verbs and
    `x-completion` values for the endpoints the task needs. The examples on this page are
    illustrations, not a substitute for the live schema.
-4. Prefer `contract` and `interface` operations. If the task needs an `operator` verb, use it
+5. Prefer `contract` and `interface` operations. If the task needs an `operator` verb, use it
    and note at the call site that it is one. Never call a `demo` operation.
-5. Copy the boilerplate rather than writing a client from scratch, and keep both of its
+6. Copy the boilerplate rather than writing a client from scratch, and keep both of its
    safeguards: the `errors` check and the bounded wait.
-6. Ask the human before the first call that moves hardware, and name the unit it will move.
+7. Ask the human before the first call that moves hardware, and name the unit it will move.
 
 ## Keeping this current
 
