@@ -163,7 +163,18 @@ class ImagerInterface(Component, ABC):
 
     @abstractmethod
     def abort_exposure(self) -> CanonicalResponse:
-        pass
+        """Stop the exposure in progress, and **release anything waiting on its readout**.
+
+        The second half is the part every backend got wrong. `wait_for_image_saved` and
+        `wait_for_image_ready` wait on an event that only a completed readout sets, so an
+        abort that stops the sensor and returns leaves the caller parked for the life of the
+        process -- and with it the run that owns it, which then never closes its exposure
+        series or stops the mount tracking (MAST_unit#212). An implementation therefore ends
+        `ImagerActivities.Exposing` and sets those events, whether or not the stop succeeded.
+
+        The waiters must tolerate being woken this way: `image_was_saved` / `image_was_read`
+        stay false, and are what tell a release from a real readout.
+        """
 
     @abstractmethod
     def can_send_image_ready_event(self) -> bool:
@@ -171,7 +182,10 @@ class ImagerInterface(Component, ABC):
 
     @abstractmethod
     def wait_for_image_ready(self):
-        pass
+        """Block until the image is in memory, or until `abort_exposure` releases the wait.
+
+        Returning does not mean an image arrived -- `image_was_read` says whether one did.
+        """
 
     @abstractmethod
     def can_send_image_saved_event(self) -> bool:
@@ -179,7 +193,11 @@ class ImagerInterface(Component, ABC):
 
     @abstractmethod
     def wait_for_image_saved(self):
-        pass
+        """Block until the image is on disk, or until `abort_exposure` releases the wait.
+
+        Returning does not mean a file exists -- `image_was_saved` says whether one does, and
+        a caller that moves or reads the file must check it first.
+        """
 
     @property
     @abstractmethod
