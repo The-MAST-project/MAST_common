@@ -317,6 +317,13 @@ class UnitActivities(IntFlag):
     Correcting = auto()
     Dancing = auto()
     Exposing = auto()  # do_expose: the whole repeat series, not one frame
+    # AFTER Exposing, deliberately. Both branches appended here and both claimed 8192;
+    # Exposing keeps it because it is already on master and shared with MAST_control and
+    # MAST_gui, where a renumbering would silently change what a numeric comparison means.
+    # FluxMetering therefore moves 8192 -> 16384. Safe to move because it has never been on
+    # master: the only records carrying it are engineering shakedown logs, and those name
+    # the flag rather than printing the bare number.
+    FluxMetering = auto()  # acquire_and_find_max_flux: spiralling for peak fibre throughput
 
 
 class ImagerActivities(IntFlag):

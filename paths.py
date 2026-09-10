@@ -128,6 +128,29 @@ class PathMaker:
         spirals_folder.mkdir(parents=True, exist_ok=True)
         return str(spirals_folder)
 
+    def make_flux_metering_folder(self, root: str | None = None) -> str:
+        """
+        <ram>/<observing-night>/FluxMetering/<NNNN> -- one folder per run of
+        `acquire_and_find_max_flux`.
+
+        The same shape as `make_spirals_folder`, so the mover lands it at
+        `<share>/<hostname>/<observing-night>/FluxMetering/<NNNN>`. The hostname is NOT
+        joined here: `Filer().shared.root` already carries it on Windows, so a caller
+        adding `socket.gethostname()` would produce `Z:/MAST/mast02/mast02/...`.
+
+        An observing night, not a calendar date. A run takes 20-40 minutes and a session
+        of them spans the small hours, so a calendar label would split one night's runs
+        across two folders whose names give no hint they belong together.
+        """
+        if not root:
+            ram = Filer().ram
+            assert ram
+            root = ram.root
+        folder = Path(self.make_observing_night_folder(root=root)) / "FluxMetering"
+        folder = folder / PathMaker().make_seq(str(folder))
+        folder.mkdir(parents=True, exist_ok=True)
+        return str(folder)
+
     @staticmethod
     def current_utc():
         return datetime.datetime.now(datetime.UTC).strftime("%H-%M-%S_%f")[:-3]
