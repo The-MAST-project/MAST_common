@@ -304,9 +304,59 @@ class ExcludeRegionConfig(BaseModel):
         return None
 
 
+class LockValidityConfig(BaseModel):
+    """Thresholds for the guide-lock validity supervisor (`science.lock_validity`).
+
+    Config lives here rather than beside the component so a unit can be retuned
+    from the controller DB without a deployment -- which is what the campaign
+    wanted on the night and could not have.
+    """
+
+    #: Frames before the session scale is trusted. Eight is ~113 s at the measured
+    #: 9.58 s cadence. Below it the 2026-09-08 replay produces a false alarm; above
+    #: it nothing improves, and the closest sound frame sits 1.34x clear of the cut.
+    warmup_frames: int = Field(default=8, ge=3, le=200)
+
+    #: How many masses the scale is taken over. Sixty is ~10 minutes -- long enough
+    #: to be stable, short enough to follow a field change after a re-guide.
+    scale_window_frames: int = Field(default=60, ge=10, le=1000)
+
+    #: Below this fraction of the session scale the lock is not that object. The
+    #: empty band on 2026-09-08 runs 0.021 to 0.085, so 0.05 sits in the middle of
+    #: a region containing no frames at all.
+    artifact_mass_fraction: float = Field(default=0.05, gt=0.0, lt=1.0)
+
+    #: Stateless test. A real star's peak stands clear of the sky; an artifact's
+    #: peak *is* the sky. Expressed in sigma so it is free of the exposure, the
+    #: gain and the moon -- an absolute ADU threshold is none of those things.
+    min_peak_sigma_over_background: float = Field(default=15.0, gt=0)
+
+    #: Stateless test, second half: flux per unit peak. A star fills the aperture
+    #: and gives ~40; a few noise pixels over threshold give ~5. Set between them,
+    #: nearer the artifacts, because a bright star with a tight core lands low.
+    min_mass_over_peak: float = Field(default=12.0, gt=0)
+
+    #: Frames a verdict must persist before the state changes. One frame of bad
+    #: seeing should not flip the state, and one good frame should not clear it.
+    hysteresis_frames: int = Field(default=2, ge=1, le=20)
+
+    #: Without the PHD2 build that reports peak and background, run the session
+    #: test alone rather than refusing to run. False is the honest default: half a
+    #: check is better than none, and the log says which half is missing.
+    require_background: bool = False
+
+    #: **Does reaching NotAStar stop the guiding?** Detection and action are
+    #: separate switches on purpose. The supervisor is meant to run for a night
+    #: reporting only, so the state can be read against what actually happened
+    #: before anything acts on it -- and so the action can be withdrawn without
+    #: losing the signal if it proves too eager.
+    end_guiding_on_not_a_star: bool = False
+
+
 class PHD2Config(BaseModel):
     profile: str
     settle: PHD2SettleConfig
     validation_interval: float
     limit_frame: LimitFrameConfig = Field(default_factory=LimitFrameConfig)
     exclude_region: ExcludeRegionConfig = Field(default_factory=ExcludeRegionConfig)
+    lock_validity: LockValidityConfig = Field(default_factory=LockValidityConfig)
