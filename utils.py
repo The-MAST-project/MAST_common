@@ -365,10 +365,28 @@ def boxed_log(
     center: bool = False,
     level=logging.INFO,
 ):
+    """Emit a box as ONE record, so nothing can be written into the middle of it.
+
+    A record per line meant any thread could land inside a box. Measured over the
+    2026-09-08 night that happened to 4 of 3278 boxes -- and one of those four
+    swallowed the longest mount movement of the night (198 s against a 22.38 s
+    maximum among the 517 that parsed cleanly), because a reader taking everything
+    between the borders as box content absorbed a foreign record.
+
+    A lock would not have fixed it. It would serialise boxed writers against each
+    other, but the record that was swallowed came from `activities.end_activity` --
+    an ordinary log call on another thread, which would never take a box lock. One
+    record is the only form that is atomic against *everything*: `logging`'s
+    handler holds its own lock across a single emit.
+
+    The cost is that continuation lines no longer carry a timestamp and thread
+    prefix. That makes a log reader's job easier rather than harder: a line without
+    the prefix is unambiguously box content, where before every line inside a box
+    had to be tested for being something else.
+    """
     if isinstance(lines, str):
         lines = [lines]
-    for line in boxed_lines(lines, center):
-        logger.log(level, line)
+    logger.log(level, "\n".join(boxed_lines(lines, center)))
 
 
 def boxed_debug(logger: logging.Logger, lines: str | list[str], center: bool = False):
