@@ -331,10 +331,17 @@ class LockValidityConfig(BaseModel):
     #: gain and the moon -- an absolute ADU threshold is none of those things.
     min_peak_sigma_over_background: float = Field(default=15.0, gt=0)
 
-    #: Stateless test, second half: flux per unit peak. A star fills the aperture
-    #: and gives ~40; a few noise pixels over threshold give ~5. Set between them,
-    #: nearer the artifacts, because a bright star with a tight core lands low.
-    min_mass_over_peak: float = Field(default=12.0, gt=0)
+    #: Stateless test, second half: how concentrated the light is, normalised by
+    #: the seeing disc. Raw `mass / peak` is **not** usable -- it correlates with
+    #: HFD at r = 0.90 over 2026-09-08, because mass grows with the aperture the
+    #: star fills, so it is an HFD test wearing a disguise. Real locks at HFD 3-4
+    #: median 9.2 on it, which a floor set for a 6.7 px night would condemn
+    #: wholesale on a sharp one. Dividing by HFD^2 drops that to r = 0.54.
+    #:
+    #: Set **above** the artifact range rather than between the populations,
+    #: because the two halves must agree before the stateless test objects: this
+    #: one corroborates, `min_peak_sigma_over_background` discriminates.
+    min_mass_over_peak_hfd2: float = Field(default=0.35, gt=0)
 
     #: Frames a verdict must persist before the state changes. One frame of bad
     #: seeing should not flip the state, and one good frame should not clear it.
