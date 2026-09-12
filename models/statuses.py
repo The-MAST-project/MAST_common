@@ -155,7 +155,7 @@ class LockValidityStatus(BaseModel):
     session_mass_scale: float | None = None
     #: The stateless pair. None on a PHD2 build that does not report the sky.
     peak_sigma_over_background: float | None = None
-    mass_over_peak: float | None = None
+    mass_over_peak_hfd2: float | None = None
     #: Which test objected, so a log line says why rather than only what.
     reasons: list[str] = Field(default_factory=list)
 
