@@ -134,6 +134,24 @@ class SkyQualityStatus(BaseModel):
     latest_update: str | None = None
 
 
+class LockAssessmentStatus(BaseModel):
+    """An episode of the guider not being on a star, kept after it ends.
+
+    What a decision to stop the guide should be read against. The live `validity`
+    is a poor basis on its own: a guider flickering between accepting an artifact
+    and losing it altogether shows whichever it happens to be at the moment a
+    person looks, and a single bad frame is indistinguishable from eleven minutes
+    of them. `frames` and the worst values are what separate those.
+    """
+
+    began_at: str | None = None
+    frames: int = 0
+    worst_mass_fraction: float | None = None
+    worst_peak_sigma_over_background: float | None = None
+    reasons: list[str] = Field(default_factory=list)
+    ongoing: bool = False
+
+
 class LockValidityStatus(BaseModel):
     """Whether the guider is holding the star it locked onto.
 
@@ -158,6 +176,9 @@ class LockValidityStatus(BaseModel):
     mass_over_peak_hfd2: float | None = None
     #: Which test objected, so a log line says why rather than only what.
     reasons: list[str] = Field(default_factory=list)
+    #: The current or most recent episode, kept after it ends -- an operator may
+    #: only come to look once the guider has recovered.
+    worst_assessment: LockAssessmentStatus | None = None
 
 
 class PHD2GuiderStatus(BaseModel):
