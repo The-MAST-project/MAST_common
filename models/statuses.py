@@ -134,6 +134,32 @@ class SkyQualityStatus(BaseModel):
     latest_update: str | None = None
 
 
+class LockValidityStatus(BaseModel):
+    """Whether the guider is holding the star it locked onto.
+
+    Distinct from `sky_quality`, which scores how steady the atmosphere is: both
+    can read well while the loop chases a noise fluctuation. Distinct from
+    `is_guiding` too, which is true whenever a guiding session is open -- it
+    reports "a session exists", never "the session is sound".
+
+    `validity` is debounced and is what a person should be shown. `frame_verdict`
+    is this frame alone, undebounced, and is what a record keys on so an artifact
+    frame is never averaged into a measurement.
+    """
+
+    validity: str | None = None
+    frame_verdict: str | None = None
+    #: This lock's mass as a fraction of the brightness its session established.
+    #: 1.0 is holding the star; below ~0.05 it is not that object.
+    mass_fraction: float | None = None
+    session_mass_scale: float | None = None
+    #: The stateless pair. None on a PHD2 build that does not report the sky.
+    peak_sigma_over_background: float | None = None
+    mass_over_peak: float | None = None
+    #: Which test objected, so a log line says why rather than only what.
+    reasons: list[str] = Field(default_factory=list)
+
+
 class PHD2GuiderStatus(BaseModel):
     identifier: str | None = None
     is_guiding: bool = False
@@ -141,6 +167,7 @@ class PHD2GuiderStatus(BaseModel):
     app_state: str | None = None
     avg_dist: float | None = None
     sky_quality: SkyQualityStatus | None = None
+    lock_validity: LockValidityStatus | None = None
 
 
 class ActivitiesStatus(BaseModel):
