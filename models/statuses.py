@@ -502,7 +502,35 @@ class FluxMeteringExposure(BaseModel):
     is asked.
     """
 
-    flux: float
+    #: `None` when the photometry found nothing to measure and had no previous position to
+    #: fall back on. NOT 0.0: a frame that could not be measured and a frame with genuinely
+    #: no light give the same number under a plain sum, and the arg-max cannot tell them
+    #: apart. A step whose flux is None is skipped rather than treated as dark.
+    flux: float | None = None
+    #: Where the aperture was centred: `detected` in this frame, `inherited` from the last
+    #: frame that did detect, or `none`.
+    position_source: str | None = None
+    aperture_x: float | None = None
+    aperture_y: float | None = None
+    aperture_radius_px: float | None = None
+    #: From the CCD equation -- Poisson on the source, the background scatter over the
+    #: aperture, and the uncertainty on the background level itself.
+    counts_err: float | None = None
+    snr: float | None = None
+    #: Measured from the frame, not the commanded `flux_black_level`. On run 0006 this drifted
+    #: 2.518 -> 2.596 counts/px across the walk, which a whole-frame sum reported as signal.
+    bkg_level: float | None = None
+    fwhm_px: float | None = None
+
+    #: Saturated pixels INSIDE the aperture; this is what makes the measurement a lower
+    #: limit. `saturated_pixels` below is the whole-frame count, kept as a diagnostic: it is
+    #: what shows a frame is clipped somewhere other than the fibre.
+    saturated_in_aperture: int = 0
+    #: The ADU the counts above were taken at. Recorded rather than implied: it is an
+    #: observed rail for this sensor, not a value derived from the bit depth, so a different
+    #: camera must show up as a changed number here rather than as silence.
+    saturation_threshold: int | None = None
+
     saturated_pixels: int = 0
     saturated: bool = False
     imager_frame: str | None = None
@@ -535,7 +563,17 @@ class FluxMeteringStep(BaseModel):
     ring: int | None = None
     offset_arcsec: tuple[float, float] | None = None
 
-    flux: float
+    #: The median of this step's exposures, or None when none of them could be measured.
+    #: A None step is skipped by the arg-max rather than read as darkness.
+    flux: float | None = None
+    #: Carried up from the chosen exposure, so a step can be judged without walking into
+    #: `exposures`: where its aperture sat, and how good the measurement was.
+    position_source: str | None = None
+    snr: float | None = None
+    bkg_level: float | None = None
+    saturated_in_aperture: int = 0
+    saturation_threshold: int | None = None
+
     exposures: list[FluxMeteringExposure] = Field(default_factory=list)
     #: Index into `exposures` of the pair nearest the median.
     representative: int = 0
