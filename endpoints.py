@@ -180,24 +180,18 @@ def area_of(path: str) -> str | None:
     return segments[-2] if len(segments) >= 2 else None
 
 
-#: Display name per area, keyed by the path segment `area_of` returns, for the segments a
-#: reader would not recognise capitalised. The unit's areas are words -- `mount`, `focuser`,
-#: `covers` -- so it needs no entry; MAST_spec serves its filter wheels from `/fw`, and
-#: `Fw (operator)` names nothing (MAST_spec#102). A segment with no entry keeps `.capitalize()`.
-AREA_LABELS: dict[str, str] = {
-    "fw": "Filter wheels",
-}
-
-
 def operation_area_tag(area: str) -> str:
     """The operator tier's group name for `area`, which is a path segment as `area_of` returns it.
 
     The one place the tag string is built, so a service composing its `openapi_tags` names the
-    same group the router files its routes under rather than a literal that has to match one --
-    which is also why the label lives here and not in the service: a display name chosen at the
-    composition site could disagree with the tag `_register` writes.
+    same group the router files its routes under rather than a literal that has to match one.
+
+    The segment is the name, capitalised: a route reads as the path it is served at. MAST_spec
+    serves its filter wheels from `/fw`, so the group is `Fw (operator)` -- a table of display
+    names was written for that one case and dropped as more mechanism than it earned
+    (MAST_spec#102). A segment worth reading differently is worth renaming on the wire.
     """
-    return OPERATION_AREA_TAG.format(area=AREA_LABELS.get(area, area.capitalize()))
+    return OPERATION_AREA_TAG.format(area=area.capitalize())
 
 
 def display_tag(tier: Tier, path: str) -> str:

@@ -10,7 +10,6 @@ from fastapi.testclient import TestClient
 
 from common.canonical import CanonicalResponse
 from common.endpoints import (
-    AREA_LABELS,
     OPENAPI_TAGS,
     TIER_GROUPS,
     TIER_STABILITY,
@@ -29,7 +28,6 @@ from common.endpoints import (
     display_tag,
     endpoint,
     enveloped,
-    operation_area_tag,
 )
 
 
@@ -237,19 +235,6 @@ def test_only_the_operator_tier_is_split_by_area():
     assert display_tag(Tier.CONTRACT, path) == TIER_TAGS[Tier.CONTRACT]
     assert display_tag(Tier.INTERFACE, path) == TIER_TAGS[Tier.INTERFACE]
     assert display_tag(Tier.DEMO, path) == TIER_TAGS[Tier.DEMO]
-
-
-def test_an_area_reads_as_its_label_where_the_segment_is_not_a_word():
-    """MAST_spec#102: `/fw` serves the filter wheels, and `Fw (operator)` names nothing."""
-    assert operation_area_tag("fw") == "Filter wheels (operator)"
-    assert display_tag(Tier.OPERATION, "/mast/api/v1/spec/fw/move") == "Filter wheels (operator)"
-
-    assert operation_area_tag("mount") == "Mount (operator)"
-
-
-def test_every_label_is_keyed_by_a_segment_not_by_a_group_name():
-    """A key that is already a display name would be looked up with the raw segment and missed."""
-    assert all(key == key.lower() and " " not in key for key in AREA_LABELS)
 
 
 def test_an_operator_route_with_no_area_keeps_the_flat_tier_tag():
