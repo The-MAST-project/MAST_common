@@ -103,7 +103,7 @@ The unit groups its operations by contract tier, in Swagger and as a machine-rea
 
 | Swagger group | `x-stability` | use it in a script? |
 |---|---|---|
-| Unit orchestration (contract) | `contract` | Yes. This is the programmatic surface for observing |
+| Orchestration (contract) | `contract` | Yes. This is the programmatic surface for observing |
 | Component interface (contract) | `interface` | Yes. `startup` / `shutdown` / `abort` / `status`, uniform on every component |
 | *Area* (operator) — `Mount (operator)`, `Imager (operator)`, … | `operator` | For driving hardware by hand. Expect it to change without notice |
 | Demonstration (parked) | `demo` | No. Rendered struck through, and non-functional |

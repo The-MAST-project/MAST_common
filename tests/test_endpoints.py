@@ -207,6 +207,26 @@ def test_the_area_is_the_segment_before_the_verb(path, expected):
     assert area_of(path) == expected
 
 
+@pytest.mark.parametrize(
+    ("path", "expected"),
+    [
+        ("/mast/api/v1/spec/simulate/fiber_stage/{instrument}", "simulate"),
+        ("/mast/api/v1/spec/simulate/lightpath", "simulate"),
+        ("/mast/api/v1/spec/fw/{wheel}/position", "fw"),
+        ("/mast/api/v1/unit/{component}/status", "unit"),
+        ("/{anything}", None),
+    ],
+)
+def test_a_path_parameter_is_neither_the_verb_nor_the_area(path, expected):
+    """MAST_spec#102: the four `/simulate/...` routes each made a group named for a stage.
+
+    The first two cases are the ones that matter together: a parameterised route and a plain
+    one on the same prefix must file under the same area, or the group splits on whether the
+    verb happens to take an argument in its path.
+    """
+    assert area_of(path) == expected
+
+
 def test_only_the_operator_tier_is_split_by_area():
     """#207: the two contract tiers stay one group each, and DEMO is three parked routes."""
     path = "/mast/api/v1/unit/mount/park"
