@@ -329,7 +329,15 @@ class LockValidityConfig(BaseModel):
     #: Stateless test. A real star's peak stands clear of the sky; an artifact's
     #: peak *is* the sky. Expressed in sigma so it is free of the exposure, the
     #: gain and the moon -- an absolute ADU threshold is none of those things.
-    min_peak_sigma_over_background: float = Field(default=15.0, gt=0)
+    #:
+    #: Measured rather than chosen: running `Star::Find`'s own annulus over the
+    #: 2026-09-08 frames puts sound stars below SNR 20 at a median of 10.9-12.2
+    #: sigma with a 5th percentile near 5, while that night's fourteen artifact
+    #: frames ran SNR 11.5-19.7 -- the same band. A cut at 15 objects to most
+    #: sound frames there, so it carries no information where it is needed. Five
+    #: is the faint population's 5th percentile and still sits above PHD2's own
+    #: 3 sigma detection floor, which every accepted star clears by construction.
+    min_peak_sigma_over_background: float = Field(default=5.0, gt=0)
 
     #: Stateless test, second half: how concentrated the light is, normalised by
     #: the seeing disc. Raw `mass / peak` is **not** usable -- it correlates with
@@ -339,8 +347,10 @@ class LockValidityConfig(BaseModel):
     #: wholesale on a sharp one. Dividing by HFD^2 drops that to r = 0.54.
     #:
     #: Set **above** the artifact range rather than between the populations,
-    #: because the two halves must agree before the stateless test objects: this
-    #: one corroborates, `min_peak_sigma_over_background` discriminates.
+    #: because the two halves must agree before the stateless test objects. Below
+    #: about SNR 30 this is the half that discriminates: the populations overlap
+    #: in `min_peak_sigma_over_background`, so that one cannot separate them
+    #: there however it is set.
     min_mass_over_peak_hfd2: float = Field(default=0.35, gt=0)
 
     #: Frames a verdict must persist before the state changes. One frame of bad
