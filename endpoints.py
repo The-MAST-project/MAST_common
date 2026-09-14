@@ -58,7 +58,7 @@ MARKER = "__mast_endpoint__"
 class Tier(StrEnum):
     """The contract tiers, in the order they are presented (drives MAST_unit#39's grouping).
 
-    CONTRACT    unit orchestration: the whole programmatic surface for observing.
+    CONTRACT    service orchestration: the whole programmatic surface for observing.
     OPERATION   bespoke operator / diagnostic verbs; the day-to-day manual surface.
     INTERFACE   component lifecycle -- startup / shutdown / abort / status, ABC-enforced.
     DEMO        the dancing endpoints (parked).
@@ -86,7 +86,7 @@ class Stability(StrEnum):
 #: throughout: Swagger renders an operation under each tag it carries, so a second tag would
 #: duplicate the row rather than nest it.
 TIER_TAGS: dict[Tier, str] = {
-    Tier.CONTRACT: "Unit orchestration (contract)",
+    Tier.CONTRACT: "Orchestration (contract)",
     Tier.OPERATION: "Operator / diagnostic operations",
     Tier.INTERFACE: "Component interface (contract)",
     Tier.DEMO: "Demonstration (parked)",
@@ -103,7 +103,7 @@ TIER_STABILITY: dict[Tier, str] = {
 }
 
 #: The operator tier's group name, one per area (MAST_unit#207). Parenthesised to match the
-#: two tier tags it sits beside, `Unit orchestration (contract)` and `Component interface
+#: two tier tags it sits beside, `Orchestration (contract)` and `Component interface
 #: (contract)`, so the nine headings read as one set. The area displaces the tier
 #: only here: 32 of the unit's 61 tagged operations are `OPERATION`, which under a single tag
 #: is one flat list spanning six components, and a path prefix labels a row without grouping
@@ -163,19 +163,41 @@ def area_of(path: str) -> str | None:
     production does -- and a service gets its groups from where its routes are mounted, with no
     registration step to forget when a component is added.
 
+    **Path parameters are not segments for this purpose.** A `{param}` is an argument to the
+    verb, never the verb and never an area, so it is dropped before the position is read:
+
+        /mast/api/v1/spec/simulate/fiber_stage/{instrument}  -> "simulate"
+
+    Reading that path positionally files the route under `fiber_stage` -- the stage it names
+    rather than the component serving it -- and MAST_spec's four `/simulate/...` routes each
+    produced a one-row group that way (MAST_spec#102). MAST_unit has no parameterised path,
+    which is why the rule shipped without this. Every parameter is dropped rather than only a
+    trailing one, so `/fw/{wheel}/position` gives `fw` and not `{wheel}`.
+
     `None` for a single-segment path, which has no segment before its verb.
     """
-    segments = [segment for segment in path.split("/") if segment]
+    segments = [segment for segment in path.split("/") if segment and not segment.startswith("{")]
     return segments[-2] if len(segments) >= 2 else None
+
+
+#: Display name per area, keyed by the path segment `area_of` returns, for the segments a
+#: reader would not recognise capitalised. The unit's areas are words -- `mount`, `focuser`,
+#: `covers` -- so it needs no entry; MAST_spec serves its filter wheels from `/fw`, and
+#: `Fw (operator)` names nothing (MAST_spec#102). A segment with no entry keeps `.capitalize()`.
+AREA_LABELS: dict[str, str] = {
+    "fw": "Filter wheels",
+}
 
 
 def operation_area_tag(area: str) -> str:
     """The operator tier's group name for `area`, which is a path segment as `area_of` returns it.
 
     The one place the tag string is built, so a service composing its `openapi_tags` names the
-    same group the router files its routes under rather than a literal that has to match one.
+    same group the router files its routes under rather than a literal that has to match one --
+    which is also why the label lives here and not in the service: a display name chosen at the
+    composition site could disagree with the tag `_register` writes.
     """
-    return OPERATION_AREA_TAG.format(area=area.capitalize())
+    return OPERATION_AREA_TAG.format(area=AREA_LABELS.get(area, area.capitalize()))
 
 
 def display_tag(tier: Tier, path: str) -> str:
