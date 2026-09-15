@@ -782,7 +782,7 @@ class BasicUnitStatus(BaseStatus, PowerStatus):
 UnitStatus = BasicUnitStatus | FullUnitStatus
 
 
-class ControllerStatus(BaseStatus):
+class ControllerStatus(PowerStatus, BaseStatus):
     pass
 
 
@@ -857,7 +857,7 @@ class SpecStageStatus(ComponentStatus):
     at_preset: str | None = None
 
 
-class SpecStatus(BaseStatus):
+class SpecStatus(PowerStatus, BaseStatus):
     deepspec: DeepspecStatus | None = None
     highspec: HighspecStatus | None = None
     stages: dict[SpecStageNames, SpecStageStatus] | None = None
