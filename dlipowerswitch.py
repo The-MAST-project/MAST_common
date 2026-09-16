@@ -1,4 +1,5 @@
 import contextlib
+import re
 import socket
 import time
 from enum import IntFlag, auto
@@ -36,6 +37,18 @@ class DliPowerSwitch(Component):
     RECOVERY_MODE_URL: str = "restapi/relay/recovery_mode/"
     DESIRED_RECOVERY_MODE: int = 2
 
+    # Identification. 'brand_company_name' is the vendor string, stable across DLI models,
+    # unlike 'relay/model' ('V222' here) which would have to be revised for every new
+    # product. The auth realm is 'DLI <serial>' and arrives in the 401 challenge, before
+    # any credential is sent.
+    VENDOR_URL: str = "restapi/config/brand_company_name/"
+    VENDOR: str = "Digital Loggers, Inc."
+    SERIAL_URL: str = "restapi/config/serial/"
+    HOSTNAME_URL: str = "restapi/config/hostname/"
+    OUTLETS_URL: str = "restapi/relay/outlets/"
+    AUTH_REALM_PREFIX: str = "DLI "
+    _REALM_RE: ClassVar[re.Pattern] = re.compile(r'realm="([^"]*)"')
+
     def __init__(self, hostname: str, ipaddr: str | None, conf: PowerSwitchConfig):
         Component.__init__(self, PowerSwitchActivities)
         self.hostname = hostname
@@ -43,6 +56,8 @@ class DliPowerSwitch(Component):
         self.conf = conf
         self.fqdn = self.hostname + "." + load_local_config().domain
         self._detected = False
+        self._identified = False
+        self._identity_complaint: str | None = None  # last rejection logged, to avoid repeating it
         self.auth = httpx.DigestAuth("admin", "1234")
         self.headers = {
             "X-CSRF": "x",
@@ -83,18 +98,106 @@ class DliPowerSwitch(Component):
         if self.detected:
             self.upload_outlet_names()
 
+    def _reject(self, reason: str) -> bool:
+        """
+        Records why the far end is not this switch's PDU. Logs a given reason once, because
+        probe() runs every 5 seconds and a squatter on the address would otherwise fill the
+        night's log with the same line ~17000 times.
+        """
+        if self._identity_complaint != reason:
+            self._identity_complaint = reason
+            logger.error(f"{self}: NOT a DLI power switch at {self.ipaddr}: {reason}; will not read from or write to it")
+        return False
+
+    def identify(self) -> bool:
+        """
+        Positively identifies the far end as a DLI REST API -- and, when the configuration
+        pins a serial, as *this* switch's PDU -- before anything is read from or written to
+        it.
+
+        probe() used to take "the transport did not fail" as proof of a power switch. It is
+        not: common_get_put() answers None both for an HTTP error and for a body that is not
+        JSON, and None is not a dict carrying 'error', so a device that merely answers HTTP
+        was marked detected. A PLC that had taken over a configured ipaddr therefore passed,
+        and upload_outlet_names() and assert_recovery_mode() then wrote into it (MAST_unit#50
+        saw the 400-answering something at 10.23.2.102).
+
+        Three checks, cheapest and most specific first:
+
+        1. The Digest challenge, fetched with *no* credentials. A DLI answers 401 with
+           realm="DLI <serial>". This is the one check that runs before 'admin:1234' is
+           offered to an unknown device, so it stays first.
+        2. The vendor string, which is model-independent.
+        3. The outlet count, because upload_outlet_names() is about to write names into
+           outlets 0..7 and a device with a different outlet map must not receive them.
+
+        Plus, if conf.serial is set, the serial itself -- the only check that distinguishes
+        our PDU from a different DLI, which is the likelier collision in a fleet of twenty:
+        two units' configurations pointing at one address. It is opt-in because pinning it
+        means an RMA swap fails identification until the DB is updated.
+        """
+        # 1. the challenge, unauthenticated -- a separate short-lived client, since
+        #    self._http_client carries the digest credentials.
+        try:
+            with httpx.Client(trust_env=False) as anonymous:
+                response = anonymous.get(self.base_url + "restapi/", timeout=self.timeout)
+        except httpx.HTTPError as e:
+            return self._reject(f"no answer to the unauthenticated challenge ({e})")
+
+        if response.status_code != httpx.codes.UNAUTHORIZED:
+            return self._reject(f"GET restapi/ answered {response.status_code}, expected 401")
+
+        challenge = response.headers.get("WWW-Authenticate", "")
+        if not challenge.startswith("Digest "):
+            return self._reject(f"challenge is not Digest ({challenge[:40]!r})")
+
+        match = self._REALM_RE.search(challenge)
+        if match is None or not match.group(1).startswith(self.AUTH_REALM_PREFIX):
+            realm = match.group(1) if match else None
+            return self._reject(f"auth realm is {realm!r}, expected one starting {self.AUTH_REALM_PREFIX!r}")
+
+        # 2. the vendor. Anything but the exact string -- including the None that
+        #    common_get_put() returns for a non-JSON body -- is a rejection.
+        vendor = self.get(self.VENDOR_URL)
+        if vendor != self.VENDOR:
+            return self._reject(f"vendor is {vendor!r}, expected {self.VENDOR!r}")
+
+        # 3. the outlet map
+        outlets = self.get(self.OUTLETS_URL)
+        if not isinstance(outlets, list) or len(outlets) != self.NUM_OUTLETS:
+            got = len(outlets) if isinstance(outlets, list) else outlets
+            return self._reject(f"has {got} outlets, expected {self.NUM_OUTLETS}")
+
+        serial = self.get(self.SERIAL_URL)
+        if self.conf.serial:
+            if serial != self.conf.serial:
+                return self._reject(f"serial is {serial!r}, configuration pins {self.conf.serial!r}")
+        elif isinstance(serial, str):
+            # Logged so the serial can be copied into the config DB and the check tightened.
+            logger.info(f"{self}: identified, serial {serial!r} (not pinned in the configuration)")
+
+        self._identity_complaint = None
+        return True
+
     def probe(self):
         if not self.ipaddr:
             return
         if not self.detected:
             result = self.get("restapi/relay/outlets/0/state/")
-            self._detected = not (isinstance(result, dict) and "error" in result)
+            reachable = not (isinstance(result, dict) and "error" in result)
+
+            # Reachable is not the same as "is our power switch". identify() is what
+            # separates them; nothing downstream reads or writes unless it passed, since
+            # every such path is behind self.detected.
+            self._identified = reachable and self.identify()
+            self._detected = self._identified
 
             if self.detected and self.ipaddr is not None and self.ipaddr not in self._instantiated:
                 self._instantiated.append(self.ipaddr)
                 logger.info(f"{self} detected")
                 self.upload_outlet_names()
                 self.assert_recovery_mode()
+                self.assert_hostname()
 
     def on_timer(self):
         self.probe()
@@ -135,6 +238,14 @@ class DliPowerSwitch(Component):
         return self.common_get_put(response)
 
     def put(self, url: str, data: str | dict | None = None) -> object:
+        # Defence in depth. Every caller already reaches put() only via self.detected, which
+        # now implies identification -- but a DliPowerSwitch constructed directly, bypassing
+        # PowerSwitchFactory, would not have gone through probe() at all. A write is the
+        # irreversible half, so it is the half that refuses rather than assumes.
+        if not self._identified:
+            logger.error(f"{self}: refusing to write {url}: {self.ipaddr} is not an identified DLI power switch")
+            return None
+
         url = self.base_url + url
 
         request_data = {"value": data} if isinstance(data, str) else data
@@ -248,6 +359,54 @@ class DliPowerSwitch(Component):
             logger.info(f"{self}: recovery_mode corrected {current} -> {readback}")
         else:
             logger.error(f"{self}: failed to set recovery_mode to {self.DESIRED_RECOVERY_MODE}, it reads {readback!r}")
+
+    def assert_hostname(self):
+        """
+        Corrects the PDU's own hostname, if it is not already this switch's name.
+
+        A V222 ships calling itself by its hardware id -- 'V22251' on mastps00, 'V22291' on
+        mastps05 -- and a factory reset or an RMA swap puts it back there. Everything else
+        in MAST already calls the box 'mastpsNN': the configuration DB, forward and reverse
+        DNS, and every line this class logs. The device's own web UI, syslog and SNMP traps
+        are the one place that disagrees -- which is where someone looks when a unit is dark
+        at 3am and the PDU is the suspect.
+
+        Pushed here beside the outlet names and the recovery mode for the reason
+        assert_recovery_mode gives: a setting made once through the web UI does not survive
+        a swap or a reset, and nothing would report the regression.
+
+        The name comes from self.hostname, not from conf.network.host. NetworkConfig's
+        validator synthesises `host` by reverse DNS when the configuration carries only an
+        ipaddr, so it is whatever PTR happens to exist -- and in the config DB it is an FQDN
+        ('mastps00.weizmann.ac.il'), which is not what belongs in a hostname field.
+
+        Note this does not make the name resolvable: DNS already carries mastpsNN in both
+        directions, independently of what the device calls itself. What it buys is that the
+        PDU agrees with everything else about its own identity.
+        """
+        current = self.get(self.HOSTNAME_URL)
+
+        # Unreadable is not the same as wrong -- the guard assert_recovery_mode explains.
+        if not isinstance(current, str):
+            logger.error(f"{self}: cannot read hostname (got {current!r}), leaving it alone")
+            return
+
+        # Hostnames are case-insensitive. A device that normalises the case of what it is
+        # given would otherwise be rewritten on every bring-up, for ever, without the
+        # comparison ever coming out equal.
+        if current.casefold() == self.hostname.casefold():
+            return
+
+        logger.info(f"{self}: hostname is {current!r}, setting it to {self.hostname!r}")
+        self.put(self.HOSTNAME_URL, data=self.hostname)
+
+        # put() cannot confirm its own write (common_get_put's JSONDecodeError branch), so
+        # the correction is only real once it reads back.
+        readback = self.get(self.HOSTNAME_URL)
+        if isinstance(readback, str) and readback.casefold() == self.hostname.casefold():
+            logger.info(f"{self}: hostname corrected {current!r} -> {readback!r}")
+        else:
+            logger.error(f"{self}: failed to set hostname to {self.hostname!r}, it reads {readback!r}")
 
     def set_outlet_state(self, outlet_name: str, state: bool):
         if not self.detected:

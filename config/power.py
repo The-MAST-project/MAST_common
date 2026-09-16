@@ -28,6 +28,11 @@ class PowerSwitchConfig(BaseModel):
     network: NetworkConfig
     userid: str
     password: str
+    # The PDU's own serial, as reported by 'restapi/config/serial/' (e.g. 'V2222805005191').
+    # Optional. When set, DliPowerSwitch.identify() refuses to talk to any other device at
+    # this address -- including a different DLI, which no vendor-level check can catch.
+    # Leaving it unset keeps the vendor-level guard and only logs the observed serial.
+    serial: str | None = None
     timeout: int = 0
     cycle_time: int = 0
     delay_after_on: int = 0
