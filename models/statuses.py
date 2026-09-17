@@ -204,6 +204,19 @@ class PHD2GuiderStatus(BaseModel):
     sky_quality: SkyQualityStatus | None = None
     lock_validity: LockValidityStatus | None = None
 
+    #: What PHD2 is holding, read from PHD2 when this status is built -- not what it
+    #: was last sent, and not what the configuration asks for. A consumer that needs
+    #: to know the instrument's state reads these and nothing else (#245).
+    #:
+    #: The two rectangles are in unbinned FULL-SENSOR pixels; `lock_position` is in
+    #: the coordinates of the image PHD2 is delivering, which is `limit_frame` when
+    #: one is in force. Comparing them without adding the crop origin is wrong by
+    #: 520 px on the derived frame and 6363 on the strip, and does not look wrong
+    #: (#234).
+    limit_frame: "ImagerRoi | None" = None
+    exclude_region: "ImagerRoi | None" = None
+    lock_position: tuple[float, float] | None = None
+
 
 class ActivitiesStatus(BaseModel):
     activities: int | None = None
@@ -445,6 +458,11 @@ class ImagerRoi(BaseModel):
         if self._center:
             ret._center = ImagerPixel(x=self._center.x // b, y=self._center.y // b)
         return ret
+
+
+# `PHD2GuiderStatus` is declared above `ImagerRoi` and refers to it, so its
+# annotations are resolved here rather than at class creation.
+PHD2GuiderStatus.model_rebuild()
 
 
 class ImagerSettings(BaseModel):
