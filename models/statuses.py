@@ -134,6 +134,53 @@ class SkyQualityStatus(BaseModel):
     latest_update: str | None = None
 
 
+class LockAssessmentStatus(BaseModel):
+    """An episode of the guider not being on a star, kept after it ends.
+
+    What a decision to stop the guide should be read against. The live `validity`
+    is a poor basis on its own: a guider flickering between accepting an artifact
+    and losing it altogether shows whichever it happens to be at the moment a
+    person looks, and a single bad frame is indistinguishable from eleven minutes
+    of them. `frames` and the worst values are what separate those.
+    """
+
+    began_at: str | None = None
+    frames: int = 0
+    worst_mass_fraction: float | None = None
+    worst_peak_sigma_over_background: float | None = None
+    reasons: list[str] = Field(default_factory=list)
+    ongoing: bool = False
+
+
+class LockValidityStatus(BaseModel):
+    """Whether the guider is holding the star it locked onto.
+
+    Distinct from `sky_quality`, which scores how steady the atmosphere is: both
+    can read well while the loop chases a noise fluctuation. Distinct from
+    `is_guiding` too, which is true whenever a guiding session is open -- it
+    reports "a session exists", never "the session is sound".
+
+    `validity` is debounced and is what a person should be shown. `frame_verdict`
+    is this frame alone, undebounced, and is what a record keys on so an artifact
+    frame is never averaged into a measurement.
+    """
+
+    validity: str | None = None
+    frame_verdict: str | None = None
+    #: This lock's mass as a fraction of the brightness its session established.
+    #: 1.0 is holding the star; below ~0.05 it is not that object.
+    mass_fraction: float | None = None
+    session_mass_scale: float | None = None
+    #: The stateless pair. None on a PHD2 build that does not report the sky.
+    peak_sigma_over_background: float | None = None
+    mass_over_peak_hfd2: float | None = None
+    #: Which test objected, so a log line says why rather than only what.
+    reasons: list[str] = Field(default_factory=list)
+    #: The current or most recent episode, kept after it ends -- an operator may
+    #: only come to look once the guider has recovered.
+    worst_assessment: LockAssessmentStatus | None = None
+
+
 class PHD2GuiderStatus(BaseModel):
     identifier: str | None = None
     is_guiding: bool = False
@@ -141,6 +188,20 @@ class PHD2GuiderStatus(BaseModel):
     app_state: str | None = None
     avg_dist: float | None = None
     sky_quality: SkyQualityStatus | None = None
+    lock_validity: LockValidityStatus | None = None
+
+    #: What PHD2 is holding, read from PHD2 when this status is built -- not what it
+    #: was last sent, and not what the configuration asks for. A consumer that needs
+    #: to know the instrument's state reads these and nothing else (#245).
+    #:
+    #: The two rectangles are in unbinned FULL-SENSOR pixels; `lock_position` is in
+    #: the coordinates of the image PHD2 is delivering, which is `limit_frame` when
+    #: one is in force. Comparing them without adding the crop origin is wrong by
+    #: 520 px on the derived frame and 6363 on the strip, and does not look wrong
+    #: (#234).
+    limit_frame: "ImagerRoi | None" = None
+    exclude_region: "ImagerRoi | None" = None
+    lock_position: tuple[float, float] | None = None
 
 
 class ActivitiesStatus(BaseModel):
@@ -368,6 +429,11 @@ class ImagerRoi(BaseModel):
         b = binning or 1
 
         return ImagerRoi(x=self.x // b, y=self.y // b, width=self.width // b, height=self.height // b)
+
+
+# `PHD2GuiderStatus` is declared above `ImagerRoi` and refers to it, so its
+# annotations are resolved here rather than at class creation.
+PHD2GuiderStatus.model_rebuild()
 
 
 class ImagerSettings(BaseModel):
