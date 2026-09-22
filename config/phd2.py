@@ -370,6 +370,51 @@ class LockValidityConfig(BaseModel):
     end_guiding_on_not_a_star: bool = False
 
 
+class LockNudgeConfig(BaseModel):
+    """Re-reference the guide lock to the target once guiding has settled.
+
+    Acquisition converges to well inside a pixel, but the open loop between its
+    last correction and ``SettleDone`` gives that precision back: what the guide
+    loop ends up holding is wherever the field drifted to, not where acquisition
+    put it. The nudge measures that drift against the target and corrects the
+    lock position for it.
+
+    It runs only in the window between settle and the fold-mirror insertion,
+    because that is the last moment the target is observable at all -- once the
+    mirror is at SPEC the target is being delivered into the fiber. Nothing is
+    nudged after the mirror moves: a mirror-induced change in the guide star's
+    apparent position is indistinguishable from a real pointing change without
+    an independent measurement, and if the shift is optical then correcting it
+    with the mount drives the target off the fiber.
+
+    Off by default, like :class:`ExcludeRegionConfig`: with no DB entry the
+    handover behaves exactly as it does today.
+    """
+
+    enabled: bool = False
+
+    #: Refuse a nudge larger than this and leave the lock alone. Half of PHD2's
+    #: 15 px search region: a residual that big is not a pointing error to trim
+    #: but a sign that something upstream is wrong, and re-acquiring is the
+    #: honest response. Measured residuals at handover are 0.3-1.0 px.
+    max_offset_px: float = 7.0
+
+    #: Guide frames that must come in under `confirm_px` before the handover
+    #: proceeds. `set_lock_position` triggers no settling of its own, so there is
+    #: no SettleDone to wait on and the confirmation is counted here.
+    confirm_frames: int = 2
+    confirm_px: float = 5.0
+    confirm_timeout: float = 60.0
+
+    @model_validator(mode="after")
+    def _positive_knobs(self):
+        if self.max_offset_px <= 0:
+            raise ValueError("phd2.lock_nudge: max_offset_px must be positive")
+        if self.confirm_frames < 0:
+            raise ValueError("phd2.lock_nudge: confirm_frames cannot be negative")
+        return self
+
+
 class PHD2Config(BaseModel):
     profile: str
     settle: PHD2SettleConfig
@@ -377,3 +422,4 @@ class PHD2Config(BaseModel):
     limit_frame: LimitFrameConfig = Field(default_factory=LimitFrameConfig)
     exclude_region: ExcludeRegionConfig = Field(default_factory=ExcludeRegionConfig)
     lock_validity: LockValidityConfig = Field(default_factory=LockValidityConfig)
+    lock_nudge: LockNudgeConfig = Field(default_factory=LockNudgeConfig)
