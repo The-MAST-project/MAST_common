@@ -415,6 +415,30 @@ class LockNudgeConfig(BaseModel):
         return self
 
 
+class HandoverConfig(BaseModel):
+    """Whether starting to guide also inserts the fold mirror.
+
+    On an FCU v2 unit `StartGuiding` fires `do_fcu_v2_spec_handover` on its own:
+    settle, full pause, stage to SPEC, resume. That is right for observing, and it
+    is the only behavior there has ever been -- so `auto_insert` defaults to true
+    and a unit with no entry is unchanged.
+
+    It is wrong for measuring the handover. An instrument that wants to time the
+    insertion, or to run a control that does *not* insert, cannot start guiding
+    without the unit inserting first: the harness then has to move the stage back
+    to SKY under a pause before it can begin, so a null control costs two stage
+    traverses to demonstrate none. Turning this off hands the insertion to the
+    caller, and the control becomes guiding started and the mirror simply left
+    where it is.
+
+    Off is a measurement mode, not an operating one: with it off nothing inserts
+    the mirror unless something asks, so a unit left this way acquires and guides
+    and never reaches SPEC.
+    """
+
+    auto_insert: bool = True
+
+
 class PHD2Config(BaseModel):
     profile: str
     settle: PHD2SettleConfig
@@ -423,3 +447,4 @@ class PHD2Config(BaseModel):
     exclude_region: ExcludeRegionConfig = Field(default_factory=ExcludeRegionConfig)
     lock_validity: LockValidityConfig = Field(default_factory=LockValidityConfig)
     lock_nudge: LockNudgeConfig = Field(default_factory=LockNudgeConfig)
+    handover: HandoverConfig = Field(default_factory=HandoverConfig)
