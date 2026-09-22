@@ -92,11 +92,29 @@ class AscomStatus(BaseModel):
 # https://ascom-standards.org/Help/Developer/html/T_ASCOM_DeviceInterface_CoverStatus.htm
 #
 # They are kept even though MAST_unit's covers now speak to PWI4 rather than ASCOM, because
-# they are the vocabulary every consumer already reads. What must NOT happen is a PWI4
-# `mirrorcover.overall_state` being cast into this enum: the two overlap numerically and
-# disagree. PWI4's 0 is `Open` where this says `NotPresent`, and PWI4's 3 is `Closing` where
-# this says `Open` -- so the cast silently reports a closing cover as open. Only 1 coincides.
-# `covers.py` maps by PWI4's state NAME for exactly this reason.
+# they are the vocabulary every consumer already reads.
+#
+# NEVER MAP THESE ENUMS BY VALUE. Casting a PWI4 `mirrorcover.overall_state` into this enum
+# returns a wrong answer rather than raising. The PWI4 4.1.6 numbering was measured on mast03,
+# 2026-09-22 (MAST_unit#164); against this enum it comes out as:
+#
+#     int  PWI4              CoversState    a by-value cast would say
+#     0    Open              NotPresent     "there are no covers"          -- WRONG
+#     1    Closed            Closed         closed                         -- agrees
+#     2    Opening           Moving         moving                         -- agrees
+#     3    Closing           Open           "open", while it is closing    -- WRONG
+#     4    (not observed)    Unknown        --
+#     5    PartlyOpen        Error          "faulted", while it is at rest -- WRONG
+#     6    --                PartlyOpen     (no PWI4 counterpart)
+#
+# Two of the five agree, which is what makes the mistake survive a casual test and then lie on
+# the states that matter. The agreements are coincidence and nothing preserves them. `covers.py`
+# maps by PWI4's state NAME for exactly this reason, and an unmapped name fails loudly.
+#
+# 0-5 are ASCOM's and are frozen. `PartlyOpen` is MAST's own: ASCOM has no member for covers
+# stopped between the two end states, and without one a halted cover has to be reported as
+# either moving or unknown, both of which are untrue (MAST_unit#164). It is appended, so no
+# existing value moves.
 class CoversState(Enum):
     NotPresent = 0
     Closed = 1
@@ -104,6 +122,7 @@ class CoversState(Enum):
     Open = 3
     Unknown = 4
     Error = 5
+    PartlyOpen = 6
 
 
 # Not an AscomStatus: the covers are driven through PWI4's `mirrorcover` API (MAST_unit#134),
