@@ -789,6 +789,8 @@ class SwitchedOutlet:
 
     @property
     def state(self) -> TriStateBool:
+        """This outlet's power state. `Covers` redefines `state`, so the power path uses
+        `_outlet_states()` instead. #126 deletes this property, which has no consumers."""
         if self.power_switch is None:
             return None
 
@@ -804,12 +806,14 @@ class SwitchedOutlet:
             return
 
         # current_states = [self.power_switch.get_outlet_state(name) for name in self.outlet_names]
-        current_states = [outlet.state for outlet in self.outlets]
+        current_states = self._outlet_states()
         if any(state != new_state for state in current_states):
             for name in self.outlet_names:
                 self.power_switch.set_outlet_state(name, new_state)
+            # Inside this guard: a logged line means the outlet was changed, not asked.
+            logger.info(f"{op}: powered {'ON' if new_state else 'OFF'}  ({self})")
             if new_state is True and self.delay_after_on:
-                logger.info(f"{op}: delaying {self.delay_after_on} sec. after powering ON  ({self})")
+                logger.info(f"{op}: delaying {self.delay_after_on} sec. after powering ON")
                 time.sleep(self.delay_after_on)
 
     def power_on(self):
@@ -832,15 +836,29 @@ class SwitchedOutlet:
         else:
             self.power_on()
 
+    def _outlet_states(self) -> list[TriStateBool]:
+        """This outlet's power state, read from the switch by name.
+
+        Not through `self.outlets`, which for a single outlet is `[self]`: five components
+        inherit this class and may redefine any name the power path reads. #126 removes the
+        shared namespace; until then this is the only safe way to read power.
+        """
+        if self.power_switch is None:
+            return []
+        return [self.power_switch.get_outlet_state(name) for name in self.outlet_names]
+
     def is_on(self) -> bool:
         if self.power_switch is None:
             return False
-        return all(outlet.state for outlet in self.outlets)
+        states = self._outlet_states()
+        # An empty list would make `all()` True and report an unresolved outlet as powered.
+        return bool(states) and all(states)
 
     def is_off(self) -> bool:
         if self.power_switch is None:
             return True
-        return all(not outlet.state for outlet in self.outlets)
+        states = self._outlet_states()
+        return bool(states) and all(not state for state in states)
 
     def power_status(self) -> PowerStatus:
         return PowerStatus(powered=self.is_on())
