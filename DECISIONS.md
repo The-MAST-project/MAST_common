@@ -54,6 +54,41 @@ equivalent, since `outlet_names` carries the full group and is set before `outle
 
 ---
 
+## [2026-09-22] `CoversState` stops being a pure ASCOM mirror: `PartlyOpen` is MAST's own
+
+**Why:** the enum's values are ASCOM's `CoverStatus`, kept verbatim after MAST_unit#155 moved the
+covers from the ASCOM driver to PWI4, because they are the vocabulary every consumer already reads.
+ASCOM has no member for covers **stopped between the two end states**, which is a state PWI4
+reports and the hardware reaches every time an abort lands. Without one, `covers.py` had to file
+PWI4's `PartlyOpen` under `Moving`, so halted covers reported as moving forever and anything
+waiting for them to come to rest waited for ever (MAST_unit#164).
+
+**What:** append `PartlyOpen = 6`. 0-5 stay frozen as ASCOM's; 6 is MAST's own, for a state ASCOM
+cannot express. The alternative -- mapping `PartlyOpen` to `Unknown` -- was rejected: it discards
+information the unit actually holds, and would have `why_not_operational` report `state='Unknown'`
+for covers it knows are halted halfway.
+
+The usual objection to touching a wire enum does not apply here. `CoversState` was grepped across
+`MAST_unit`, `MAST_common`, `MAST_control`, `MAST_gui`, `MAST_spec` and `MAST_scheduler`: outside
+this declaration, every use is in `MAST_unit/src/covers.py` and two of its test files. `MAST_gui`
+renders `state_verbal` as a **string** through `format_state_name`, and no consumer anywhere
+compares the enum numerically. Appending renumbers nothing.
+
+**Never map these enums by value.** `CoversState(pwi4_int)` returns a wrong answer rather than
+raising, and two of the five values agree by coincidence, so the mistake survives a casual test and
+then lies on the states that matter. The measured PWI4 4.1.6 numbering sits with the enum itself in
+`models/statuses.py`, which is the one place it is written down; `MAST_unit`'s covers tests pin the
+three disagreements.
+
+**Implications:** the enum is no longer castable to or from ASCOM's `CoverStatus` in either
+direction, and the block comment now says so alongside the older warning against casting PWI4's
+`mirrorcover.overall_state` into it -- the two enumerations overlap numerically and disagree.
+A consumer that switches exhaustively on `CoversState` gains a member to handle. `PartlyOpen` means
+*at rest*, so it groups with `Open`, `Closed`, `Error` and `Unknown` against `Moving`, which is now
+the only member that means motion.
+
+---
+
 ## [2026-08-31] A DB change takes effect within seconds, not at the next service restart
 
 **Why:** `Config` read MongoDB once, at `__init__`, and never again. Everything downstream
