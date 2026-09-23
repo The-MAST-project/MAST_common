@@ -2,6 +2,58 @@
 
 ---
 
+## [2026-09-22] A power check reads the switch by name, and every power change is logged
+
+**Why:** `SwitchedOutlet.__init__` makes a single outlet its own list member, `self.outlets =
+[self]`, and `is_on()` read power through it -- `all(outlet.state for outlet in self.outlets)`,
+which is `all([self.state])`. A subclass may redefine `state`, and `MAST_unit`'s `Covers` does,
+with the mirror covers' `CoversState`. A plain `Enum` member is truthy whatever its value, so
+`NotPresent` -- value 0 -- is truthy too, and **`Covers.is_on()` was unconditionally True**. No
+reading of the hardware could make it false.
+
+Every power-on in the tree is written `if not self.is_on(): self.power_on()`, so on the covers it
+never fired; `power_off()` in `shutdown()` is unguarded and worked. **The covers outlet could be
+powered off but never on.** Measured on mast03, 2026-09-22: a service restart with the outlet
+confirmed off on the DLI produced `covers:__init__ initialized` and no power-on, while the day's
+log carried seven power-on events, all of them the mount (MAST_unit#261). Downstream,
+`why_not_operational` could never say "not powered" and `/covers/status` reported
+`powered: true` throughout -- the one diagnosis an operator needed, unavailable.
+
+The defect was hard to see because of a second one in the same method. `power_on_or_off` logged
+only on the ON branch, and only when a delay was configured, so a power-**off** left no trace at
+all and three different histories -- powered off by us, never powered on, powered on then off
+elsewhere -- produced an identical log (#123).
+
+**What:** power state is read **by name**, through a new `_outlet_states()` that asks the switch
+directly, and `is_on()` / `is_off()` / `power_on_or_off` all use it. `state` is no longer on any
+power path and carries a docstring saying so. The rejected alternative was renaming `Covers.state`:
+it fixes this instance and leaves the next subclass to rediscover the trap, and `state` is the
+right name for what that property returns. Giving `CoversState` a `__bool__` was rejected for the
+same reason plus a worse one -- it would leave a power check reading a mechanical state, correctly
+interpreted.
+
+`is_on()` and `is_off()` now also require a non-empty reading. `all([])` is True, so an outlet that
+resolved to no names reported as powered, which is the same failure shape one layer along.
+
+Both directions are logged, inside the `if any(state != new_state)` guard, so a logged line means
+the outlet was actually changed rather than merely asked for. The delay message no longer carries
+the power-on event.
+
+**This fixes the instance, not the shape** -- #126. `SwitchedOutlet` is a mixin that five
+components inherit, so any name the power path reads can be shadowed by a subclass, and what stands
+in the way now is a docstring rather than a mechanism. #126 carries the steps: delete `state`, which
+has no consumers; a CI check that no subclass shadows a power-path name; and composition instead of
+inheritance, which removes the shared namespace and the `self.outlets = [self]` self-reference
+together. A caveat on a base class is not enforcement, and this one is load-bearing until that lands.
+
+**Implications.** `is_on()` costs an HTTP round trip per outlet name where it used to resolve a
+property that made the same call -- unchanged in practice for a single outlet, one call per member
+for a group. A subclass may still redefine `state` freely; that is now a local decision rather than
+one that silently inverts a power check elsewhere. For outlet groups the two readings are
+equivalent, since `outlet_names` carries the full group and is set before `outlets`.
+
+---
+
 ## [2026-09-22] `CoversState` stops being a pure ASCOM mirror: `PartlyOpen` is MAST's own
 
 **Why:** the enum's values are ASCOM's `CoverStatus`, kept verbatim after MAST_unit#155 moved the
