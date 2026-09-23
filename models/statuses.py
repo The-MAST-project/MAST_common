@@ -90,13 +90,12 @@ class AscomStatus(BaseModel):
 # Covers stuff
 # The values are ASCOM's, from
 # https://ascom-standards.org/Help/Developer/html/T_ASCOM_DeviceInterface_CoverStatus.htm
+# 0-5 are ASCOM's and are frozen. `PartlyOpen` is MAST's own: ASCOM has no member for covers
+# stopped between the two end states (MAST_unit#164). Appended, so no existing value moves.
 #
-# They are kept even though MAST_unit's covers now speak to PWI4 rather than ASCOM, because
-# they are the vocabulary every consumer already reads.
-#
-# NEVER MAP THESE ENUMS BY VALUE. Casting a PWI4 `mirrorcover.overall_state` into this enum
-# returns a wrong answer rather than raising. The PWI4 4.1.6 numbering was measured on mast03,
-# 2026-09-22 (MAST_unit#164); against this enum it comes out as:
+# NEVER MAP THIS ENUM AND PWI4's `mirrorcover.overall_state` BY VALUE. They overlap and
+# disagree, so `CoversState(pwi4_int)` returns a wrong answer rather than raising. This is the
+# one place the comparison is written down; PWI4 4.1.6 numbering measured on mast03:
 #
 #     int  PWI4              CoversState    a by-value cast would say
 #     0    Open              NotPresent     "there are no covers"          -- WRONG
@@ -107,14 +106,9 @@ class AscomStatus(BaseModel):
 #     5    PartlyOpen        Error          "faulted", while it is at rest -- WRONG
 #     6    --                PartlyOpen     (no PWI4 counterpart)
 #
-# Two of the five agree, which is what makes the mistake survive a casual test and then lie on
-# the states that matter. The agreements are coincidence and nothing preserves them. `covers.py`
-# maps by PWI4's state NAME for exactly this reason, and an unmapped name fails loudly.
-#
-# 0-5 are ASCOM's and are frozen. `PartlyOpen` is MAST's own: ASCOM has no member for covers
-# stopped between the two end states, and without one a halted cover has to be reported as
-# either moving or unknown, both of which are untrue (MAST_unit#164). It is appended, so no
-# existing value moves.
+# Two of the five agree, which is what lets the mistake survive a casual test and then lie on
+# the states that matter. The agreements are coincidence and nothing preserves them. Map by
+# NAME, as `covers.py` does, and let an unmapped name fail loudly.
 class CoversState(Enum):
     NotPresent = 0
     Closed = 1

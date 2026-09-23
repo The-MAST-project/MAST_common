@@ -22,26 +22,11 @@ this declaration, every use is in `MAST_unit/src/covers.py` and two of its test 
 renders `state_verbal` as a **string** through `format_state_name`, and no consumer anywhere
 compares the enum numerically. Appending renumbers nothing.
 
-**The measured numbering, and the rule that follows.** PWI4 4.1.6's `mirrorcover.overall_state`
-was read directly on mast03 on 2026-09-22 (vault: `data/2026-09-22-mast03-mirrorcover-state-names`):
-
-| int | PWI4 | `CoversState` | what a by-value cast would say |
-| --- | --- | --- | --- |
-| 0 | Open | NotPresent | "there are no covers" — **wrong** |
-| 1 | Closed | Closed | closed — agrees |
-| 2 | Opening | Moving | moving — agrees |
-| 3 | Closing | Open | "open", while it is closing — **wrong** |
-| 4 | (not observed) | Unknown | — |
-| 5 | PartlyOpen | Error | "faulted", while it is at rest — **wrong** |
-| 6 | — | PartlyOpen | no PWI4 counterpart |
-
 **Never map these enums by value.** `CoversState(pwi4_int)` returns a wrong answer rather than
-raising. Two of the five agree, and that is the trap rather than a comfort: a by-value cast
-survives a casual test on covers that are closed or opening, then lies on exactly the states that
-matter. The agreements are coincidence and nothing preserves them — this enum gained member 6
-today, and PWI4 may renumber at any release. Map by NAME, and let an unmapped name fail loudly
-through `CoversState.Error`. `tests/test_abort_holds_until_at_rest.py` pins the three
-disagreements so the rule cannot rot quietly.
+raising, and two of the five values agree by coincidence, so the mistake survives a casual test and
+then lies on the states that matter. The measured PWI4 4.1.6 numbering sits with the enum itself in
+`models/statuses.py`, which is the one place it is written down; `MAST_unit`'s covers tests pin the
+three disagreements.
 
 **Implications:** the enum is no longer castable to or from ASCOM's `CoverStatus` in either
 direction, and the block comment now says so alongside the older warning against casting PWI4's
