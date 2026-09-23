@@ -39,6 +39,13 @@ Both directions are logged, inside the `if any(state != new_state)` guard, so a 
 the outlet was actually changed rather than merely asked for. The delay message no longer carries
 the power-on event.
 
+**This fixes the instance, not the shape** -- #126. `SwitchedOutlet` is a mixin that five
+components inherit, so any name the power path reads can be shadowed by a subclass, and what stands
+in the way now is a docstring rather than a mechanism. #126 carries the steps: delete `state`, which
+has no consumers; a CI check that no subclass shadows a power-path name; and composition instead of
+inheritance, which removes the shared namespace and the `self.outlets = [self]` self-reference
+together. A caveat on a base class is not enforcement, and this one is load-bearing until that lands.
+
 **Implications.** `is_on()` costs an HTTP round trip per outlet name where it used to resolve a
 property that made the same call -- unchanged in practice for a single outlet, one call per member
 for a group. A subclass may still redefine `state` freely; that is now a local decision rather than

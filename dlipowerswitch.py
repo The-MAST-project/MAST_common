@@ -789,14 +789,8 @@ class SwitchedOutlet:
 
     @property
     def state(self) -> TriStateBool:
-        """This outlet's power state.
-
-        **Nothing in the power path may read this**, and nothing does any more. A subclass is
-        free to redefine `state` to mean its own thing -- `Covers` does, with the mirror
-        covers' `CoversState` -- and a power check that resolved it then read a mechanical
-        state as a boolean. Use `_outlet_states()`, which asks the switch by name
-        (MAST_unit#261). This property is kept for external readers of a plain outlet.
-        """
+        """This outlet's power state. `Covers` redefines `state`, so the power path uses
+        `_outlet_states()` instead. #126 deletes this property, which has no consumers."""
         if self.power_switch is None:
             return None
 
@@ -816,11 +810,7 @@ class SwitchedOutlet:
         if any(state != new_state for state in current_states):
             for name in self.outlet_names:
                 self.power_switch.set_outlet_state(name, new_state)
-            # Both directions, and inside this guard so a logged line means the outlet was
-            # actually changed rather than merely asked for. Only the ON branch used to log,
-            # and only when a delay was configured, so a power-off left no trace at all and
-            # three different histories -- powered off by us, never powered on, powered on
-            # then off elsewhere -- produced an identical log (MAST_common#123).
+            # Inside this guard: a logged line means the outlet was changed, not asked.
             logger.info(f"{op}: powered {'ON' if new_state else 'OFF'}  ({self})")
             if new_state is True and self.delay_after_on:
                 logger.info(f"{op}: delaying {self.delay_after_on} sec. after powering ON")
@@ -847,15 +837,11 @@ class SwitchedOutlet:
             self.power_on()
 
     def _outlet_states(self) -> list[TriStateBool]:
-        """This outlet's power state, read from the switch BY NAME.
+        """This outlet's power state, read from the switch by name.
 
-        Not through `self.outlets`, which for a single outlet is `[self]` -- so the old
-        `all(outlet.state ...)` resolved `self.state`, and a subclass is free to redefine
-        that. `Covers` does, with the mirror covers' `CoversState`, and because a plain
-        `Enum` member is truthy whatever its value, `is_on()` was unconditionally True and
-        the covers outlet could be powered off but never on (MAST_unit#261).
-
-        A power API must not read an attribute a subclass may redefine.
+        Not through `self.outlets`, which for a single outlet is `[self]`: five components
+        inherit this class and may redefine any name the power path reads. #126 removes the
+        shared namespace; until then this is the only safe way to read power.
         """
         if self.power_switch is None:
             return []
