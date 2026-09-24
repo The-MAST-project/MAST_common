@@ -2,6 +2,38 @@
 
 ---
 
+## [2026-09-24] `set_unit` diffs against `common` as the model reads it
+
+**Why:** `set_unit` is meant to store only a unit's differences from `units.common`, and diffed
+the unit's full `model_dump()` against the **raw** `common` document. A field with a model
+default that `common` did not hold therefore read as a per-unit difference and was written into
+the unit's own document -- where, in `get_unit`'s merge, it beats `common` from then on. A later
+change to that default, or a fleet-wide value set in `common`, silently never reached the unit.
+Found in the live database on 2026-09-24: 8 of 10 unit documents carried `phd2.limit_frame` at
+exactly its default, and `autofocus.rois` / `imager.roi` were `null` on all 10 (`calibration.stage`
+on 8), with `units.common` holding none of them. `deep_dict_update` lets a `null` win
+wholesale, so setting either ROI in `common` would have reached no unit at all.
+
+**What:** `set_unit` diffs against `_with_model_defaults(UnitConfig, common)` -- the `common`
+document with every omitted defaulted field filled in, recursively through nested models. It
+does not validate `common`, which on the live database does not validate alone: it lacks the
+required `stage.presets`, which only the per-unit documents supply (checked 2026-09-24).
+Replayed read-only against the live `units` collection: for all 10 units, storing the new
+delta and re-merging it reproduces the unit's effective configuration exactly, and the delta
+shrinks from 120 to 65 leaves.
+
+**Rejected:** validating `common` as a `UnitConfig` and dumping it -- it does not validate on
+its own, and `common` is by design only the shared part of a unit, not a whole one. Seeding
+the defaults into `units.common` instead -- a live write, and the defaults would then live in
+two places.
+
+**Unsettled:** documents already written keep their frozen defaults; removing them is a live
+database cleanup, MAST_common#129. Also unchanged: `deep_dict_difference` copies a key present
+only in `common` (`global`, `calibration`'s older layout) into the delta -- noise, but not a
+behavior change, and left alone here.
+
+---
+
 ## [2026-09-22] A power check reads the switch by name, and every power change is logged
 
 **Why:** `SwitchedOutlet.__init__` makes a single outlet its own list member, `self.outlets =
