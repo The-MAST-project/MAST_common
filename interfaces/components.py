@@ -98,6 +98,12 @@ class Component(ABC, Activities):
         pass
 
     @property
+    def caveats(self) -> list[str]:
+        """Ways this component works, but worse than it should; not faults. Collected into
+        `FullUnitStatus.caveats`."""
+        return []
+
+    @property
     def notification_path(self) -> list[str] | None:
         """
         The master status structure (common.models.statuses.SitesStatus) is hierarchical, e.g.:

@@ -36,3 +36,11 @@ def test_caveats_are_separate_from_errors():
     status = FullUnitStatus(id=1, caveats=["imager: guide camera on a USB 2.0 path"])
     assert status.caveats == ["imager: guide camera on a USB 2.0 path"]
     assert status.errors is None
+
+
+def test_a_component_has_no_caveats_unless_it_says_so():
+    """Concrete, not abstract: only a component with something to report overrides it."""
+    from common.interfaces.components import Component
+
+    assert "caveats" not in Component.__abstractmethods__
+    assert Component.caveats.fget(None) == []

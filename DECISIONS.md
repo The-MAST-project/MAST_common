@@ -8,7 +8,9 @@
 
 **What:** `PHD2ImagerStatus.usb_link` is a `UsbLink` (`SuperSpeed` / `HighSpeed` / `unknown`, default `unknown`), and `FullUnitStatus.caveats` is an optional `list[str]` beside `errors`. A caveat names a component that works but worse than it should, which is not a fault. Putting it in `errors` would make a usable night read as a broken one. `caveats` is a plain string list, like `errors`, so a GUI can show it without knowing its kinds. `usb_link` sits on the PHD2 backend and not on the composite `ImagerStatus`, because how the link is found depends on the backend: PHD2 holds the camera, so the unit walks the PnP tree, while a ZWO backend could ask the SDK's `IsUSB3Host` directly.
 
-**Implications:** the fields default to `unknown` / `None`, so existing producers and consumers are unaffected. MAST_unit fills them in a paired change. Other backends can add `usb_link` when they have a way to find it.
+A component reports caveats through a concrete `Component.caveats` property that returns `[]` unless overridden, and the unit gathers them from every component. The rejected alternative had the unit read `usb_link` itself and write the caveat: that hard-codes one kind of caveat in the unit and has to narrow the imager backend union by kind.
+
+**Implications:** the fields default to `unknown` / `None` / `[]`, so existing producers and consumers are unaffected. MAST_unit fills them in a paired change. Other backends can add `usb_link` when they have a way to find it, and any component can add a caveat by overriding one property.
 
 ---
 
