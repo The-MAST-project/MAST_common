@@ -226,8 +226,17 @@ class ImagerBackendStatus(ComponentStatus):
     name: str | None = None
 
 
+class UsbLink(StrEnum):
+    """The USB link the camera actually negotiated, which caps its readout rate."""
+
+    SuperSpeed = "SuperSpeed"
+    HighSpeed = "HighSpeed"
+    Unknown = "unknown"
+
+
 class PHD2ImagerStatus(ImagerBackendStatus):
     name: str = "phd2"
+    usb_link: UsbLink = UsbLink.Unknown
 
 
 # class NotPoweredStatus(BaseStatus):
@@ -783,6 +792,8 @@ class FullUnitStatus(ComponentStatus, PowerStatus):
     guider: GuiderStatus | None = None
     flux_metering: FluxMeteringStatus | None = None
     errors: list[str] | None = None
+    # Degradations that are not faults: the unit works, but worse than it should.
+    caveats: list[str] | None = None
     autofocus: dict | None = None
     corrections: list | None = None
     date: str | None = None

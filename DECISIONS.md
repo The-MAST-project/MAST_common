@@ -2,6 +2,16 @@
 
 ---
 
+## [2026-09-24] Unit status carries caveats, and the PHD2 imager reports its USB link
+
+**Why:** on mast01 and mast04 the guide camera enumerates behind two cascaded USB 2.0 hubs, and reads out a full frame in 5.7 s where mast02, on a SuperSpeed hub, takes 0.87 s (MAST_unit#264). The camera works and every frame is correct, so nothing in status told the slow unit apart from a correctly wired one. The campaign spent weeks treating that readout as a physical floor.
+
+**What:** `PHD2ImagerStatus.usb_link` is a `UsbLink` (`SuperSpeed` / `HighSpeed` / `unknown`, default `unknown`), and `FullUnitStatus.caveats` is an optional `list[str]` beside `errors`. A caveat names a component that works but worse than it should, which is not a fault. Putting it in `errors` would make a usable night read as a broken one. `caveats` is a plain string list, like `errors`, so a GUI can show it without knowing its kinds. `usb_link` sits on the PHD2 backend and not on the composite `ImagerStatus`, because how the link is found depends on the backend: PHD2 holds the camera, so the unit walks the PnP tree, while a ZWO backend could ask the SDK's `IsUSB3Host` directly.
+
+**Implications:** the fields default to `unknown` / `None`, so existing producers and consumers are unaffected. MAST_unit fills them in a paired change. Other backends can add `usb_link` when they have a way to find it.
+
+---
+
 ## [2026-09-22] A power check reads the switch by name, and every power change is logged
 
 **Why:** `SwitchedOutlet.__init__` makes a single outlet its own list member, `self.outlets =
