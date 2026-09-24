@@ -51,6 +51,56 @@ def find_process(name: str | None = None, patt: str | None = None, pid: int | No
     return ret
 
 
+def process_session_id(pid: int) -> int:
+    """The Windows logon session (Terminal Services session) that process `pid` runs in.
+
+    Session 0 is the services' session; an interactive logon is 1 or above. Raises
+    `OSError` when the process cannot be queried, typically because it belongs to another
+    user, and `NotImplementedError` off Windows, where the concept does not apply.
+    """
+    if sys.platform != "win32":
+        raise NotImplementedError("process_session_id: Windows logon sessions exist only on Windows")
+    import ctypes
+    from ctypes import wintypes
+
+    session = wintypes.DWORD()
+    if not ctypes.windll.kernel32.ProcessIdToSessionId(wintypes.DWORD(pid), ctypes.byref(session)):
+        raise ctypes.WinError()
+    return session.value
+
+
+def find_processes(name: str | None = None, patt: str | None = None, session_id: int | None = None) -> list[psutil.Process]:
+    """Every running process whose image name is `name`, or whose command line matches `patt`.
+
+    Unlike `find_process`, returns all matches rather than the first, and with `session_id`
+    keeps only processes in that Windows logon session. A process whose session cannot be
+    read is left out of a session-filtered result: it cannot be shown to be in the session.
+    """
+    if (name is None) == (patt is None):
+        raise ValueError("find_processes: give exactly one of name or patt")
+    pattern = re.compile(patt, re.IGNORECASE) if patt is not None else None
+
+    matches = []
+    for proc in psutil.process_iter(["name", "cmdline", "pid"]):
+        if name is not None:
+            matched = proc.info["name"] == name
+        else:
+            matched = any(pattern.search(arg) for arg in proc.info["cmdline"] or [])
+        if matched:
+            matches.append(proc)
+
+    if session_id is None:
+        return matches
+    in_session = []
+    for proc in matches:
+        try:
+            if process_session_id(proc.info["pid"]) == session_id:
+                in_session.append(proc)
+        except OSError:
+            logger.debug(f"find_processes: session of pid {proc.info['pid']} unreadable; excluded")
+    return in_session
+
+
 def log_stream(label: str, stream, logger, log_level):
     """
     Reads a stream line by line and logs it.

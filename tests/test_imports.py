@@ -37,6 +37,7 @@ GUARDED_BY_OTHER_TESTS = [
 CORE = [
     "common.deep",
     "common.mast_logging",
+    "common.opmode",
     "common.paths",
     "common.utils",
 ]
