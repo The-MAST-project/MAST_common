@@ -158,6 +158,32 @@ def _make_client(mongo_uri: str, machine_role: str) -> MongoClient:
     )
 
 
+def _model_in(annotation: Any) -> type[BaseModel] | None:
+    """The one pydantic model an annotation names -- bare, or in a union such as `X | None`."""
+    if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+        return annotation
+    models = [arg for arg in getattr(annotation, "__args__", ()) if isinstance(arg, type) and issubclass(arg, BaseModel)]
+    return models[0] if len(models) == 1 else None
+
+
+def _with_model_defaults(model: type[BaseModel], doc: dict[str, Any]) -> dict[str, Any]:
+    """`doc` with every field it omits that has a default filled in, dumped as `model_dump()` would.
+
+    This is the stored document as the model reads it, and so the right baseline to diff a
+    `model_dump()` against. Required fields `doc` omits stay omitted; `doc` is not validated.
+    """
+    filled = deepcopy(doc)
+    for name, field in model.model_fields.items():
+        if name in filled:
+            nested = _model_in(field.annotation)
+            if nested is not None and isinstance(filled[name], dict):
+                filled[name] = _with_model_defaults(nested, filled[name])
+        elif not field.is_required():
+            default = field.get_default(call_default_factory=True)
+            filled[name] = default.model_dump() if isinstance(default, BaseModel) else default
+    return filled
+
+
 class ConfigOrigin:
     _instance = None
     _initialized = False
@@ -811,8 +837,10 @@ class Config:
             logger.error(f"{function_name()}: 'common' unit configuration not found")
             raise ValueError(f"{function_name()}: 'common' unit configuration not found")
 
-        # Only store the delta from 'common'
-        delta = deep_dict_difference(common_conf_dict, unit_dict) or {}
+        # Only store the delta from 'common' -- 'common' as the model reads it, defaults
+        # filled in. Against the raw document, every defaulted field 'common' omits reads as
+        # a per-unit difference and is frozen into the unit's own document.
+        delta = deep_dict_difference(_with_model_defaults(UnitConfig, common_conf_dict), unit_dict) or {}
         if "power_switch" in delta and "network" in delta["power_switch"]:
             saved_power_switch_network = delta["power_switch"]["network"]
             del delta["power_switch"]["network"]

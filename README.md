@@ -21,9 +21,17 @@ package from within each host project.
   (`config/local.py`, see `config/local.toml.example`).
   A unit's effective configuration is the `units` collection's `common`
   document deep-merged with the unit-specific document; `Config.set_unit()`
-  writes back only the delta from `common`. Fields tagged with
+  writes back only the delta from `common` -- `common` as the model reads it,
+  defaults filled in, so an untouched default is never frozen into a unit's
+  own document. Fields tagged with
   `json_schema_extra` UI metadata are editable from the GUI by users holding
   the required capability.
+- **Operating mode** (`opmode.py`) — `OpMode` (`automatic` | `controlled`) and
+  `resolve_opmode()`: the `MAST_OPMODE` env var, then the machine's
+  `UnitConfig.opmode` / `SpecsConfig.opmode`, then `automatic`.
+- **Supervisor configuration** (`config/supervisor.py`) — `SupervisorConfig`,
+  the schema read by `mast-supervisor` (MAST_supervision), carried as
+  `UnitConfig.supervisor` and `SpecsConfig.supervisor`.
 - **Component interfaces** (`interfaces/`) — the `Component` ABC and the
   hardware-facing interfaces (imager, guider, mount, …) implemented by the
   services.
