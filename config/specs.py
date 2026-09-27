@@ -1,15 +1,18 @@
 from copy import deepcopy
 from typing import Literal
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 from common.deep import deep_dict_update
 from common.models.newton import NewtonSettingsConfig
+from common.opmode import OpMode
 
 from .chiller import ChillerConfig
 from .greateyes import GreateyesConfig
+from .opmode import opmode_field
 from .power import OutletConfig, PowerConfig, PowerSwitchConfig
 from .stage import SpecStagesConfig
+from .supervisor import SupervisorConfig
 
 
 class WheelConfig(BaseModel):
@@ -85,6 +88,8 @@ class SpecsConfig(BaseModel):
     highspec: HighspecConfig
     lamps: dict[str, PowerConfig]
     server: ServerConfig
+    opmode: OpMode = opmode_field()
+    supervisor: SupervisorConfig = Field(default_factory=SupervisorConfig)
 
     @model_validator(mode="after")
     def validate_specs_config(self):

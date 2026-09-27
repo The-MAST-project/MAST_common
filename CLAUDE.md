@@ -85,6 +85,14 @@ DNS `domain` likewise has a single source (`local.domain`).
 Key `Config` methods: `get_unit()`, `get_sites()`, `get_service()`, `get_specs()`,
 `get_users()`, `local_site`.
 
+### Operating mode (`common/opmode.py`)
+
+`resolve_opmode()` is the one place a machine's `opmode` is decided: `MAST_OPMODE`, then
+`UnitConfig.opmode` / `SpecsConfig.opmode` by `machine_role`, then `automatic`. An
+unrecognized `MAST_OPMODE` raises; an unreadable configuration defaults with a WARNING.
+`automatic` means the app proceeds straight to `startup()` when run; `controlled` means it
+stands by for the control machine. Do not re-implement the chain in a consumer.
+
 ## API Conventions
 
 ### URL paths (defined in `common/const.py`)

@@ -2,6 +2,75 @@
 
 ---
 
+## [2026-09-24] `opmode` and `SupervisorConfig`: the supervisor's building blocks in common
+
+**Why:** the supervisor (`mast-service` / `mast-supervisor`, in the new MAST_supervision repo;
+design in mast-claude-config `plans/supervisor-design.md`) needs a few things any program
+might import: which mode the machine boots into, its own configuration schema beside
+`UnitConfig` / `SpecsConfig`, a port that does not depend on the config DB, and a way to find
+a process within one Windows logon session. Everything else of the supervisor's lives in its
+own repo.
+
+**What:** a new top-level `common/opmode.py` -- `OpMode` (`automatic`, `controlled`),
+`opmode_from_env()` and `resolve_opmode()` (the `MAST_OPMODE` env var, then
+`UnitConfig.opmode` / `SpecsConfig.opmode` by `machine_role`, then `automatic`). It imports
+`common.config` only inside the resolver, so reading the environment costs no pymongo. An
+unrecognized env value raises; an unreadable configuration defaults with a WARNING. A new
+`common/config/supervisor.py` with `SupervisorConfig`, every field defaulted, attached as
+`UnitConfig.supervisor` (PWI4 and ps3cli supervised, PHD2 observed) and `SpecsConfig.supervisor`
+(nothing). A `SupervisionMode` of `supervised` / `observed` / `disabled` per program takes the
+place of separate enable and observe switches. `Const.SUPERVISOR_PORT = 8004` and
+`BASE_SUPERVISOR_PATH`, grep-verified free across all six repos on 2026-09-24.
+`process.find_processes()` (every match, optionally one session) and `process_session_id()`
+(Windows only, via `ProcessIdToSessionId`).
+
+**Rejected:** a `tested` mode, pending a decision -- it is additive later and hard to remove
+once shipped. Ports for PWI4 / PHD2 / ps3cli in `SupervisorConfig`: configurable there alone,
+the supervisor and the app could disagree about where PHD2 is. Deleting the dead
+`utils.OperatingMode`, as the opmode plan asked: MAST_spec's `cameras/greateyes/greateyes.py`
+imports it now. That use reads `OperatingMode().production_mode` without calling it, so the
+bound method is always truthy and the `MAST_DEBUG` cooling gate never fires -- recorded, not
+fixed here. `OpState` and the status-field mixin: nothing would set them until MAST_unit's
+opmode stage 3, and a field declared before anything sets it reads like a signal.
+
+**Implications:** nothing reads any of this yet. The supervisor deliberately copies a set of
+values rather than consolidating them first (MAST_supervision#2). `PHD2`'s default flips to
+`supervised` in the change that stops MAST_unit spawning phd2.exe itself.
+
+---
+
+## [2026-09-24] `set_unit` diffs against `common` as the model reads it
+
+**Why:** `set_unit` is meant to store only a unit's differences from `units.common`, and diffed
+the unit's full `model_dump()` against the **raw** `common` document. A field with a model
+default that `common` did not hold therefore read as a per-unit difference and was written into
+the unit's own document -- where, in `get_unit`'s merge, it beats `common` from then on. A later
+change to that default, or a fleet-wide value set in `common`, silently never reached the unit.
+Found in the live database on 2026-09-24: 8 of 10 unit documents carried `phd2.limit_frame` at
+exactly its default, and `autofocus.rois` / `imager.roi` were `null` on all 10 (`calibration.stage`
+on 8), with `units.common` holding none of them. `deep_dict_update` lets a `null` win
+wholesale, so setting either ROI in `common` would have reached no unit at all.
+
+**What:** `set_unit` diffs against `_with_model_defaults(UnitConfig, common)` -- the `common`
+document with every omitted defaulted field filled in, recursively through nested models. It
+does not validate `common`, which on the live database does not validate alone: it lacks the
+required `stage.presets`, which only the per-unit documents supply (checked 2026-09-24).
+Replayed read-only against the live `units` collection: for all 10 units, storing the new
+delta and re-merging it reproduces the unit's effective configuration exactly, and the delta
+shrinks from 120 to 65 leaves.
+
+**Rejected:** validating `common` as a `UnitConfig` and dumping it -- it does not validate on
+its own, and `common` is by design only the shared part of a unit, not a whole one. Seeding
+the defaults into `units.common` instead -- a live write, and the defaults would then live in
+two places.
+
+**Unsettled:** documents already written keep their frozen defaults; removing them is a live
+database cleanup, MAST_common#129. Also unchanged: `deep_dict_difference` copies a key present
+only in `common` (`global`, `calibration`'s older layout) into the delta -- noise, but not a
+behavior change, and left alone here.
+
+---
+
 ## [2026-09-22] A power check reads the switch by name, and every power change is logged
 
 **Why:** `SwitchedOutlet.__init__` makes a single outlet its own list member, `self.outlets =
