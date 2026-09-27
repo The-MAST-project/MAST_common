@@ -307,13 +307,6 @@ class UnitActivities(IntFlag):
     Autofocusing = auto()
     AutofocusAnalysis = auto()
     Calibrating = auto()  # umbrella: a /calibrate run is in progress
-    # The three calibration phases.  Each sets its own flag for its duration; the
-    # umbrella above is set only by the orchestrating /calibrate.  A phase can
-    # therefore tell whether it runs standalone or inside a full calibration, and
-    # the single-flight guard is "any Calibrating* flag is active".
-    CalibratingFocus = auto()
-    CalibratingOpticalCenter = auto()
-    CalibratingStage = auto()
     PreGuiding = auto()  # getting ready for guiding
     Guiding = auto()
     StartingUp = auto()
@@ -331,6 +324,15 @@ class UnitActivities(IntFlag):
     # master: the only records carrying it are engineering shakedown logs, and those name
     # the flag rather than printing the bare number.
     FluxMetering = auto()  # acquire_and_find_max_flux: spiralling for peak fibre throughput
+    # AT THE END, per the rule above -- these were authored mid-enum, right after the
+    # Calibrating umbrella, and a rebase onto master carried that position with them. That
+    # shifted every member from PreGuiding on by three bits: 8192 stopped meaning Exposing
+    # and started meaning Solving, which is precisely the silent renumbering the comment on
+    # Exposing describes. Safe to place here instead: these flags have never been on master,
+    # so nothing numeric has ever read them.
+    CalibratingFocus = auto()
+    CalibratingOpticalCenter = auto()
+    CalibratingStage = auto()
 
 
 class ImagerActivities(IntFlag):
