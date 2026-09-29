@@ -162,15 +162,66 @@ class StageCalibrationSettings(BaseModel):
     move_to_spec: bool = False  # park at the solved position instead of retracting
 
 
+class FocusConvergenceCampaignSettings(BaseModel):
+    """A commissioning campaign: does focus calibration converge from far out, both ways?
+
+    Everything the focus phase does far from focus rests on evidence from one side
+    only.  `analysis/sharpness.py` says so itself -- the metric falls monotonically
+    over the frames we have, but *"we have no frames near focus, so the claim 'it
+    peaks AT focus' is still untested"* -- and `near_hfd_max_px` / `max_best_hfd_px`
+    carry a matching warning that they are ESTIMATES until measured on sky.
+
+    The campaign answers three questions at once by starting runs at known offsets
+    either side of a reference focus: does it converge, from how far, and to the
+    SAME answer.  The spread of solved positions is the accuracy figure; the
+    largest offset that still converges is the capture range; a difference between
+    the two signs is the asymmetry the differential donut method is supposed to
+    have removed.
+    """
+
+    #: Offsets from the reference, in focuser ticks, applied BOTH ways.
+    #: Escalating so the cheap informative cases run first -- see `interleave`.
+    offsets: list[int] = Field(default_factory=lambda: [500, 2000, 5000, 10000])
+
+    #: Run each (offset, sign) this many times. 1 answers "does it converge";
+    #: >=2 starts to answer "to the same place".
+    repeats: int = 1
+
+    #: Alternate the sign (+500, -500, +2000, -2000, ...) rather than doing all of
+    #: one side first.  A night that ends early then still carries BOTH signs at
+    #: every scale reached, which is the comparison the campaign exists to make.
+    interleave: bool = True
+
+    #: Abandon a single run after this long and move to the next offset.  A far
+    #: start can legitimately take ~10 min (coarse stepping plus up to max_tries
+    #: sweeps); beyond this it is stuck and the night is better spent elsewhere.
+    run_timeout_seconds: float = 900.0
+
+    #: Stop the whole campaign after this many consecutive failures.  Repeated
+    #: failure usually means the sky, the focuser or the mount -- not the offset --
+    #: and grinding through the remaining offsets just wastes the window.
+    max_consecutive_failures: int = 3
+
+    #: Where results land.  None -> `Filer().accessible_shared_root()`, which PROBES
+    #: rather than asking whether a drive letter is mapped.  That distinction is the
+    #: point: with the share down but `Z:` still mapped, `Filer.shared.root` remains
+    #: `Z:/MAST/<host>/` and writes go nowhere, while the probe correctly yields
+    #: `C:/MAST/`.  Set this explicitly to pin the destination regardless.
+    products_root: str | None = None
+
+    #: Return the focuser to the reference position when the campaign ends, so the
+    #: telescope is left where it was found whatever happened in between.
+    restore_focus_on_exit: bool = True
+
+
 class CalibrationSettings(BaseModel):
     """All calibration inputs, one sub-block per phase plus the shared pointing."""
 
     coord: CalibrationCoordConfig = Field(default_factory=CalibrationCoordConfig)
     focuser: FocuserCalibrationSettings = Field(default_factory=FocuserCalibrationSettings)
-    optical_center: OpticalCenterCalibrationSettings = Field(
-        default_factory=OpticalCenterCalibrationSettings
-    )
+    optical_center: OpticalCenterCalibrationSettings = Field(default_factory=OpticalCenterCalibrationSettings)
     stage: StageCalibrationSettings = Field(default_factory=StageCalibrationSettings)
+    campaign: FocusConvergenceCampaignSettings = Field(default_factory=FocusConvergenceCampaignSettings)
 
 
 # ---------------------------------------------------------------------------
