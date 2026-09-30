@@ -2,6 +2,38 @@
 
 ---
 
+## [2026-09-30] A collision with an identical copy drops the source; a real one is reported once
+
+**Why:** on mast01 over 2026-09-14/15, 2,090 of the night's 2,113 filer ERROR records were 40
+files re-reported on every 30 s sweep for 28 minutes, each paired with a second ERROR for its
+folder (`not empty after merging`). Every one was a byte-identical copy: a manual `robocopy`
+had copied, rather than moved, autofocus frames the mover was never given (MAST_unit#272).
+`_merge_into` treated any name on both sides as two distinct products, and nothing bounded
+how often it said so (#117).
+
+**What:**
+
+- A file whose destination holds a **byte-identical** copy (`filecmp.cmp(shallow=False)`) is
+  removed from the ram area and logged at INFO. The move already happened; the only thing left
+  to lose is ram-disk space.
+- A file whose destination **differs** stays in place, as before, and is reported at ERROR
+  **once**. The key is both sides' path, size and mtime, held in a class-level set like
+  `_pending`, so the sweeper's retries are silent while a new file colliding later under the
+  same name is reported again. Retrying continues, so a person resolving the conflict lets the
+  next sweep finish the move with no restart.
+- The folder a collision holds back is no longer reported as `not empty after merging`: that
+  was the same event, reported a second time per sweep.
+- A missing source is a WARNING, matching the "ignoring" in its own message. A new
+  `Filer.warning()` sits beside `info()` and `error()`.
+
+**Implications:** the comparison reads both copies in full, once per collision, which is about
+what the move itself would have cost. The reported set is process-local and never pruned:
+entries accrue only from real conflicts. A restart re-reports each open conflict once, which is
+the wanted reminder. No running summary of blocked sources was added; one ERROR per conflict is
+already countable.
+
+---
+
 ## [2026-09-22] A power check reads the switch by name, and every power change is logged
 
 **Why:** `SwitchedOutlet.__init__` makes a single outlet its own list member, `self.outlets =
