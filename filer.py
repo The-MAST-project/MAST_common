@@ -12,6 +12,7 @@ else:
     import fcntl
 
 import contextlib
+import filecmp
 import fnmatch
 import os
 import shutil
@@ -93,6 +94,12 @@ class Filer:
     # process cannot start one. Ephemeral: a named mutex on Windows, a lock file handle on
     # Linux -- both released by the kernel if this process dies.
     _sweep_guard: ClassVar[object | None] = None
+
+    # Collisions already reported, keyed by both sides' path, size and mtime, so the sweeper
+    # retrying a blocked source every pass reports it once (#117), while a new file that
+    # later collides under the same name is a new event and is reported again.
+    _reported_collisions: ClassVar[set[tuple]] = set()
+    _reported_collisions_lock = Lock()
 
     def __init__(self, logger=None):
         sys = platform.system()
@@ -202,6 +209,12 @@ class Filer:
         else:
             print(msg)
 
+    def warning(self, msg):
+        if self.logger:
+            self.logger.warning(msg)
+        else:
+            print(msg)
+
     def error(self, msg):
         if self.logger:
             self.logger.error(msg)
@@ -233,7 +246,7 @@ class Filer:
         with guardian.moving(src):
             try:
                 if not src.exists():
-                    self.error(f"{op}: path does not exist, ignoring: '{src.as_posix()}'")
+                    self.warning(f"{op}: path does not exist, ignoring: '{src.as_posix()}'")
                     return
                 if src.is_dir() and not src.is_symlink():
                     # shutil.move onto an EXISTING directory nests instead of merging:
@@ -265,22 +278,27 @@ class Filer:
                 # retried rather than lost.
                 self.error(f"failed to move '{src.as_posix()} to '{dst.as_posix()}' (exception: {e})")
 
-    def _merge_into(self, src: Path, dst: Path, op: str = "move") -> None:
+    def _merge_into(self, src: Path, dst: Path, op: str = "move") -> bool:
         """Move the CONTENTS of `src` into the existing directory `dst`, then drop `src`.
 
         Recurses where both sides have a folder of the same name, so two trees combine
         rather than one ending up inside the other.
 
-        A name that exists on BOTH sides as anything but two folders is a collision
-        between distinct products. Those are left where they are, and reported: the
-        source stays on the ram area, where the next sweep retries it, which is
-        recoverable. Overwriting would not be.
+        A name that exists on BOTH sides as anything but two folders is a collision. A
+        byte-identical copy at the destination means the move already happened, so the
+        source is dropped. Anything else is two distinct products: those are left where
+        they are and reported once (see `_report_collision`). The source stays on the ram
+        area, where the next sweep retries it, which is recoverable. Overwriting would not
+        be.
 
         Bookkeeping (see `is_bookkeeping`) is never moved, and its presence is not a
         failure: the source folder is expected to survive holding it.
+
+        Returns True if a collision was left behind anywhere under `src`.
         """
         dst.mkdir(parents=True, exist_ok=True)
         kept_bookkeeping = False
+        kept_collision = False
         for entry in sorted(src.iterdir()):
             if is_bookkeeping(entry.name):
                 kept_bookkeeping = True
@@ -288,26 +306,47 @@ class Filer:
             target = dst / entry.name
             entry_is_dir = entry.is_dir() and not entry.is_symlink()
             if entry_is_dir and target.is_dir():
-                self._merge_into(entry, target, op)
+                kept_collision |= self._merge_into(entry, target, op)
             elif target.exists():
-                self.error(
-                    f"{op}: '{target.as_posix()}' already exists and is not a folder on both sides; "
-                    f"leaving '{entry.as_posix()}' in place rather than overwriting it"
-                )
+                if entry.is_file() and target.is_file() and filecmp.cmp(entry, target, shallow=False):
+                    entry.unlink()
+                    self.info(f"{op}: '{target.as_posix()}' already holds an identical copy; removed '{entry.as_posix()}'")
+                else:
+                    self._report_collision(entry, target, op)
+                    kept_collision = True
             else:
                 shutil.move(entry, target)
 
-        if kept_bookkeeping:
-            # Expected, not a failure. Reporting it would fire on every sweep of every
-            # folder that has a counter -- which is all of them.
-            return
+        if kept_bookkeeping or kept_collision:
+            # Expected, not a failure. Bookkeeping stays by design, and a collision has been
+            # reported already; reporting the folder as well would fire on every sweep.
+            return kept_collision
 
-        # Only succeeds once everything has gone; a collision above leaves it behind on
-        # purpose, so the source survives for the next sweep instead of vanishing.
+        # Only succeeds once everything has gone.
         try:
             src.rmdir()
         except OSError as e:
             self.error(f"{op}: '{src.as_posix()}' not empty after merging, left in place ({e})")
+        return False
+
+    def _report_collision(self, entry: Path, target: Path, op: str) -> None:
+        """Report a real collision the first time it is seen; later sweeps retry it silently."""
+        entry_stat, target_stat = entry.stat(), target.stat()
+        key = (
+            str(entry),
+            entry_stat.st_size,
+            entry_stat.st_mtime_ns,
+            target_stat.st_size,
+            target_stat.st_mtime_ns,
+        )
+        with Filer._reported_collisions_lock:
+            if key in Filer._reported_collisions:
+                return
+            Filer._reported_collisions.add(key)
+        self.error(
+            f"{op}: '{target.as_posix()}' already exists and differs from '{entry.as_posix()}'; "
+            f"leaving the source in place rather than overwriting it, and retrying quietly"
+        )
 
     def change_top_to(self, top: FilerTop, path: str):
         for t in self.tops:
