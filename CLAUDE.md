@@ -105,6 +105,8 @@ Use `response.succeeded` / `response.failed` / `response.is_error`. `CanonicalRe
 ### `BaseApi` (`common/api.py`)
 Wraps `httpx` for inter-service HTTP calls. `UnitApi`, `SpecApi`, `ControllerApi`, `NotificationApi` and `SafetyApi` subclass it, each fixing its own host and base path; `ApiDomain` enumerates the addressable services. `ApiResponse` converts JSON dicts to attribute-access objects. Endpoint names are passed as string literals: `spec_api.put(method="abort")`.
 
+**Hostnames resolve fully-qualified first.** `BaseApi` resolves a `hostname` through `resolve_host()`: a bare name is tried as `<name>.<local domain>` (the config file's `domain`) before it is tried bare, and a name that already contains a dot is looked up as given. The order matters. On the units a bare name never resolves through DNS, because their DHCP-supplied suffix is malformed (MAST_provisioning#228), so it falls to an LLMNR/NetBIOS broadcast that only the named machine answers. That broadcast fails exactly when the machine is down, after waiting out its timeout, while the fully-qualified name keeps resolving. Pass a `domain` (`ApiDomain`) on every construction; there is no inference from the hostname.
+
 ## Component Architecture (`common/interfaces/components.py`)
 
 All hardware components (Mount, Focuser, Camera, Covers, Stage, Spectrographs) implement the `Component` ABC which combines:
@@ -165,6 +167,8 @@ so prefer ASCII in log messages regardless.
 ## Notifications (`common/notifications.py`)
 
 `Notifier` / `UiUpdateNotifications` push WebSocket events to the Django GUI. The `NotificationInitiator` is built lazily from the config file (`local.site`, `local.project`, `local.machine_role` for the machine type) — not from the hostname. The hostname is used only as the initiator's own machine name.
+
+**A notification can never fail the operation it announces.** `start_activity` / `end_activity` call `Notifier().ui_notification()`, which only builds the message and queues it. Everything that can fail, from constructing `NotificationApi` (which resolves the control machine's name) to the HTTPS send, happens on the `NotificationWorker` thread, which retries on its next cycle. With the control machine unreachable, the caller's flag is still raised and the call returns. The worker logs one WARNING when delivery starts failing and one INFO when it recovers, not one line per notification.
 
 ## Plans (`common/models/plans.py`)
 
