@@ -146,8 +146,6 @@ class Notifier:
             if self._initialized:
                 return
 
-            from common.api import NotificationApi
-
             self.lock = threading.Lock()
 
             # Notification queue and worker thread
@@ -156,7 +154,10 @@ class Notifier:
             self.stop_event = threading.Event()
 
             self.initiator = _build_initiator()
-            self.notification_api = NotificationApi(site_name=self.initiator.site)
+            # Built by the worker on its first send, never here: constructing it resolves the
+            # control machine's name, and Notifier() runs on every start_activity's thread.
+            self.notification_api = None
+            self._unreachable = False
 
             # Start worker thread
             self.worker_thread = threading.Thread(
@@ -187,19 +188,34 @@ class Notifier:
 
                 # Try to send
                 try:
-                    asyncio.run(self.notification_api.put("notifications", data=data))
+                    response = asyncio.run(self._api().put("notifications", data=data))
                     # Success - remove from queue
                     with self.lock:
                         if self.notification_queue and self.notification_queue[0] == data:
                             self.notification_queue.popleft()
                             # logger.debug("Notification sent successfully")
-                except Exception:  # noqa: BLE001 -- the sender thread must outlive any one failed notification
-                    # logger.error(f"Failed to send notification: {e}")
-                    # logger.error(
-                    #     f"Data type: {type(data)}, length: {len(data) if isinstance(data, str) else 'N/A'}"
-                    # )
+                    self._report_reachability(response.errors if response.failed else None)
+                except Exception as e:  # noqa: BLE001 -- the sender thread must outlive any one failed notification
+                    self._report_reachability(e)
                     # Keep in queue for retry
                     break
+
+    def _api(self):
+        if self.notification_api is None:
+            from common.api import NotificationApi
+
+            self.notification_api = NotificationApi(site_name=self.initiator.site)
+        return self.notification_api
+
+    def _report_reachability(self, failure):
+        """Log the transitions only, so a long outage costs two lines rather than one per activity."""
+        if failure is not None and not self._unreachable:
+            logger.warning(
+                f"notifications: cannot reach the control machine, notifications are not being delivered: {failure}"
+            )
+        elif failure is None and self._unreachable:
+            logger.info("notifications: the control machine is reachable again")
+        self._unreachable = failure is not None
 
     def _enqueue_notification(self, data: str):
         """Add notification to queue and signal worker if needed"""
