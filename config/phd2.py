@@ -119,8 +119,332 @@ class LimitFrameConfig(BaseModel):
         return self
 
 
+class ExcludeRegionMode(StrEnum):
+    """Whether PHD2 guide-star selection avoids the configured region."""
+
+    OFF = "off"  # no exclusion region: PHD2 selects anywhere it is otherwise allowed
+    FIXED = "fixed"  # the configured rectangle (unbinned camera pixels)
+
+
+class ExcludeRegionConfig(BaseModel):
+    """Persisted configuration for the PHD2 guide-star exclusion region.
+
+    The region (unbinned camera pixels) is excluded from PHD2 guide-star
+    auto-selection, so guiding locks only on stars the FCU fold mirror will not
+    occult and the mirror can be inserted after guiding is locked.
+
+    ``mode`` names the outcome directly, as in :class:`LimitFrameConfig`:
+
+    - ``off`` (default) -- no exclusion region; it is reset before guiding. The
+      only safe default: unlike the limit frame there is no derived fallback
+      rectangle, and the mirror shadow must be measured per unit before the
+      feature can do anything but suppress guide stars for no reason.
+    - ``fixed`` -- the rectangle below. Requires a complete rectangle.
+
+    One deliberate asymmetry with ``limit_frame``: a rectangle configured under
+    ``off`` is legal here rather than a contradiction. The shadow-measurement tool
+    writes each unit's band (with its derivation record) as soon as it is measured
+    and the region is switched on later, per unit; rejecting the pair would force
+    an operator to delete a measurement in order to disable the feature, and would
+    make "measured but not yet enabled" inexpressible.
+
+    Requires the ``set_exclude_region`` PHD2 API (MAST build
+    ``2.6.14dev1mastbuild4`` or later).
+    """
+
+    mode: ExcludeRegionMode = Field(
+        default=ExcludeRegionMode.OFF,
+        json_schema_extra={
+            "ui": {
+                "editable": True,
+                "widget": "select",
+                "options": ["off", "fixed"],
+                "label": "Exclusion region",
+                "tooltip": "off: no exclusion region; fixed: exclude the rectangle below "
+                "(the fold-mirror shadow) from PHD2 guide-star selection",
+            },
+            "required_capabilities": [UserCapabilities.CAN_CHANGE_CONFIGURATION.value],
+        },
+    )
+    x: int = Field(
+        default=0,
+        ge=0,
+        json_schema_extra={
+            "ui": {
+                "editable": True,
+                "widget": "number",
+                "unit": "pixels",
+                "label": "X",
+                "tooltip": "Exclusion region origin X (unbinned camera pixels)",
+            },
+            "required_capabilities": [UserCapabilities.CAN_CHANGE_CONFIGURATION.value],
+        },
+    )
+    y: int = Field(
+        default=0,
+        ge=0,
+        json_schema_extra={
+            "ui": {
+                "editable": True,
+                "widget": "number",
+                "unit": "pixels",
+                "label": "Y",
+                "tooltip": "Exclusion region origin Y (unbinned camera pixels)",
+            },
+            "required_capabilities": [UserCapabilities.CAN_CHANGE_CONFIGURATION.value],
+        },
+    )
+    width: int = Field(
+        default=0,
+        ge=0,
+        json_schema_extra={
+            "ui": {
+                "editable": True,
+                "widget": "number",
+                "unit": "pixels",
+                "label": "Width",
+                "tooltip": "Exclusion region width (unbinned camera pixels, 0 means not configured)",
+            },
+            "required_capabilities": [UserCapabilities.CAN_CHANGE_CONFIGURATION.value],
+        },
+    )
+    height: int = Field(
+        default=0,
+        ge=0,
+        json_schema_extra={
+            "ui": {
+                "editable": True,
+                "widget": "number",
+                "unit": "pixels",
+                "label": "Height",
+                "tooltip": "Exclusion region height (unbinned camera pixels, 0 means not configured)",
+            },
+            "required_capabilities": [UserCapabilities.CAN_CHANGE_CONFIGURATION.value],
+        },
+    )
+    depth: float | None = Field(
+        default=None,
+        gt=0.0,
+        le=1.0,
+        json_schema_extra={
+            "ui": {
+                "editable": True,
+                "widget": "number",
+                "label": "Penumbra depth",
+                "tooltip": "Shadow-depth fraction at which the exclusion boundary is drawn (per unit)",
+            },
+            "required_capabilities": [UserCapabilities.CAN_CHANGE_CONFIGURATION.value],
+        },
+    )
+    pad_px: int | None = Field(
+        default=None,
+        ge=0,
+        json_schema_extra={
+            "ui": {
+                "editable": True,
+                "widget": "number",
+                "unit": "pixels",
+                "label": "Pad",
+                "tooltip": "Safety margin added around the measured shadow band (unbinned camera pixels)",
+            },
+            "required_capabilities": [UserCapabilities.CAN_CHANGE_CONFIGURATION.value],
+        },
+    )
+    derived_from_depth: float | None = Field(
+        default=None,
+        json_schema_extra={
+            "ui": {
+                "editable": False,
+                "label": "Rect derived at depth",
+                "tooltip": "Depth the stored rectangle was derived at - written by the shadow-measurement tool only",
+            },
+        },
+    )
+    derived_from_pad_px: int | None = Field(
+        default=None,
+        json_schema_extra={
+            "ui": {
+                "editable": False,
+                "label": "Rect derived with pad",
+                "tooltip": "Pad the stored rectangle was derived with - written by the shadow-measurement tool only",
+            },
+        },
+    )
+
+    @model_validator(mode="after")
+    def _rect_matches_mode(self):
+        if self.mode is ExcludeRegionMode.FIXED and (self.width <= 0 or self.height <= 0):
+            raise ValueError("phd2.exclude_region: mode 'fixed' requires a complete rectangle (positive width and height)")
+        return self
+
+    @property
+    def has_roi(self) -> bool:
+        return self.width > 0 and self.height > 0
+
+    def stale_derivation(self) -> str | None:
+        """How the stored rectangle disagrees with the depth/pad knobs, or None.
+
+        The rectangle is a cached derived value: the shadow-measurement tool is
+        its sole writer and records the depth/pad it derived from.  A hand-edited
+        knob that disagrees with that record means the rectangle is stale and
+        must not be trusted for guiding.
+        """
+        if self.depth is None and self.pad_px is None:
+            return None
+        if self.has_roi and self.derived_from_depth is None and self.derived_from_pad_px is None:
+            return "depth/pad_px are set but the rectangle carries no derivation record"
+        if (
+            self.depth is not None
+            and self.derived_from_depth is not None
+            and abs(self.depth - self.derived_from_depth) > 1e-9
+        ):
+            return f"depth={self.depth} but the rectangle was derived at depth={self.derived_from_depth}"
+        if self.pad_px is not None and self.derived_from_pad_px is not None and self.pad_px != self.derived_from_pad_px:
+            return f"pad_px={self.pad_px} but the rectangle was derived with pad_px={self.derived_from_pad_px}"
+        return None
+
+
+class LockValidityConfig(BaseModel):
+    """Thresholds for the guide-lock validity supervisor (`science.lock_validity`).
+
+    Config lives here rather than beside the component so a unit can be retuned
+    from the controller DB without a deployment -- which is what the campaign
+    wanted on the night and could not have.
+    """
+
+    #: Frames before the session scale is trusted. Eight is ~113 s at the measured
+    #: 9.58 s cadence. Below it the 2026-09-08 replay produces a false alarm; above
+    #: it nothing improves, and the closest sound frame sits 1.34x clear of the cut.
+    warmup_frames: int = Field(default=8, ge=3, le=200)
+
+    #: How many masses the scale is taken over. Sixty is ~10 minutes -- long enough
+    #: to be stable, short enough to follow a field change after a re-guide.
+    scale_window_frames: int = Field(default=60, ge=10, le=1000)
+
+    #: Below this fraction of the session scale the lock is not that object. The
+    #: empty band on 2026-09-08 runs 0.021 to 0.085, so 0.05 sits in the middle of
+    #: a region containing no frames at all.
+    artifact_mass_fraction: float = Field(default=0.05, gt=0.0, lt=1.0)
+
+    #: Stateless test. A real star's peak stands clear of the sky; an artifact's
+    #: peak *is* the sky. Expressed in sigma so it is free of the exposure, the
+    #: gain and the moon -- an absolute ADU threshold is none of those things.
+    #:
+    #: Measured rather than chosen: running `Star::Find`'s own annulus over the
+    #: 2026-09-08 frames puts sound stars below SNR 20 at a median of 10.9-12.2
+    #: sigma with a 5th percentile near 5, while that night's fourteen artifact
+    #: frames ran SNR 11.5-19.7 -- the same band. A cut at 15 objects to most
+    #: sound frames there, so it carries no information where it is needed. Five
+    #: is the faint population's 5th percentile and still sits above PHD2's own
+    #: 3 sigma detection floor, which every accepted star clears by construction.
+    min_peak_sigma_over_background: float = Field(default=5.0, gt=0)
+
+    #: Stateless test, second half: how concentrated the light is, normalised by
+    #: the seeing disc. Raw `mass / peak` is **not** usable -- it correlates with
+    #: HFD at r = 0.90 over 2026-09-08, because mass grows with the aperture the
+    #: star fills, so it is an HFD test wearing a disguise. Real locks at HFD 3-4
+    #: median 9.2 on it, which a floor set for a 6.7 px night would condemn
+    #: wholesale on a sharp one. Dividing by HFD^2 drops that to r = 0.54.
+    #:
+    #: Set **above** the artifact range rather than between the populations,
+    #: because the two halves must agree before the stateless test objects. Below
+    #: about SNR 30 this is the half that discriminates: the populations overlap
+    #: in `min_peak_sigma_over_background`, so that one cannot separate them
+    #: there however it is set.
+    min_mass_over_peak_hfd2: float = Field(default=0.35, gt=0)
+
+    #: Frames a verdict must persist before the state changes. One frame of bad
+    #: seeing should not flip the state, and one good frame should not clear it.
+    hysteresis_frames: int = Field(default=2, ge=1, le=20)
+
+    #: Without the PHD2 build that reports peak and background, run the session
+    #: test alone rather than refusing to run. False is the honest default: half a
+    #: check is better than none, and the log says which half is missing.
+    require_background: bool = False
+
+    #: **Does reaching NotAStar stop the guiding?** Detection and action are
+    #: separate switches on purpose. The supervisor is meant to run for a night
+    #: reporting only, so the state can be read against what actually happened
+    #: before anything acts on it -- and so the action can be withdrawn without
+    #: losing the signal if it proves too eager.
+    end_guiding_on_not_a_star: bool = False
+
+
+class LockNudgeConfig(BaseModel):
+    """Re-reference the guide lock to the target once guiding has settled.
+
+    Acquisition converges to well inside a pixel, but the open loop between its
+    last correction and ``SettleDone`` gives that precision back: what the guide
+    loop ends up holding is wherever the field drifted to, not where acquisition
+    put it. The nudge measures that drift against the target and corrects the
+    lock position for it.
+
+    It runs only in the window between settle and the fold-mirror insertion,
+    because that is the last moment the target is observable at all -- once the
+    mirror is at SPEC the target is being delivered into the fiber. Nothing is
+    nudged after the mirror moves: a mirror-induced change in the guide star's
+    apparent position is indistinguishable from a real pointing change without
+    an independent measurement, and if the shift is optical then correcting it
+    with the mount drives the target off the fiber.
+
+    Off by default, like :class:`ExcludeRegionConfig`: with no DB entry the
+    handover behaves exactly as it does today.
+    """
+
+    enabled: bool = False
+
+    #: Refuse a nudge larger than this and leave the lock alone. Half of PHD2's
+    #: 15 px search region: a residual that big is not a pointing error to trim
+    #: but a sign that something upstream is wrong, and re-acquiring is the
+    #: honest response. Measured residuals at handover are 0.3-1.0 px.
+    max_offset_px: float = 7.0
+
+    #: Guide frames that must come in under `confirm_px` before the handover
+    #: proceeds. `set_lock_position` triggers no settling of its own, so there is
+    #: no SettleDone to wait on and the confirmation is counted here.
+    confirm_frames: int = 2
+    confirm_px: float = 5.0
+    confirm_timeout: float = 60.0
+
+    @model_validator(mode="after")
+    def _positive_knobs(self):
+        if self.max_offset_px <= 0:
+            raise ValueError("phd2.lock_nudge: max_offset_px must be positive")
+        if self.confirm_frames < 0:
+            raise ValueError("phd2.lock_nudge: confirm_frames cannot be negative")
+        return self
+
+
+class HandoverConfig(BaseModel):
+    """Whether starting to guide also inserts the fold mirror.
+
+    On an FCU v2 unit `StartGuiding` fires `do_fcu_v2_spec_handover` on its own:
+    settle, full pause, stage to SPEC, resume. That is right for observing, and it
+    is the only behavior there has ever been -- so `auto_insert` defaults to true
+    and a unit with no entry is unchanged.
+
+    It is wrong for measuring the handover. An instrument that wants to time the
+    insertion, or to run a control that does *not* insert, cannot start guiding
+    without the unit inserting first: the harness then has to move the stage back
+    to SKY under a pause before it can begin, so a null control costs two stage
+    traverses to demonstrate none. Turning this off hands the insertion to the
+    caller, and the control becomes guiding started and the mirror simply left
+    where it is.
+
+    Off is a measurement mode, not an operating one: with it off nothing inserts
+    the mirror unless something asks, so a unit left this way acquires and guides
+    and never reaches SPEC.
+    """
+
+    auto_insert: bool = True
+
+
 class PHD2Config(BaseModel):
     profile: str
     settle: PHD2SettleConfig
     validation_interval: float
     limit_frame: LimitFrameConfig = Field(default_factory=LimitFrameConfig)
+    exclude_region: ExcludeRegionConfig = Field(default_factory=ExcludeRegionConfig)
+    lock_validity: LockValidityConfig = Field(default_factory=LockValidityConfig)
+    lock_nudge: LockNudgeConfig = Field(default_factory=LockNudgeConfig)
+    handover: HandoverConfig = Field(default_factory=HandoverConfig)

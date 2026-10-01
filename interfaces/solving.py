@@ -27,6 +27,15 @@ class SolvingConfidenceLevel(StrEnum):
     Certain = "certain"
 
 
+#: Sky-coordinate conversions. Named because they are the kind of constant that reads
+#: as obviously-correct at every call site and is therefore never checked: 15 is
+#: degrees per hour of right ascension, not a count of anything.
+ARCSEC_PER_DEGREE: float = 3600.0
+DEGREES_PER_RA_HOUR: float = 15.0
+DEGREES_PER_TURN: float = 360.0
+HALF_TURN_DEGREES: float = 180.0
+
+
 class SolvingSolution(BaseModel):
     ra_rads: float | None = None
     dec_rads: float | None = None
@@ -106,3 +115,27 @@ class SolverInterface(ABC):
     @abstractmethod
     def name(self) -> str:
         pass
+
+
+def target_offset_arcsec(target, solution: "SolvingSolution") -> tuple[float, float]:
+    """How far `target` lies from where `solution` says the telescope is pointing.
+
+    Returns ``(d_ra_arcsec, d_dec_arcsec)``, each **target minus solved**, so the
+    pair is the correction to apply rather than the error observed.
+
+    The right-ascension term is wrapped through half a turn so a target either
+    side of 0h subtracts to the short way round rather than to nearly a full
+    turn. It carries **no** ``cos(dec)`` factor: a mount offset command wants
+    plain RA, and a caller converting to a tangent-plane quantity -- pixels
+    through a CD matrix, say -- has to apply that factor itself.
+
+    Shared because two callers must agree on what "off target" means: the
+    acquisition loop that corrects the mount, and the lock nudge that re-references
+    guiding to the same target just before the fold mirror hides it. Two copies of
+    this arithmetic would let them disagree silently.
+    """
+    d_ra_deg = (target.ra.deg - solution.ra_hours * DEGREES_PER_RA_HOUR) % DEGREES_PER_TURN
+    if d_ra_deg > HALF_TURN_DEGREES:
+        d_ra_deg -= DEGREES_PER_TURN
+    d_dec_arcsec = target.dec.arcsecond - Angle(solution.dec_rads, unit="rad").arcsecond
+    return d_ra_deg * ARCSEC_PER_DEGREE, d_dec_arcsec
