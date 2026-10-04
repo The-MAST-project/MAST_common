@@ -126,8 +126,7 @@ class PathMaker:
             phase_folder = CALIBRATION_PHASE_FOLDERS[phase]
         except KeyError:
             raise ValueError(
-                f"unknown calibration phase {phase!r}; "
-                f"expected one of {sorted(CALIBRATION_PHASE_FOLDERS)}"
+                f"unknown calibration phase {phase!r}; expected one of {sorted(CALIBRATION_PHASE_FOLDERS)}"
             ) from None
         base = Path(self.make_observing_night_folder(root=root or Filer().ram.root)) / "Calibration"  # type: ignore
         base = base / phase_folder
