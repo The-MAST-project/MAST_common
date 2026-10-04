@@ -12,7 +12,6 @@ else:
     import fcntl
 
 import contextlib
-import filecmp
 import fnmatch
 import os
 import shutil
@@ -308,7 +307,7 @@ class Filer:
             if entry_is_dir and target.is_dir():
                 kept_collision |= self._merge_into(entry, target, op)
             elif target.exists():
-                if entry.is_file() and target.is_file() and filecmp.cmp(entry, target, shallow=False):
+                if entry.is_file() and target.is_file() and _same_bytes(entry, target):
                     entry.unlink()
                     self.info(f"{op}: '{target.as_posix()}' already holds an identical copy; removed '{entry.as_posix()}'")
                 else:
@@ -639,6 +638,25 @@ class Filer:
 def _is_under(path: str, folder: str) -> bool:
     """True if ``path`` is ``folder`` itself or lies beneath it (both already realpaths)."""
     return path == folder or path.startswith(folder + os.sep)
+
+
+_COMPARE_CHUNK_BYTES = 1 << 20
+
+
+def _same_bytes(a: Path, b: Path) -> bool:
+    """Byte-for-byte equality, read fresh every time.
+
+    Not ``filecmp.cmp``: it caches its verdict per process by path, size and mtime even
+    with ``shallow=False``, and a share copy can change without a new mtime. A stale
+    "equal" here deletes the only ram original.
+    """
+    if a.stat().st_size != b.stat().st_size:
+        return False
+    with a.open("rb") as fa, b.open("rb") as fb:
+        while chunk := fa.read(_COMPARE_CHUNK_BYTES):
+            if chunk != fb.read(_COMPARE_CHUNK_BYTES):
+                return False
+    return True
 
 
 def _flatten_paths(paths) -> list[str]:

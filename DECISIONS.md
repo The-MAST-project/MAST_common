@@ -40,9 +40,12 @@ how often it said so (#117).
 
 **What:**
 
-- A file whose destination holds a **byte-identical** copy (`filecmp.cmp(shallow=False)`) is
-  removed from the ram area and logged at INFO. The move already happened; the only thing left
-  to lose is ram-disk space.
+- A file whose destination holds a **byte-identical** copy is removed from the ram area and
+  logged at INFO. The move already happened; the only thing left to lose is ram-disk space.
+  The comparison reads both files fresh every time (`_same_bytes`), not through `filecmp.cmp`,
+  which caches its verdict per process by path, size and mtime even with `shallow=False`. On
+  mast01 on 2026-10-04 a share copy changed without a new mtime, the cached "equal" was reused,
+  and the ram original was deleted.
 - A file whose destination **differs** stays in place, as before, and is reported at ERROR
   **once**. The key is both sides' path, size and mtime, held in a class-level set like
   `_pending`, so the sweeper's retries are silent while a new file colliding later under the
@@ -53,8 +56,9 @@ how often it said so (#117).
 - A missing source is a WARNING, matching the "ignoring" in its own message. A new
   `Filer.warning()` sits beside `info()` and `error()`.
 
-**Implications:** the comparison reads both copies in full, once per collision, which is about
-what the move itself would have cost. The reported set is process-local and never pruned:
+**Implications:** the comparison reads both copies in full, on every sweep a collision is
+retried, which is about what the move itself would have cost: 0.86 s per 94 MB frame between
+`D:` and `Z:` on mast01. The reported set is process-local and never pruned:
 entries accrue only from real conflicts. A restart re-reports each open conflict once, which is
 the wanted reminder. No running summary of blocked sources was added; one ERROR per conflict is
 already countable.

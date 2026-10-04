@@ -15,7 +15,9 @@ robocopy had copied, rather than moved, frames the mover never got (MAST_unit#27
 
 from __future__ import annotations
 
+import filecmp
 import logging
+import os
 
 import pytest
 from test_move_merges_folders import write
@@ -141,6 +143,27 @@ class TestARealCollisionIsReportedOnce:
         sweep(filer, "spec")
 
         assert len(errors(caplog)) == 2
+
+
+class TestAnEarlierComparisonIsNotReused:
+    def test_a_destination_changed_without_a_new_mtime_is_compared_again(self, filer):
+        """filecmp caches by path, size and mtime, even with shallow=False. On mast01 on
+        2026-10-04 a pair compared equal once, a byte of the share copy then changed with
+        its mtime unchanged, and the cached verdict deleted the only ram original."""
+        source = filer.ram_path / "Autofocus" / "0001" / "FOCUS24673.fits"
+        target = filer.shared_path / "Autofocus" / "0001" / "FOCUS24673.fits"
+        write(source, "frame")
+        write(target, "frame")
+        assert filecmp.cmp(source, target, shallow=False)
+
+        mtime = os.stat(target).st_mtime_ns
+        target.write_text("framf")
+        os.utime(target, ns=(mtime, mtime))
+
+        sweep(filer, "Autofocus", times=1)
+
+        assert source.read_text() == "frame"
+        assert target.read_text() == "framf"
 
 
 class TestAMissingSourceIsNotAnError:
