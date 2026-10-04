@@ -1,3 +1,4 @@
+import math
 from abc import ABC, abstractmethod
 from enum import IntFlag, StrEnum, auto
 from typing import Literal
@@ -139,3 +140,12 @@ def target_offset_arcsec(target, solution: "SolvingSolution") -> tuple[float, fl
         d_ra_deg -= DEGREES_PER_TURN
     d_dec_arcsec = target.dec.arcsecond - Angle(solution.dec_rads, unit="rad").arcsecond
     return d_ra_deg * ARCSEC_PER_DEGREE, d_dec_arcsec
+
+
+def offset_on_sky_arcsec(d_ra_arcsec: float, d_dec_arcsec: float, dec_degs: float) -> float:
+    """The angle on the sky spanned by a `target_offset_arcsec` pair at `dec_degs`.
+
+    The pair's RA term is plain RA, so it is shrunk by ``cos(dec)`` here before the
+    two are combined.
+    """
+    return math.hypot(d_ra_arcsec * math.cos(math.radians(dec_degs)), d_dec_arcsec)
