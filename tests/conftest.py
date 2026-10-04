@@ -76,7 +76,11 @@ _shim_filer_for_darwin()
 # fontconfig -- matplotlib's font manager shells out to `fc-list` while importing, on
 # Linux only, so this surfaces on the ubuntu half of the CI matrix and never on Windows,
 # where matplotlib finds fonts differently. Enumerating fonts is not driving hardware.
-ALLOWED = {"fc-list", "fc-match"}
+#
+# openssl -- the stdlib cannot verify a certificate chain without a live handshake, and
+# checking that the pinned CA signs the control machine's certificate is not driving
+# hardware either.
+ALLOWED = {"fc-list", "fc-match", "openssl"}
 
 
 class ProcessLaunchError(RuntimeError):
