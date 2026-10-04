@@ -180,6 +180,29 @@ name that does not resolve still raises at construction for `ControllerApi` and 
 
 ---
 
+## [2026-10-04] The guider status carries a pointing record, and "off target on the sky" has one helper
+
+**Why:** MAST_unit#283 plate solves the guide frame while guiding continues, to check that the
+target is still on the fiber while PHD2 holds its star still. The result needs a home in
+`/unit/status` and a shape that the status and the on-disk journal share. The nudge and the new
+monitor also both turn a `target_offset_arcsec` pair into one angle on the sky. That needs a
+`cos(dec)` the pair deliberately leaves out, and two copies of it could drift apart.
+
+**What:**
+
+- `PointingSample`, `PointingSampleOutcome` and `PointingCheckStatus` in `models/statuses.py`,
+  and `PHD2GuiderStatus.pointing_check`. A sample is Solved, NotSolved or Unavailable. A failed
+  solve and an unjudgeable frame are both recorded rather than dropped.
+- `offset_on_sky_arcsec(d_ra, d_dec, dec)` beside `target_offset_arcsec`.
+- `phd2.validation_interval` is now the monitor's cadence. Its old consumer, `validate_guiding`,
+  stopped guiding to take a frame. It was never enabled (0 on every unit) and is removed in
+  MAST_unit.
+
+**Implications:** the field keeps its name, so no DB document changes. A non-zero value now
+means sampling without interrupting guiding.
+
+---
+
 ## [2026-09-30] A collision with an identical copy drops the source; a real one is reported once
 
 **Why:** on mast01 over 2026-09-14/15, 2,090 of the night's 2,113 filer ERROR records were 40
