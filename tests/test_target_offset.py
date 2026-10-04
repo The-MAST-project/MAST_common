@@ -12,6 +12,7 @@ from common.interfaces.solving import (
     ARCSEC_PER_DEGREE,
     DEGREES_PER_RA_HOUR,
     SolvingSolution,
+    offset_on_sky_arcsec,
     target_offset_arcsec,
 )
 
@@ -79,3 +80,13 @@ class TestNoCosDecFactor:
         at_equator, _ = target_offset_arcsec(coord(6.01, 0.0), solved(6.0, 0.0))
         at_sixty, _ = target_offset_arcsec(coord(6.01, 60.0), solved(6.0, 60.0))
         assert abs(at_equator - at_sixty) < 1e-6
+
+
+class TestOnTheSky:
+    """Where the cos(dec) factor the pair leaves out is applied, for callers that want an angle."""
+
+    def test_ra_shrinks_with_declination(self):
+        assert abs(offset_on_sky_arcsec(10.0, 0.0, 60.0) - 5.0) < 1e-9
+
+    def test_the_two_terms_combine_as_a_distance(self):
+        assert abs(offset_on_sky_arcsec(3.0, 4.0, 0.0) - 5.0) < 1e-9
