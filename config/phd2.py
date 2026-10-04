@@ -442,6 +442,10 @@ class HandoverConfig(BaseModel):
 class PHD2Config(BaseModel):
     profile: str
     settle: PHD2SettleConfig
+    #: Seconds between plate solves of the guide frame while guiding (MAST_unit's
+    #: `pointing_check`); 0 is off. Read on every tick, so it can be switched on
+    #: mid-session. Solving needs full-sensor guide frames: `limit_frame.mode:
+    #: full_frame`.
     validation_interval: float
     limit_frame: LimitFrameConfig = Field(default_factory=LimitFrameConfig)
     exclude_region: ExcludeRegionConfig = Field(default_factory=ExcludeRegionConfig)
