@@ -90,15 +90,40 @@ class FocuserCalibrationSettings(BaseModel):
     # treated as far-from-focus and routed to donut acquisition.
     near_hfd_max_px: float = 20.0
     #
-    # max_best_hfd_px rejects an implausible "solution".  A sweep over donuts can
-    # produce a spurious interior minimum that passes the bracketing gate and
-    # yields a confident, badly wrong best-focus.  A real in-focus star on this
-    # system is a few px across, so a vertex whose Dmin exceeds this is not
-    # focus: the run keeps acquiring instead of persisting it.
-    max_best_hfd_px: float = 12.0
+    # ...but the HFD alone cannot make that call.  On mast00 2026-10-01, from
+    # +-2000 ticks outward the stars were large faint donuts, yet hundreds of
+    # small sources (faint lumps, donut fragments) still extracted, each filling
+    # the minimum aperture, and the median HFD sat at ~12.7 px from focus to
+    # +10000 -- so every run triaged "near".  What did separate them was the
+    # number of sources with a bright CORE (>= near_min_peak_snr x noise at the
+    # centroid; a donut's centroid is in its hole): 47-99 within 523 ticks of
+    # focus, 0-2 from 2000 out.  Fewer than near_min_stars such sources means the
+    # frame is not near focus, whatever its HFD says.
+    near_min_stars: int = 10
+    near_min_peak_snr: float = 10.0  # core (3x3 median at the centroid) / background noise
     #
-    # NOTE: both thresholds are seeing- and optics-dependent and are ESTIMATES
-    # until measured on sky.  Check them against the first real runs.
+    # max_best_hfd_px rejects an implausible "solution" by the size of its vertex.
+    # It is a weak test: the consistent-star HFD at focus measures 18-27 px on this
+    # system (mast02 2026-07-21/22, mast00 2026-10-01), and the false vertices of
+    # 2026-10-01 measured 13-20 px -- SMALLER than real focus.  The shape gate
+    # below is what tells them apart; this is only a backstop.  (It was 12.0 here,
+    # with a comment claiming in-focus stars are "a few px"; that would have
+    # rejected every real solution, and only the DB override of 35 kept it out
+    # of the way.)
+    max_best_hfd_px: float = 35.0
+    #
+    # The V-curve shape gate.  A vertex is trusted only if the parabola actually
+    # describes the samples (R^2 of the D^2 fit) and the curve actually rises away
+    # from it (the higher sweep end >= min_edge_rise x Dmin).  Every genuine
+    # sweep on record scores R^2 0.93-1.00; the three false solutions of
+    # 2026-10-01 -- flat or zig-zag curves through donuts -- scored 0.09-0.61.
+    # Only the HIGHER end is tested: a real vertex near one edge rises as little as
+    # 1.12x on its short side.
+    min_fit_r2: float = 0.85
+    min_edge_rise: float = 1.25
+    #
+    # NOTE: all of these are seeing- and optics-dependent.  The figures above are
+    # from three nights on two units; re-check them as more nights accumulate.
     backlash_ticks: int = 200  # approach every sweep from below by this much
     donut_probe_ticks: int = 500  # differential move that calibrates the donut slope
     #                               and resolves inside-vs-outside focus (sign)
