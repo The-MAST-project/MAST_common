@@ -433,13 +433,14 @@ class NotificationApi(BaseApi):
         port = service_conf.port
 
         controller_fqdn = f"{site.controller_host}.{load_local_config().domain}"
-        self.timeout = self.NOTIFICATION_TIMEOUT
         self.errors = []
         self.detected = False
         self.hostname = site.controller_host
         self.ipaddr = None
         self.domain = ApiDomain.Control
-        super().__init__(hostname=site.controller_host, port=port, domain=ApiDomain.Control)
+        super().__init__(
+            hostname=site.controller_host, port=port, domain=ApiDomain.Control, timeout=self.NOTIFICATION_TIMEOUT
+        )
         self.base_url = f"https://{controller_fqdn}/mast-backend/{Const.BASE_CONTROL_PATH}"
         self._initialized = True
 
