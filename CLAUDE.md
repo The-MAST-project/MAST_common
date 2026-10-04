@@ -166,6 +166,8 @@ so prefer ASCII in log messages regardless.
 
 `Notifier` / `UiUpdateNotifications` push WebSocket events to the Django GUI. The `NotificationInitiator` is built lazily from the config file (`local.site`, `local.project`, `local.machine_role` for the machine type) — not from the hostname. The hostname is used only as the initiator's own machine name.
 
+**A notification can never fail the operation it announces.** `start_activity` / `end_activity` call `Notifier().ui_notification()`, which only builds the message and queues it. Everything that can fail, from constructing `NotificationApi` (which resolves the control machine's name) to the HTTPS send, happens on the `NotificationWorker` thread, which retries on its next cycle. With the control machine unreachable, the caller's flag is still raised and the call returns. The worker logs one WARNING when delivery starts failing and one INFO when it recovers, not one line per notification.
+
 ## Plans (`common/models/plans.py`)
 
 Plans are observation jobs stored as TOML files named `PLAN_<ULID>.toml`. State is represented by which **subfolder** the file lives in under the plans directory — transitions physically move the file.
