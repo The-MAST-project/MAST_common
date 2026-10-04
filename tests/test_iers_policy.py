@@ -10,6 +10,7 @@ test's policy leaks into the next and the suite's results depend on collection o
 """
 
 import os
+import time
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -327,3 +328,168 @@ def test_the_warning_is_ascii(cache, caplog):
     with caplog.at_level("WARNING"):
         iers_policy.log_lag(cache, when=when)
     caplog.text.encode("ascii")  # raises UnicodeEncodeError if anything crept in
+
+
+# ------------------------------------------------------------------ the refresher --
+
+
+def test_the_first_ever_attempt_is_allowed(cache):
+    assert iers_policy.last_attempt(cache) is None
+    assert iers_policy.should_fetch(cache) is True
+
+
+def test_an_attempt_is_recorded_whether_or_not_it_succeeded(cache):
+    when = datetime(2026, 10, 4, 9, 0, tzinfo=UTC)
+    iers_policy.record_attempt(cache, when)
+    assert iers_policy.last_attempt(cache) == when
+
+
+def test_the_rate_limit_counts_attempts_not_successes(cache, monkeypatch):
+    """A machine offline for a week must not retry at full rate for ever.
+
+    `fetch_once` records the attempt BEFORE trying, so a failed download still rate-limits the
+    next one. Gating on success instead would leave an offline machine hammering.
+    """
+    calls = []
+
+    def never_works(*_args, **_kwargs):
+        calls.append(1)
+        raise OSError("offline")
+
+    monkeypatch.setattr(iers_policy, "download_file", never_works)
+
+    assert iers_policy.fetch_once(cache) is None
+    assert calls == [1]
+    assert iers_policy.last_attempt(cache) is not None, "a FAILED fetch must still count as an attempt"
+    assert iers_policy.should_fetch(cache) is False
+
+
+def test_a_fresh_table_is_retried_daily_and_a_stale_one_eagerly(cache):
+    when = datetime(2026, 10, 4, 12, 0, tzinfo=UTC)
+
+    # Fresh: an attempt an hour ago is recent enough to wait.
+    iers_policy.write(cache, CONTENT, iers_policy.now_mjd(when) - 2.0, when=when)
+    iers_policy.record_attempt(cache, when - timedelta(hours=1))
+    assert iers_policy.should_fetch(cache, when) is False
+    iers_policy.record_attempt(cache, when - timedelta(days=2))
+    assert iers_policy.should_fetch(cache, when) is True
+
+
+def test_a_stale_table_is_retried_far_sooner(cache):
+    when = datetime(2026, 10, 4, 12, 0, tzinfo=UTC)
+    iers_policy.write(cache, CONTENT, 61252.0, when=when)  # 65 days behind
+    assert iers_policy.is_stale(cache, when)
+
+    iers_policy.record_attempt(cache, when - timedelta(hours=1))
+    assert iers_policy.should_fetch(cache, when) is True, "being degraded should make us eager, not patient"
+
+    # ...but never tighter than the backstop.
+    iers_policy.record_attempt(cache, when - timedelta(minutes=1))
+    assert iers_policy.should_fetch(cache, when) is False
+
+
+def test_a_download_that_is_not_a_table_is_not_stored(cache, monkeypatch, tmp_path):
+    """A captive portal, an error page or a truncated file: parsing is the only validation."""
+    junk = tmp_path / "junk.all"
+    junk.write_bytes(b"<html>login required</html>")
+    monkeypatch.setattr(iers_policy, "download_file", lambda *a, **k: str(junk))
+
+    assert iers_policy.fetch_once(cache) is None
+    assert iers_policy.cache_files(cache) == []
+    # Cleaned up even on the rejection path: these are ~3.8 MB, and a machine that is offline
+    # for a month would otherwise accumulate one per attempt in the temp directory.
+    assert not junk.exists()
+
+
+def test_a_successful_fetch_is_stored_and_the_download_is_cleaned_up(cache, monkeypatch, tmp_path):
+    downloaded = tmp_path / "downloaded.all"
+    downloaded.write_bytes(CONTENT)
+    monkeypatch.setattr(iers_policy, "download_file", lambda *a, **k: str(downloaded))
+    monkeypatch.setattr(iers_policy, "read_predictive_mjd", lambda _path: 61315.0)
+
+    path = iers_policy.fetch_once(cache)
+    assert path is not None
+    assert iers_policy.newest(cache)[2] == 61315.0
+    assert not downloaded.exists(), "the temporary download should not be left behind"
+
+
+def test_a_fetch_that_does_not_advance_leaves_the_good_table_in_place(cache, monkeypatch, tmp_path):
+    """The 2026-09-30 case end to end: HTTP 200, and no improvement.
+
+    With a single source (MAST_common#139) this is the only thing that distinguishes "we
+    downloaded" from "we are more current than we were".
+    """
+    iers_policy.write(cache, CONTENT, 61315.0, when=datetime(2026, 10, 4, tzinfo=UTC))
+
+    stale = tmp_path / "stale.all"
+    stale.write_bytes(b"an older table")
+    monkeypatch.setattr(iers_policy, "download_file", lambda *a, **k: str(stale))
+    monkeypatch.setattr(iers_policy, "read_predictive_mjd", lambda _path: 61252.0)
+
+    assert iers_policy.fetch_once(cache) is None
+    found = iers_policy.newest(cache)
+    assert found is not None and found[2] == 61315.0, "a bad upstream day must not cost us a good table"
+
+
+def test_refresh_if_needed_respects_the_rate_limit(cache, monkeypatch):
+    calls = []
+    monkeypatch.setattr(iers_policy, "fetch_once", lambda *a, **k: calls.append(1))
+
+    iers_policy.record_attempt(cache, datetime.now(UTC))
+    assert iers_policy.refresh_if_needed(cache) is None
+    assert calls == []
+
+
+def test_the_refresher_starts_once_and_stops(cache, monkeypatch):
+    monkeypatch.setattr(iers_policy, "refresh_if_needed", lambda *a, **k: None)
+    try:
+        assert iers_policy.start_iers_refresher(cache, poll=timedelta(seconds=30)) is True
+        # A second call in the same process is a no-op rather than a second thread.
+        assert iers_policy.start_iers_refresher(cache, poll=timedelta(seconds=30)) is False
+    finally:
+        iers_policy.stop_iers_refresher(timeout=5)
+    assert iers_policy._refresher is not None and not iers_policy._refresher.is_alive()
+
+
+def test_stopping_releases_the_guard_so_it_can_start_again(cache, monkeypatch):
+    """Unlike `Filer`'s sweep guard, this one must not be held past a stop.
+
+    A sweep happens once per process, so holding its guard for ever is right. A refresher is
+    long-lived and stoppable, and a guard held past the stop would leave the machine with
+    nothing refreshing and nothing able to start.
+    """
+    monkeypatch.setattr(iers_policy, "refresh_if_needed", lambda *a, **k: None)
+    try:
+        assert iers_policy.start_iers_refresher(cache, poll=timedelta(seconds=30)) is True
+        iers_policy.stop_iers_refresher(timeout=5)
+        assert iers_policy._guard is None
+        assert iers_policy.start_iers_refresher(cache, poll=timedelta(seconds=30)) is True
+    finally:
+        iers_policy.stop_iers_refresher(timeout=5)
+
+
+def test_the_refresher_survives_a_failing_pass(cache, monkeypatch):
+    """One bad pass must not kill the thread -- it has to be there for the next window."""
+    passes = []
+
+    def explode(*_args, **_kwargs):
+        passes.append(1)
+        raise RuntimeError("something went wrong in a pass")
+
+    monkeypatch.setattr(iers_policy, "refresh_if_needed", explode)
+    try:
+        assert iers_policy.start_iers_refresher(cache, poll=timedelta(milliseconds=50)) is True
+        deadline = time.monotonic() + 5
+        while len(passes) < 2 and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert len(passes) >= 2, "the refresher stopped after a failing pass"
+        assert iers_policy._refresher.is_alive()
+    finally:
+        iers_policy.stop_iers_refresher(timeout=5)
+
+
+def test_a_second_process_does_not_also_refresh(cache, monkeypatch):
+    """The guard is what keeps several services on one machine from each fetching 3.8 MB."""
+    monkeypatch.setattr(iers_policy, "_take_guard", lambda: False)
+    assert iers_policy.start_iers_refresher(cache) is False
+    assert iers_policy._refresher is None or not iers_policy._refresher.is_alive()

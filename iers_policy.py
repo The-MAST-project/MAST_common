@@ -1,10 +1,19 @@
 """Earth-orientation (IERS) policy and table cache: pointing must not depend on the network.
 
 astropy raises, by default, when it has to interpolate Earth-orientation values whose
-predictions have gone stale -- and the only way it offers to avoid that is a live fetch of
-`finals2000A.all`. astropy reads `HTTP(S)_PROXY` from the process environment, and MAST
-services have none, so out of the box every alt/az -> RA/Dec transform is a coin toss on
-network reachability.
+predictions have gone stale. Its own remedy is to fetch a newer `finals2000A.all` first -- and
+**that remedy is not sufficient here, which is the point of this module.**
+
+It is tempting to read the 2026-10-01 incident as "the site proxy blocked the fetch". It was
+not that. These machines reach the IERS data centre perfectly well with no `HTTP(S)_PROXY` in
+the environment at all, because `urllib.request.getproxies()` reads the WinINET registry
+settings on Windows -- verified by downloading the table with every proxy variable unset. What
+actually happened is simpler and worse: the table **the server was publishing** carried
+measured values only to 2026-07-31, so a *successful* download still left astropy more than 30
+days past its last measured value, and it raised anyway.
+
+So no amount of networking would have kept the mount pointing that night. Only
+`auto_max_age = None` would have.
 
 **Two independent mechanisms do this, and they are governed by different settings** (checked
 against astropy 8.0.1's `utils/iers/iers.py`; worth re-checking when that pin moves):
@@ -53,14 +62,22 @@ Two things this module deliberately does NOT rely on:
 
 import contextlib
 import os
+import platform
 import re
 import tempfile
+import threading
 from datetime import UTC, datetime, timedelta
 
 from astropy.utils import iers
+from astropy.utils.data import download_file
 from astropy.utils.iers import IERS_A
 
 from common.mast_logging import get_logger
+
+if platform.system() == "Windows":
+    import win32api
+    import win32event
+    import winerror
 
 logger = get_logger(__name__)
 
@@ -407,3 +424,236 @@ def log_lag(directory: str, when: datetime | None = None, every: timedelta = tim
         f"{message} (over the {STALE_AFTER_DAYS:.0f}-day mark astropy would have refused to "
         f"interpolate past). Pointing still works, at degraded accuracy."
     )
+
+
+# ------------------------------------------------------------------ the refresher --
+
+#: How often to try while the cached table is within `STALE_AFTER_DAYS`. The upstream product
+#: is IERS Bulletin A, issued weekly (Thursdays) with measured values lagging ~1-2 days, so
+#: daily is already generous; more often would be pure waste.
+FETCH_INTERVAL_FRESH = timedelta(days=1)
+
+#: How often to try while it is stale. Eager on purpose: we are degraded, the machine may only
+#: get a brief window of connectivity, and catching one is worth more than politeness.
+FETCH_INTERVAL_STALE = timedelta(minutes=30)
+
+#: Never two attempts closer together than this, whatever the lag says. A backstop against a
+#: tight loop if a clock moves or the marker cannot be written.
+MIN_FETCH_INTERVAL = timedelta(minutes=5)
+
+#: Records the last ATTEMPT -- success or failure -- as an ISO-8601 UTC line.
+#:
+#: Attempts, not successes, and on disk rather than in memory. Two reasons, both learned: a
+#: machine offline for a week never records a success, so a success-gated refresher would
+#: retry at full rate for ever; and several MAST services share a machine, so the interval has
+#: to survive one of them restarting.
+ATTEMPT_MARKER = "last-attempt"
+
+#: One refresher per machine. The Windows name is global because named objects there are
+#: scoped per *session*: a service in session 0 and an interactive process in session 1 would
+#: not see a bare name even running as the same account. Same reasoning, and the same
+#: mechanism, as `Filer._take_sweep_guard`.
+GUARD_NAME = "Global\\mast_iers_refresher"
+
+#: How long a single download may take. The table is ~3.8 MB.
+FETCH_TIMEOUT_SECONDS = 120
+
+_guard: object | None = None
+_refresher: threading.Thread | None = None
+_stop = threading.Event()
+
+
+def last_attempt(directory: str) -> datetime | None:
+    """When a fetch was last attempted on this machine, or None."""
+    try:
+        with open(os.path.join(directory, ATTEMPT_MARKER), encoding="utf-8") as fp:
+            return datetime.fromisoformat(fp.read().strip())
+    except (OSError, ValueError):
+        return None
+
+
+def record_attempt(directory: str, when: datetime | None = None) -> None:
+    """Note that a fetch was attempted. Best-effort; never raises."""
+    when = when or datetime.now(UTC)
+    try:
+        os.makedirs(directory, exist_ok=True)
+        with open(os.path.join(directory, ATTEMPT_MARKER), "w", encoding="utf-8") as fp:
+            fp.write(when.astimezone(UTC).isoformat())
+    except OSError as ex:
+        logger.warning(f"iers: could not record a fetch attempt in '{directory}': {ex}")
+
+
+def should_fetch(directory: str, when: datetime | None = None) -> bool:
+    """Whether to attempt a fetch now.
+
+    **The need is decided by the table's lag; the rate is limited by the last attempt.**
+    Keeping those separate is the whole point. On 2026-09-30 a fetch succeeded and left the
+    cache 65 days behind, so anything gated on "we succeeded recently" would have gone quiet
+    exactly when it most needed to try again.
+    """
+    when = when or datetime.now(UTC)
+    attempted = last_attempt(directory)
+    if attempted is not None:
+        since = when - attempted
+        if since < MIN_FETCH_INTERVAL:
+            return False
+        wanted = FETCH_INTERVAL_STALE if is_stale(directory, when) else FETCH_INTERVAL_FRESH
+        if since < wanted:
+            return False
+    return True
+
+
+def fetch_once(directory: str, url: str | None = None, timeout: int = FETCH_TIMEOUT_SECONDS) -> str | None:
+    """Attempt one fetch. Returns the stored path, or None if nothing was stored.
+
+    None covers three different outcomes, all survivable and all logged: the download failed,
+    what came back is not a table, or it is a table whose predictions do not advance on what we
+    already have -- `write()` refuses that.
+
+    `download_file` rather than `urllib` directly, because it is what demonstrably reaches the
+    IERS data centre from these machines. **No proxy configuration is needed or wanted**:
+    `urllib.request.getproxies()` reads the WinINET registry settings on Windows, which is how
+    a MAST service reaches the internet with no `HTTP(S)_PROXY` in its environment. Note that
+    `MAST_unit`'s `start_supporting_processes()` deliberately DELETES those variables so that
+    talking to PWI4 on 127.0.0.1 is not proxied -- a fetcher that depended on them could
+    therefore never work inside the unit.
+
+    `cache=False`: astropy's own download cache is bypassed entirely. This module's cache is
+    the one that matters, and astropy's has been observed not to serve what it holds.
+    """
+    url = url or iers.conf.iers_auto_url
+    record_attempt(directory)
+
+    try:
+        downloaded = download_file(url, cache=False, timeout=timeout)
+    except Exception as ex:  # noqa: BLE001 -- offline, DNS, TLS, 404: one answer covers them all
+        logger.info(f"iers: fetch from '{url}' did not succeed ({type(ex).__name__}: {ex}); keeping the cached table")
+        return None
+
+    try:
+        predictive_mjd = read_predictive_mjd(downloaded)
+        if predictive_mjd is None:
+            return None
+        with open(downloaded, "rb") as fp:
+            content = fp.read()
+    except OSError as ex:
+        logger.warning(f"iers: could not read the downloaded table: {ex}")
+        return None
+    finally:
+        with contextlib.suppress(OSError):
+            os.unlink(downloaded)
+
+    return write(directory, content, predictive_mjd)
+
+
+def refresh_if_needed(directory: str) -> str | None:
+    """`fetch_once` if `should_fetch` says so. Returns the stored path, or None."""
+    if not should_fetch(directory):
+        return None
+    return fetch_once(directory)
+
+
+def _linux_guard_path() -> str:
+    return os.path.join(os.path.expanduser("~"), ".mast-iers-refresher.lock")
+
+
+def _take_guard() -> bool:
+    """One refresher per machine, held by an ephemeral kernel object -- nothing on disk.
+
+    Released by the kernel if this process dies, so a crashed service cannot lock the machine
+    out of refreshing. Failing to take it means skipping, never proceeding unguarded: two
+    processes fetching 3.8 MB and racing to promote it is waste rather than corruption, but it
+    is waste with no upside.
+    """
+    global _guard
+    if platform.system() == "Windows":
+        try:
+            _guard = win32event.CreateMutex(None, False, GUARD_NAME)
+            return win32api.GetLastError() != winerror.ERROR_ALREADY_EXISTS
+        except Exception as ex:  # noqa: BLE001 -- e.g. ACCESS_DENIED unelevated
+            logger.info(f"iers: could not take the refresher guard ({ex}); not refreshing in this process")
+            return False
+
+    import fcntl
+
+    try:
+        _guard = os.open(_linux_guard_path(), os.O_RDWR | os.O_CREAT, 0o644)
+        fcntl.flock(_guard, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return True
+    except OSError as ex:
+        logger.info(f"iers: could not take the refresher guard ({ex}); not refreshing in this process")
+        return False
+
+
+def _refresher_loop(directory: str, poll: timedelta) -> None:
+    while not _stop.is_set():
+        try:
+            refresh_if_needed(directory)
+            log_lag(directory)
+        except Exception:
+            logger.exception("iers: refresher pass failed; continuing")
+        _stop.wait(poll.total_seconds())
+
+
+def start_iers_refresher(directory: str, poll: timedelta = MIN_FETCH_INTERVAL) -> bool:
+    """Start the per-machine IERS refresher. Returns True if this process started it.
+
+    **Call once, from a service's app lifespan** -- beside `Filer.start_product_relocation_sweep`,
+    and for the reasons that one gives for living there. Deliberately NOT started from
+    `Config()`'s constructor, even though that is the one thing every service builds exactly
+    once: the test suite, provisioning scripts, one-shot CLI tools and every ad-hoc `python -c`
+    build a `Config` too, and none of them should spawn a network thread. An app lifespan is
+    entered only by an actual service.
+
+    Returns False -- having done nothing -- when this process already runs one, when another
+    process on this machine holds the guard, or when the guard cannot be taken. Never raises.
+
+    Asynchronous, so it cannot help the transform that happens next; it improves the *next*
+    process start. `configure_astropy()` and `load_into_astropy()` are what make the current
+    process safe, and they are separate calls for exactly that reason.
+    """
+    global _refresher
+    if _refresher is not None and _refresher.is_alive():
+        return False
+    if not _take_guard():
+        logger.info("iers: another process on this machine is refreshing; skipping")
+        return False
+
+    _stop.clear()
+    _refresher = threading.Thread(name="iers-refresher", target=_refresher_loop, args=(directory, poll), daemon=True)
+    _refresher.start()
+    logger.info(f"iers: refresher started, polling every {poll}")
+    return True
+
+
+def _release_guard() -> None:
+    """Drop the machine-wide guard so another process -- or this one again -- can take it.
+
+    `Filer`'s sweep guard is deliberately held for the life of the process, because a
+    relocation sweep happens once. A refresher is different: it is long-lived and stoppable,
+    so holding the guard past `stop_iers_refresher()` would leave the machine with nothing
+    refreshing and no way for anything to start, until every holder exited.
+    """
+    global _guard
+    if _guard is None:
+        return
+    try:
+        if platform.system() == "Windows":
+            _guard.Close()  # type: ignore[attr-defined]  -- a pywin32 handle
+        else:
+            os.close(_guard)  # type: ignore[arg-type]  -- an fd; closing drops the flock
+    except Exception as ex:  # noqa: BLE001 -- releasing a guard must not raise on a shutdown path
+        logger.info(f"iers: could not release the refresher guard ({ex})")
+    finally:
+        _guard = None
+
+
+def stop_iers_refresher(timeout: float = 5.0) -> None:
+    """Stop the refresher, release the guard, and wait briefly for the thread to end.
+
+    For orderly shutdown and for tests. Safe to call when nothing is running.
+    """
+    _stop.set()
+    if _refresher is not None:
+        _refresher.join(timeout=timeout)
+    _release_guard()
