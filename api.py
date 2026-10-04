@@ -1,4 +1,5 @@
 import asyncio
+import re
 import socket
 import ssl
 from datetime import UTC, datetime
@@ -35,21 +36,6 @@ def resolve_site(site_name: str | None) -> Site:
     if site is None:
         raise ValueError(f"unknown site '{site_name}', known sites: {[s.name for s in sites]}")
     return site
-
-
-def resolve_host(hostname: str) -> str:
-    """The IPv4 address of `hostname`, trying `<hostname>.<local domain>` before the bare name.
-
-    A bare name may resolve only by a broadcast that the named machine answers itself, so it
-    fails exactly when that machine is down; the fully-qualified name comes from DNS. A name
-    that already contains a dot is looked up as given.
-    """
-    if "." in hostname:
-        return socket.gethostbyname(hostname)
-    try:
-        return socket.gethostbyname(f"{hostname}.{load_local_config().domain}")
-    except socket.gaierror:
-        return socket.gethostbyname(hostname)
 
 
 class ApiDomain(Enum):
@@ -124,15 +110,15 @@ class BaseApi:
     Creates an API interface to a MAST entity living on a remote host.
 
     Parameters:
-     - hostname Optional[str]: host name, resolved by `resolve_host` (fully-qualified first)
+     - hostname Optional[str]: host name
      - ipaddr Optional[str]:  IPv4 address
      - device Optional[str]: A specific device.  If not specified, either 'spec' or 'unit' will be accessed
-     - domain: ApiDomain: selects a Unit, Spec or Control API; required
+     - domain: ApiDomain: selects a Unit, Spec or Controller
 
     Examples:
-        - spec = BaseApi(hostname='mast-ns-spec', domain=ApiDomain.Spec)
-        - focuser01 = BaseApi(hostname='mast01', domain=ApiDomain.Unit, device='focuser')
-        - unit17 = BaseApi(ipaddr='10.23.1.117', domain=ApiDomain.Unit)
+        - spec = BaseApi(hostname='spec')
+        - focuser01 = BaseApi(hostname='mast01', device='focuser')
+        - unit17 = BaseApi(hostname='mast17')
 
     """
 
@@ -156,24 +142,51 @@ class BaseApi:
                     s.connect(("10.255.255.255", 1))  # any routable address, no traffic sent
                     ipaddr = s.getsockname()[0]
             else:
-                ipaddr = resolve_host(hostname)
+                ipaddr = socket.gethostbyname(hostname)
 
-        if domain is None:
-            raise ValueError("a 'domain' must be provided")
+        if ipaddr is not None and domain is None:
+            raise ValueError("if 'ipaddr' is provided a 'domain' must be provided as well")
 
-        self.domain = domain
-        self.ipaddr = ipaddr
-        domain_base = ""
+        domain_base = None
 
-        match domain:
-            case ApiDomain.Safety:
-                pass
-            case ApiDomain.Unit:
-                domain_base = Const.BASE_UNIT_PATH
-            case ApiDomain.Spec:
+        if ipaddr is not None:
+            self.domain = domain
+            self.ipaddr = ipaddr
+            domain_base = ""
+
+            match domain:
+                case ApiDomain.Safety:
+                    pass
+                case ApiDomain.Unit:
+                    domain_base = Const.BASE_UNIT_PATH
+                case ApiDomain.Spec:
+                    domain_base = Const.BASE_SPEC_PATH
+                case ApiDomain.Control:
+                    domain_base = Const.BASE_CONTROL_PATH
+        else:
+            if hostname is None:
+                raise ValueError("if 'ipaddr' is None, 'hostname' must be provided")
+
+            if hostname.endswith("-spec"):
+                self.domain = ApiDomain.Spec
                 domain_base = Const.BASE_SPEC_PATH
-            case ApiDomain.Control:
+            elif hostname.endswith("-control"):
+                self.domain = ApiDomain.Control
                 domain_base = Const.BASE_CONTROL_PATH
+            else:
+                mast_pattern = re.compile(r"^mast(0[1-9]|1[0-9]|20|w)$")
+                if mast_pattern.match(hostname):
+                    self.domain = ApiDomain.Unit
+                    domain_base = Const.BASE_UNIT_PATH
+
+            self.hostname = hostname
+            try:
+                self.ipaddr = socket.gethostbyname(hostname)
+            except socket.gaierror:
+                try:
+                    self.ipaddr = socket.gethostbyname(hostname + "." + load_local_config().domain)
+                except socket.gaierror as err:
+                    raise ValueError(f"cannot get 'ipaddr' for {hostname=}") from err
 
         if self.ipaddr is not None and hostname is None:
             try:

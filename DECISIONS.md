@@ -2,44 +2,31 @@
 
 ---
 
-## [2026-09-30] Resolve hostnames fully-qualified first, and keep notifications off the caller's thread
+## [2026-10-04] Keep notifications off the caller's thread
 
 **Why:** with mast-ns-control down on 2026-09-29, mast01's unit service booted on its config boot
 cache as designed and then could not start a single activity (#133). `start_activity` raised its
-flag and called `Notifier()`, whose first construction built `NotificationApi`. That called
-`BaseApi.__init__` → `socket.gethostbyname('mast-ns-control')`, which raised `getaddrinfo failed`.
-The singleton never set `_initialized`, so every later activity start retried and raised again, each
-time with its flag already up. The startup thread died on its first line, so no component started,
-while status reported the unit idle.
+flag and called `Notifier()`, whose first construction built `NotificationApi`. That resolved the
+control machine's name, which raised `getaddrinfo failed`. The singleton never set `_initialized`,
+so every later activity start retried and raised again, each time with its flag already up. The
+startup thread died on its first line, so no component started, while status reported the unit
+idle.
 
-The bare name fails because the units' DHCP domain option carries three suffixes as one string
-(MAST_provisioning#228): a bare name never resolves through DNS, only by LLMNR/NetBIOS, which the
-named machine answers itself. It worked for as long as mast-ns-control was up to answer. The
-fully-qualified name resolved throughout. `BaseApi` did hold a fallback that appended the domain,
-but in a branch no call could reach: by then `ipaddr` had always been set, or the bare lookup had
-already raised.
+The name failed because the units' DHCP scope sent a malformed DNS suffix (MAST_provisioning#228),
+which is fixed on the Meraki side. Resolution itself is left as it is, with no fully-qualified
+fallback added here. What remains is that any failure to build `NotificationApi` (DNS, TLS, a
+future name change) must not be able to fail the operation a notification announces.
 
-**What:**
+**What:** `Notifier` no longer builds `NotificationApi` in its constructor. The worker builds it on
+its first send, and a failed build leaves the notification queued for the next cycle.
+`ui_notification()` does no I/O on the caller's thread, so a notification cannot fail, delay, or
+leave behind the activity it announces. Reachability is logged on transitions only: one WARNING,
+one INFO.
 
-- `resolve_host()` tries `<hostname>.<local domain>` first and the bare name second; a dotted name
-  is looked up as given. Fully-qualified first, rather than bare first, because DNS answers it
-  immediately, while a bare lookup against a down machine waits out the broadcast timeout on the
-  caller's thread before failing. The unreachable branch, and the hostname-suffix inference of
-  `domain` that lived only in it, are removed. Every construction must pass `domain`, which every
-  live caller already did.
-- `Notifier` no longer builds `NotificationApi` in its constructor. The worker builds it on its
-  first send, and a failed build leaves the notification queued for the next cycle.
-  `ui_notification()` does no I/O on the caller's thread, so a notification cannot fail, delay, or
-  leave behind the activity it announces. Reachability is logged on transitions only: one WARNING,
-  one INFO.
+**Implications:** an HTTP-level send failure still drops the notification, as before; only a
+construction failure keeps it queued. `BaseApi` and every other subclass are unchanged, so a bare
+name that does not resolve still raises at construction for `ControllerApi` and `SpecApi`.
 
-**Implications:** `ControllerApi`, `SpecApi` and `NotificationApi` all resolve through the same
-helper, so a unit's `controller_api` component now builds while the control machine is down but
-resolvable, and fails at call time rather than at construction. An HTTP-level send failure still
-drops the notification, as before; only a construction failure keeps it queued. `SafetyApi` resolves
-its own default name separately and is untouched: `mast-ns-safety` has no DNS record at all (#68).
-Code that relies on bare-name resolution anywhere else inherits the same fragility until
-MAST_provisioning#228 lands.
 ---
 
 ## [2026-09-22] A power check reads the switch by name, and every power change is logged

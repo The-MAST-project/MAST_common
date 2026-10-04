@@ -105,8 +105,6 @@ Use `response.succeeded` / `response.failed` / `response.is_error`. `CanonicalRe
 ### `BaseApi` (`common/api.py`)
 Wraps `httpx` for inter-service HTTP calls. `UnitApi`, `SpecApi`, `ControllerApi`, `NotificationApi` and `SafetyApi` subclass it, each fixing its own host and base path; `ApiDomain` enumerates the addressable services. `ApiResponse` converts JSON dicts to attribute-access objects. Endpoint names are passed as string literals: `spec_api.put(method="abort")`.
 
-**Hostnames resolve fully-qualified first.** `BaseApi` resolves a `hostname` through `resolve_host()`: a bare name is tried as `<name>.<local domain>` (the config file's `domain`) before it is tried bare, and a name that already contains a dot is looked up as given. The order matters. On the units a bare name never resolves through DNS, because their DHCP-supplied suffix is malformed (MAST_provisioning#228), so it falls to an LLMNR/NetBIOS broadcast that only the named machine answers. That broadcast fails exactly when the machine is down, after waiting out its timeout, while the fully-qualified name keeps resolving. Pass a `domain` (`ApiDomain`) on every construction; there is no inference from the hostname.
-
 ## Component Architecture (`common/interfaces/components.py`)
 
 All hardware components (Mount, Focuser, Camera, Covers, Stage, Spectrographs) implement the `Component` ABC which combines:
