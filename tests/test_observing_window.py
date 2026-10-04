@@ -125,3 +125,95 @@ class TestObservingNightHelpers:
     def test_the_date_turns_at_noon_utc(self):
         assert observing_night_date(datetime(2026, 8, 6, 11, 59, tzinfo=UTC)).isoformat() == "2026-08-05"
         assert observing_night_date(datetime(2026, 8, 6, 12, 0, tzinfo=UTC)).isoformat() == "2026-08-06"
+
+
+# --------------------------------------------------------------- the IERS guard --
+#
+# `observing_window()` is the only frame transform in `common`, and astroplan is reached by
+# every `import common.config`, so this one function is where an unapplied IERS policy would
+# bite every MAST service. These tests pin the bug of 2026-10-01 (MAST_common#139), where the
+# same ValueError stopped a mount, and the guard that now prevents it.
+#
+# Staleness is simulated with `auto_max_age = 1e-6`, which makes any prediction count as too
+# old. No network, no cached table touched, so these pass on a machine whose table is current.
+
+
+@pytest.fixture
+def _restore_iers():
+    """`iers.conf` is process-global; leaking it would make the suite order-dependent."""
+    from astropy.utils import iers
+
+    from common import iers_policy
+
+    saved = {name: getattr(iers.conf, name) for name in iers.conf}
+    saved_configured = iers_policy._configured
+    yield
+    for name, value in saved.items():
+        setattr(iers.conf, name, value)
+    iers_policy._configured = saved_configured
+
+
+def test_an_aged_table_does_not_stop_the_observing_window(site, _restore_iers, caplog):
+    """The regression. Before the guard this raised, and took a night's campaign with it."""
+    from astropy.utils import iers
+
+    from common import iers_policy
+
+    iers_policy._configured = False  # as if no service had applied the policy
+    iers.conf.auto_download = False
+    iers.conf.auto_max_age = 1e-6
+    iers.conf.iers_degraded_accuracy = "error"
+
+    with caplog.at_level("WARNING"):
+        window = site.observing_window()
+
+    assert window is not None
+    assert window.start < window.end
+    # And it said so, rather than fixing it silently: a service that never calls
+    # configure_astropy() must be discoverable from its log.
+    assert "IERS policy was not applied" in caplog.text
+
+
+def test_the_guard_is_quiet_when_the_application_already_applied_the_policy(site, _restore_iers, caplog):
+    from common import iers_policy
+
+    iers_policy._configured = False
+    iers_policy.configure_astropy()
+
+    with caplog.at_level("WARNING"):
+        assert site.observing_window() is not None
+    assert "IERS policy was not applied" not in caplog.text
+
+
+def test_the_guard_does_not_load_a_table(site, _restore_iers, monkeypatch):
+    """Cheap on purpose: asking for dusk must not parse ~20k rows or swap a global table.
+
+    The guard's job is "nothing raises". Accuracy is the app lifespan's job, via
+    `load_into_astropy()`, which costs ~510 ms and is called once.
+    """
+    from common import iers_policy
+
+    def fail(*_args, **_kwargs):
+        raise AssertionError("observing_window must not load an IERS table")
+
+    monkeypatch.setattr(iers_policy, "load_into_astropy", fail)
+    iers_policy._configured = False
+    assert site.observing_window() is not None
+
+
+def test_a_site_without_coordinates_needs_no_policy(_restore_iers, caplog):
+    """The early return comes first, so no transform means no guard and no warning."""
+    from common import iers_policy
+
+    nowhere = Site(
+        name="test",
+        project="mast",
+        controller_host="controller",
+        spec_host="spec",
+        unit_ids="1-2",
+        location=Location(latitude=None, longitude=None, elevation=None),
+    )
+    iers_policy._configured = False
+    with caplog.at_level("WARNING"):
+        assert nowhere.observing_window() is None
+    assert "IERS policy was not applied" not in caplog.text
