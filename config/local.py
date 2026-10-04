@@ -83,6 +83,29 @@ class LocalConfig(BaseModel):
             return f"C:/{self.project.upper()}/config-db-cache"
         return os.path.join(os.path.expanduser("~"), self.project.upper(), "config-db-cache")
 
+    @property
+    def iers_cache_dir(self) -> str:
+        """Where the Earth-orientation (IERS) table cache lives: per machine, always writable.
+
+        `C:/MAST/iers-cache` on Windows and `~/MAST/iers-cache` on Linux -- deliberately the
+        same shape as `config_cache_dir`, and for the same two reasons, which apply here
+        unchanged: not `data_root`, whose Linux branch `/var/mast` does not exist on the
+        control host and is not writable by the service account; and not any `Filer` root,
+        because on Linux `Filer().local` is the *share*, one directory common to every Linux
+        host, which is exactly wrong for a cache that exists so a single machine can work when
+        the shared infrastructure -- or the internet -- is unreachable.
+
+        Per machine on purpose (MAST_common#139). Freshness then follows each machine's own
+        network availability, and no unit depends on another, or on the share, to point.
+
+        Not astropy's own `~/.astropy/cache`: that is keyed by URL hash, so it is opaque to an
+        operator, and it is per *user*, so it would move with whichever account runs the
+        service.
+        """
+        if platform.system() == "Windows":
+            return f"C:/{self.project.upper()}/iers-cache"
+        return os.path.join(os.path.expanduser("~"), self.project.upper(), "iers-cache")
+
 
 def _config_file_path() -> str:
     """Locate the bootstrap TOML file.
