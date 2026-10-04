@@ -194,6 +194,54 @@ class LockValidityStatus(BaseModel):
     worst_assessment: LockAssessmentStatus | None = None
 
 
+class PointingSampleOutcome(StrEnum):
+    Solved = "Solved"
+    #: The frame was solved and the solver found no match. Recorded, not dropped: a
+    #: run of these is itself the finding.
+    NotSolved = "NotSolved"
+    #: The frame could not be judged at all -- cropped, binned, no target on record.
+    Unavailable = "Unavailable"
+
+
+class PointingSample(BaseModel):
+    """One guide frame, plate solved while guiding continued.
+
+    Offsets are **target minus solved**, measured at the fiber position (the
+    solver's SPEC reference pixel), so a growing offset means the target is
+    drifting off the fiber while PHD2 holds its star perfectly still.
+    """
+
+    time: str
+    outcome: PointingSampleOutcome
+    reason: str | None = None
+    #: Whether the fold mirror was at SPEC when the frame was taken.
+    mirror_in: bool | None = None
+    ra_hours: float | None = None
+    dec_degs: float | None = None
+    d_ra_arcsec: float | None = None
+    d_dec_arcsec: float | None = None
+    #: On the sky: the RA term carries cos(dec) here, unlike `d_ra_arcsec`.
+    offset_arcsec: float | None = None
+    matched_stars: int | None = None
+    solve_seconds: float | None = None
+    lock_position: tuple[float, float] | None = None
+    avg_dist: float | None = None
+    lock_validity: str | None = None
+
+
+class PointingCheckStatus(BaseModel):
+    """The pointing record of the current (or most recent) guide session."""
+
+    session_started: str | None = None
+    interval_seconds: float = 0.0
+    solved: int = 0
+    not_solved: int = 0
+    unavailable: int = 0
+    #: The latest samples, oldest first. The whole session is in the journal.
+    recent: list[PointingSample] = Field(default_factory=list)
+    journal: str | None = None
+
+
 class PHD2GuiderStatus(BaseModel):
     identifier: str | None = None
     is_guiding: bool = False
@@ -202,6 +250,7 @@ class PHD2GuiderStatus(BaseModel):
     avg_dist: float | None = None
     sky_quality: SkyQualityStatus | None = None
     lock_validity: LockValidityStatus | None = None
+    pointing_check: PointingCheckStatus | None = None
 
     #: What PHD2 is holding, read from PHD2 when this status is built -- not what it
     #: was last sent, and not what the configuration asks for. A consumer that needs
