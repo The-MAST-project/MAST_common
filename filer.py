@@ -307,11 +307,16 @@ class Filer:
             if entry_is_dir and target.is_dir():
                 kept_collision |= self._merge_into(entry, target, op)
             elif target.exists():
-                if entry.is_file() and target.is_file() and _same_bytes(entry, target):
+                key = _collision_key(entry, target)
+                with Filer._reported_collisions_lock:
+                    known_to_differ = key in Filer._reported_collisions
+                if known_to_differ:
+                    kept_collision = True
+                elif entry.is_file() and target.is_file() and _same_bytes(entry, target):
                     entry.unlink()
                     self.info(f"{op}: '{target.as_posix()}' already holds an identical copy; removed '{entry.as_posix()}'")
                 else:
-                    self._report_collision(entry, target, op)
+                    self._report_collision(key, entry, target, op)
                     kept_collision = True
             else:
                 shutil.move(entry, target)
@@ -328,16 +333,8 @@ class Filer:
             self.error(f"{op}: '{src.as_posix()}' not empty after merging, left in place ({e})")
         return False
 
-    def _report_collision(self, entry: Path, target: Path, op: str) -> None:
+    def _report_collision(self, key: tuple, entry: Path, target: Path, op: str) -> None:
         """Report a real collision the first time it is seen; later sweeps retry it silently."""
-        entry_stat, target_stat = entry.stat(), target.stat()
-        key = (
-            str(entry),
-            entry_stat.st_size,
-            entry_stat.st_mtime_ns,
-            target_stat.st_size,
-            target_stat.st_mtime_ns,
-        )
         with Filer._reported_collisions_lock:
             if key in Filer._reported_collisions:
                 return
@@ -638,6 +635,16 @@ class Filer:
 def _is_under(path: str, folder: str) -> bool:
     """True if ``path`` is ``folder`` itself or lies beneath it (both already realpaths)."""
     return path == folder or path.startswith(folder + os.sep)
+
+
+def _collision_key(entry: Path, target: Path) -> tuple:
+    """Both sides' path, size and mtime: a pair that differed once differs until one of them changes.
+
+    Only a *difference* is remembered under this key. A stale one keeps the source on the
+    ram area, which loses nothing; a remembered "identical" could delete the only original.
+    """
+    entry_stat, target_stat = entry.stat(), target.stat()
+    return (str(entry), entry_stat.st_size, entry_stat.st_mtime_ns, target_stat.st_size, target_stat.st_mtime_ns)
 
 
 _COMPARE_CHUNK_BYTES = 1 << 20

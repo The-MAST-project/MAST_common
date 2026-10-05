@@ -49,16 +49,18 @@ how often it said so (#117).
 - A file whose destination **differs** stays in place, as before, and is reported at ERROR
   **once**. The key is both sides' path, size and mtime, held in a class-level set like
   `_pending`, so the sweeper's retries are silent while a new file colliding later under the
-  same name is reported again. Retrying continues, so a person resolving the conflict lets the
+  same name is reported again. The same key skips the comparison on later sweeps: only a
+  difference is remembered, since a stale one just keeps the source, while a remembered
+  "identical" could delete it. Retrying continues, so a person resolving the conflict lets the
   next sweep finish the move with no restart.
 - The folder a collision holds back is no longer reported as `not empty after merging`: that
   was the same event, reported a second time per sweep.
 - A missing source is a WARNING, matching the "ignoring" in its own message. A new
   `Filer.warning()` sits beside `info()` and `error()`.
 
-**Implications:** the comparison reads both copies in full, on every sweep a collision is
-retried, which is about what the move itself would have cost: 0.86 s per 94 MB frame between
-`D:` and `Z:` on mast01. The reported set is process-local and never pruned:
+**Implications:** the comparison reads both copies in full, once per distinct pair, which is
+about what the move itself would have cost: 0.86 s per 94 MB frame between `D:` and `Z:` on
+mast01. The reported set is process-local and never pruned:
 entries accrue only from real conflicts. A restart re-reports each open conflict once, which is
 the wanted reminder. No running summary of blocked sources was added; one ERROR per conflict is
 already countable.

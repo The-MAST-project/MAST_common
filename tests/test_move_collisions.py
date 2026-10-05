@@ -22,6 +22,7 @@ import os
 import pytest
 from test_move_merges_folders import write
 
+from common import filer as filer_module
 from common.filer import Filer, FilerTop
 
 SWEEPS = 3
@@ -100,6 +101,19 @@ class TestARealCollisionIsReportedOnce:
 
         [message] = errors(caplog)
         assert "FOCUS25000.fits" in message
+
+    def test_a_known_difference_is_not_read_again_on_later_sweeps(self, filer, monkeypatch):
+        """Each comparison reads both frames in full; a conflict nobody has touched is
+        not worth re-reading every 30 s."""
+        write(filer.ram_path / "Autofocus" / "0001" / "FOCUS25000.fits", "tonight")
+        write(filer.shared_path / "Autofocus" / "0001" / "FOCUS25000.fits", "earlier")
+        compared = []
+        same_bytes = filer_module._same_bytes
+        monkeypatch.setattr(filer_module, "_same_bytes", lambda a, b: compared.append(a) or same_bytes(a, b))
+
+        sweep(filer, "Autofocus")
+
+        assert len(compared) == 1
 
     def test_the_held_folder_is_not_reported_as_not_empty(self, filer, caplog):
         """The second ERROR per folder per sweep on the night: a consequence of the
