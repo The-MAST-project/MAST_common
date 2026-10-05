@@ -2,6 +2,26 @@
 
 ---
 
+## [2026-10-05] `set_unit` diffs against the raw `common` again; the fix is reopened as #143
+
+**Supersedes** the 2026-09-24 entry "`set_unit` diffs against `common` as the model reads it".
+
+**Why:** that fix shipped in #130 alongside the supervisor's building blocks, though it is not
+supervisor work, and it was not agreed in review. The alternative raised there (model
+defaults replaced with `None`) is still open, and merging `supervision-integration` to
+`master` would have changed every unit's config save as a side effect of the supervisor.
+
+**What:** reverted the code, its test and the README sentence. `set_unit` once again diffs a
+unit's `model_dump()` against the raw `common` document. The 2026-09-24 entry stays as the
+record of what was tried and of the live-database replay. The defect, its related cases, both
+candidate directions and the cleanup of already-written documents (formerly #129) are
+MAST_common#143.
+
+**Implications:** new saves keep freezing model defaults into unit documents until #143 is
+settled. Nothing deployed changes, since the fix never reached `master`.
+
+---
+
 ## [2026-09-24] `opmode` and `SupervisorConfig`: the supervisor's building blocks in common
 
 **Why:** the supervisor (`mast-service` / `mast-supervisor`, in the new MAST_supervision repo;
