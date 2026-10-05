@@ -22,6 +22,33 @@ settled. Nothing deployed changes, since the fix never reached `master`.
 
 ---
 
+## [2026-10-04] Keep notifications off the caller's thread
+
+**Why:** with mast-ns-control down on 2026-09-29, mast01's unit service booted on its config boot
+cache as designed and then could not start a single activity (#133). `start_activity` raised its
+flag and called `Notifier()`, whose first construction built `NotificationApi`. That resolved the
+control machine's name, which raised `getaddrinfo failed`. The singleton never set `_initialized`,
+so every later activity start retried and raised again, each time with its flag already up. The
+startup thread died on its first line, so no component started, while status reported the unit
+idle.
+
+The name failed because the units' DHCP scope sent a malformed DNS suffix (MAST_provisioning#228),
+which is fixed on the Meraki side. Resolution itself is left as it is, with no fully-qualified
+fallback added here. What remains is that any failure to build `NotificationApi` (DNS, TLS, a
+future name change) must not be able to fail the operation a notification announces.
+
+**What:** `Notifier` no longer builds `NotificationApi` in its constructor. The worker builds it on
+its first send, and a failed build leaves the notification queued for the next cycle.
+`ui_notification()` does no I/O on the caller's thread, so a notification cannot fail, delay, or
+leave behind the activity it announces. Reachability is logged on transitions only: one WARNING,
+one INFO.
+
+**Implications:** an HTTP-level send failure still drops the notification, as before; only a
+construction failure keeps it queued. `BaseApi` and every other subclass are unchanged, so a bare
+name that does not resolve still raises at construction for `ControllerApi` and `SpecApi`.
+
+---
+
 ## [2026-09-24] `opmode` and `SupervisorConfig`: the supervisor's building blocks in common
 
 **Why:** the supervisor (`mast-service` / `mast-supervisor`, in the new MAST_supervision repo;

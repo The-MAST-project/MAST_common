@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from enum import IntFlag
 
 from common.activities import Activities
 from common.endpoints import Tier, endpoint
@@ -6,9 +7,9 @@ from common.models.statuses import ComponentStatus
 
 
 class Component(ABC, Activities):
-    def __init__(self, activities_type):
+    def __init__(self, activities_type: type[IntFlag]):
         Activities.__init__(self)
-        self.activities = activities_type(0)
+        self.activities: IntFlag = activities_type(0)
 
     @endpoint(tier=Tier.INTERFACE, methods=("PUT",))
     @abstractmethod

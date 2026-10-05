@@ -6,8 +6,11 @@ from astropy.coordinates import EarthLocation
 from astropy.time import Time
 from pydantic import BaseModel, ConfigDict, model_validator
 
-from common.mast_logging import observing_night_date
+from common import iers_policy
+from common.mast_logging import get_logger, observing_night_date
 from common.models.constraints import TimeWindow
+
+logger = get_logger(__name__)
 
 
 class Building(BaseModel):
@@ -105,9 +108,35 @@ class Site(BaseModel):
         observing. From 00:00 UTC to dawn, roughly the last 1.5 hours of an August
         night and 4 of a winter one, MAST_gui's session tile therefore reported the
         observatory idle (MAST_common#28).
+
+        **This is the only frame transform in `common`, and therefore the only place that
+        needs the IERS guard below.** Everything else here that touches astropy parses
+        `Angle` strings, which needs no Earth-orientation data. (`fswatcher`'s `Observer` is
+        `watchdog`'s, an unrelated name collision.)
         """
         if self.location.latitude is None or self.location.longitude is None:
             return None
+
+        # Apply the IERS policy if the application has not. `sun_set_time` transforms the Sun
+        # into the horizon frame, so it needs UT1-UTC, and astropy's default is to RAISE once
+        # the table's predictions are more than 30 days old -- which is what stopped a mount
+        # on 2026-10-01 (MAST_common#139). astroplan is reached by every `import
+        # common.config`, so guarding this one function covers every MAST service at once,
+        # whether or not its entry point remembered to call `configure_astropy()`.
+        #
+        # Idempotent, so it cannot fight that explicit call -- but loud when it has to act,
+        # because the alternative is a service that is silently exposed until the night its
+        # table ages out. `configure_astropy()` only (microseconds, in memory); deliberately
+        # NOT `load_into_astropy()`, which parses ~20k rows and swaps a process-global table.
+        # Asking for tonight's dusk time must not cost that. The guard's job is "nothing
+        # raises"; accuracy is the lifespan's job.
+        if not iers_policy.is_configured():
+            logger.warning(
+                "observing_window: the IERS policy was not applied by this application; "
+                "applying it here. A service should call common.iers_policy.configure_astropy() "
+                "from its app lifespan, before any coordinate transform."
+            )
+            iers_policy.configure_astropy()
 
         if day is None:
             day = observing_night_date(datetime.now(UTC))
