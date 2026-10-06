@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from common import asi
 from common.activities import ActivitiesVerbal
 from common.mast_logging import get_logger
+from common.opmode import OpMode, OpState
 from common.rois import SkyRoi, SpecRoi, UnitRoi
 from common.spec import (
     FilterPositions,
@@ -771,6 +772,13 @@ class FullUnitStatus(ComponentStatus, PowerStatus):
     """Full unit status with all components, returned from the unit itself."""
 
     type: StatusType = StatusType.FULL
+    # First of this model's own fields, so on the wire they follow the inherited
+    # `activities_verbal` / `was_shut_down` (opmode-design 4, 6). Optional and defaulting to
+    # None, deliberately: `common` is one shared clone, so a control host pulls these fields
+    # before any unit sends them, and a defaulted value would report a lifecycle state the
+    # unit never claimed -- "not reported" is the honest reading of an old unit.
+    opmode: OpMode | None = None
+    opstate: OpState | None = None
     id: int
     guiding: bool = False
     autofocusing: bool = False

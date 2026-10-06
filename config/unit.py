@@ -1,16 +1,19 @@
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 from common.asi import ASI_294MM_SUPPORTED_BINNINGS_LITERAL
+from common.opmode import OpMode
 
 from .calibration import CalibrationConfig
 from .covers import CoversConfig
 from .focuser import FocuserConfig
 from .imager import ImagerConfig
 from .mount import MountConfig
+from .opmode import opmode_field
 from .phd2 import PHD2Config
 from .power import PowerSwitchConfig
 from .rois import RoisConfig
 from .stage import StageConfig
+from .supervisor import SupervisorConfig
 
 
 class ToleranceConfig(BaseModel):
@@ -87,6 +90,14 @@ class UnitConfig(BaseModel):
     autofocus: AutofocusConfig
     guider: GuiderConfig
     calibration: CalibrationConfig | None = None
+    opmode: OpMode = opmode_field()
+    supervisor: SupervisorConfig = Field(default_factory=SupervisorConfig.for_unit)
+    # Whether a shutdown also powers the machine's components down. In the config database
+    # for now (units.common, overridable per unit / the specs document) so the behaviour can
+    # be tried both ways; to be hard-coded once settled. Default False: shutdown, then a
+    # separate powerdown. No UI metadata yet -- no config field has a boolean widget.
+    # Design: opmode-design section 4a.
+    power_down_on_shutdown: bool = False
 
     @model_validator(mode="after")
     def validate_unit_config(self):

@@ -1,15 +1,18 @@
 from copy import deepcopy
 from typing import Literal
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 from common.deep import deep_dict_update
 from common.models.newton import NewtonSettingsConfig
+from common.opmode import OpMode
 
 from .chiller import ChillerConfig
 from .greateyes import GreateyesConfig
+from .opmode import opmode_field
 from .power import OutletConfig, PowerConfig, PowerSwitchConfig
 from .stage import SpecStagesConfig
+from .supervisor import SupervisorConfig
 
 
 class WheelConfig(BaseModel):
@@ -85,6 +88,14 @@ class SpecsConfig(BaseModel):
     highspec: HighspecConfig
     lamps: dict[str, PowerConfig]
     server: ServerConfig
+    opmode: OpMode = opmode_field()
+    supervisor: SupervisorConfig = Field(default_factory=SupervisorConfig)
+    # Whether a shutdown also powers the machine's components down. In the config database
+    # for now (units.common, overridable per unit / the specs document) so the behaviour can
+    # be tried both ways; to be hard-coded once settled. Default False: shutdown, then a
+    # separate powerdown. No UI metadata yet -- no config field has a boolean widget.
+    # Design: opmode-design section 4a.
+    power_down_on_shutdown: bool = False
 
     @model_validator(mode="after")
     def validate_specs_config(self):
