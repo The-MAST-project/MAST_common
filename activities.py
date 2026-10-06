@@ -333,6 +333,10 @@ class UnitActivities(IntFlag):
     CalibratingFocus = auto()
     CalibratingOpticalCenter = auto()
     CalibratingStage = auto()
+    PoweringDown = auto()
+    # Raised by Unit.abort(), ended by Unit.ontimer once nothing the abort reaches is still
+    # running. Appended, per the rule above. Shutdown waits on it (opmode-design 5.3).
+    Aborting = auto()
 
 
 class ImagerActivities(IntFlag):
@@ -361,6 +365,8 @@ class FocuserActivities(IntFlag):
     StartingUp = auto()
     ShuttingDown = auto()
     Aborting = auto()
+    PoweringUp = auto()
+    PoweringDown = auto()
 
 
 class MountActivities(IntFlag):
@@ -373,6 +379,8 @@ class MountActivities(IntFlag):
     Dancing = auto()
     Moving = auto()
     Aborting = auto()
+    PoweringUp = auto()
+    PoweringDown = auto()
 
 
 class StageActivities(IntFlag):

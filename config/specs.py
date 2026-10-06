@@ -90,6 +90,12 @@ class SpecsConfig(BaseModel):
     server: ServerConfig
     opmode: OpMode = opmode_field()
     supervisor: SupervisorConfig = Field(default_factory=SupervisorConfig)
+    # Whether a shutdown also powers the machine's components down. In the config database
+    # for now (units.common, overridable per unit / the specs document) so the behaviour can
+    # be tried both ways; to be hard-coded once settled. Default False: shutdown, then a
+    # separate powerdown. No UI metadata yet -- no config field has a boolean widget.
+    # Design: opmode-design section 4a.
+    power_down_on_shutdown: bool = False
 
     @model_validator(mode="after")
     def validate_specs_config(self):

@@ -20,7 +20,7 @@ def opmode_field() -> Any:
                 "widget": "select",
                 "options": [mode.value for mode in OpMode],
                 "label": "Operating mode",
-                "tooltip": "automatic: the app starts up when run; controlled: it stands by for the control machine",
+                "tooltip": "operated: run by an operator, starts at once; controlled: run by the supervisor, waits",
             },
             "required_capabilities": [UserCapabilities.CAN_CHANGE_CONFIGURATION.value],
         },

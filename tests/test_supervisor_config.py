@@ -36,8 +36,8 @@ def test_neither_new_field_is_required(model):
 
 
 @pytest.mark.parametrize("model", [UnitConfig, SpecsConfig])
-def test_opmode_defaults_to_automatic(model):
-    assert model.model_fields["opmode"].default is OpMode.AUTOMATIC
+def test_opmode_defaults_to_operated(model):
+    assert model.model_fields["opmode"].default is OpMode.OPERATED
 
 
 @pytest.mark.parametrize("model", [UnitConfig, SpecsConfig])

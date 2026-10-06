@@ -7,6 +7,22 @@ from common.models.statuses import ComponentStatus
 
 
 class Component(ABC, Activities):
+    """A hardware component of a unit or spec machine. Its lifecycle (opmode-design section 4a):
+
+    - ``__init__()`` -- initialises the component's fields, powers it on and connects. It does
+      NOT consult the opmode: only the top component (the unit or spec) reads it, and decides
+      in ``start_lifespan`` whether to call ``startup()`` at once (``operated``) or wait for
+      the command (``controlled``).
+    - ``startup()`` -- tries to make the component operational; success is reported through
+      ``operational`` / ``why_not_operational``.
+    - ``shutdown()`` -- performs the component's shutdown activities, sets ``was_shut_down``, and
+      leaves it powered, ready to ``startup()`` again or ``powerdown()`` -- unless the machine's
+      ``power_down_on_shutdown`` is set, in which case it calls ``powerdown()`` itself.
+    - ``powerdown()`` -- powers the component down.
+
+    Components carry no ``opstate``; that is the top component's alone.
+    """
+
     def __init__(self, activities_type: type[IntFlag]):
         Activities.__init__(self)
         self.activities: IntFlag = activities_type(0)
@@ -24,7 +40,6 @@ class Component(ABC, Activities):
     def shutdown(self):
         """
         Called whenever an observing session is terminated (at sun-up or when becoming unsafe)
-        :return:
         """
 
     @property

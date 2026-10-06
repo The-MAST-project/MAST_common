@@ -1,4 +1,4 @@
-"""`opmode` resolution: the environment, then this machine's configuration, then `automatic`."""
+"""`opmode` resolution: the environment, then this machine's configuration, then `operated`."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from common.opmode import DEFAULT_OPMODE, OPMODE_ENV, OpMode, opmode_from_env, resolve_opmode
+from common.opmode import DEFAULT_OPMODE, OPMODE_ENV, OpMode, OpState, opmode_from_env, resolve_opmode
 
 
 @pytest.fixture
@@ -44,15 +44,15 @@ class TestFromEnv:
     @pytest.mark.parametrize("raw", ["controled", "", "tested"])
     def test_an_unrecognized_value_raises_naming_the_legal_ones(self, monkeypatch, raw):
         monkeypatch.setenv(OPMODE_ENV, raw)
-        with pytest.raises(ValueError, match="automatic, controlled"):
+        with pytest.raises(ValueError, match="operated, controlled"):
             opmode_from_env()
 
 
 class TestResolve:
     def test_env_beats_configuration(self, monkeypatch):
-        monkeypatch.setenv(OPMODE_ENV, "automatic")
+        monkeypatch.setenv(OPMODE_ENV, "operated")
         _machine(monkeypatch, "unit", unit=SimpleNamespace(opmode=OpMode.CONTROLLED))
-        assert resolve_opmode() is OpMode.AUTOMATIC
+        assert resolve_opmode() is OpMode.OPERATED
 
     def test_a_unit_reads_its_unit_configuration(self, monkeypatch, no_env):
         _machine(monkeypatch, "unit", unit=SimpleNamespace(opmode=OpMode.CONTROLLED))
@@ -86,3 +86,40 @@ class TestResolve:
         monkeypatch.setenv(OPMODE_ENV, "controled")
         with pytest.raises(ValueError):
             resolve_opmode()
+
+
+class TestOpmodeBase:
+    """The top component's mode and lifecycle state (opmode-design 4, 4a)."""
+
+    def _base(self, mode):
+        from common.opmode import OpmodeBase
+
+        base = OpmodeBase()
+        base._opmode = mode  # skip resolution: these tests are about the state, not the source
+        return base
+
+    def test_starts_initializing(self):
+        assert self._base(OpMode.CONTROLLED).opstate is OpState.INITIALIZING
+
+    def test_opstate_is_read_only_from_outside(self):
+        """One writer: components used to assign the unit's opstate directly."""
+        base = self._base(OpMode.CONTROLLED)
+        with pytest.raises(AttributeError):
+            base.opstate = OpState.RUNNING  # type: ignore[misc]
+
+    def test_set_opstate_logs_a_change_and_not_a_repeat(self, caplog):
+        base = self._base(OpMode.CONTROLLED)
+        with caplog.at_level("INFO"):
+            base._set_opstate(OpState.SHUTDOWN)
+            base._set_opstate(OpState.SHUTDOWN)
+        assert base.opstate is OpState.SHUTDOWN
+        assert sum("opstate" in r.getMessage() for r in caplog.records) == 1
+
+    @pytest.mark.parametrize(
+        ("mode", "operated", "controlled"),
+        [(OpMode.OPERATED, True, False), (OpMode.CONTROLLED, False, True)],
+    )
+    def test_is_operated_and_is_controlled(self, mode, operated, controlled):
+        base = self._base(mode)
+        assert base.is_operated is operated
+        assert base.is_controlled is controlled
