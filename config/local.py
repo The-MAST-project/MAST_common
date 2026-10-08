@@ -7,8 +7,8 @@ from pydantic import BaseModel, ValidationError, field_validator
 
 from .site import Location
 
-# The machine's role in the MAST deployment. Distinct from the USER role
-# concept (UserConfig/GroupConfig capabilities — admin/owner/operator/…).
+# The machine's role in the MAST deployment. Distinct from a person's
+# permissions, which are MAST_gui's Django accounts and groups.
 VALID_MACHINE_ROLES = ("unit", "spec", "control")
 
 

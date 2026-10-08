@@ -16,14 +16,14 @@ package from within each host project.
 - **Configuration** (`config/`) — Pydantic models for the whole system
   configuration plus the `Config` singleton that loads it. Configuration is
   persisted in MongoDB at the controller host (database `mast`; collections
-  `units`, `sites`, `specs`, `services`, `users`, `groups`); each machine
+  `units`, `sites`, `specs`, `services`); each machine
   bootstraps its identity and Mongo connection from a local TOML file
   (`config/local.py`, see `config/local.toml.example`).
   A unit's effective configuration is the `units` collection's `common`
   document deep-merged with the unit-specific document; `Config.set_unit()`
   writes back only the delta from `common`. Fields tagged with
-  `json_schema_extra` UI metadata are editable from the GUI by users holding
-  the required capability.
+  `json_schema_extra` UI metadata are editable from the GUI; who may edit
+  them is a Django permission in MAST_gui.
 - **Operating mode** (`opmode.py`) — `OpMode` (`operated` | `controlled`) and
   `resolve_opmode()`: the `MAST_OPMODE` env var, then the machine's
   `UnitConfig.opmode` / `SpecsConfig.opmode`, then `operated`.

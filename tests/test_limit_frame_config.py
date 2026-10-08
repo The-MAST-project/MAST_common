@@ -17,7 +17,6 @@ import pytest
 phd2_config = pytest.importorskip("common.config.phd2", reason="config package import chain unavailable")
 from pydantic import ValidationError  # noqa: E402
 
-from common.config.identification import UserCapabilities  # noqa: E402
 from common.config.phd2 import LimitFrameConfig, LimitFrameMode, PHD2Config  # noqa: E402
 
 # The ``phd2`` section of the real 'common' units doc (backup
@@ -78,15 +77,12 @@ class TestLimitFrameConfigModel:
         with pytest.raises(ValidationError):
             LimitFrameConfig(mode="fixed", **rect)
 
-    def test_all_fields_carry_gui_capability_metadata(self):
-        """The GUI contract: every field is editable-with-capability."""
+    def test_all_fields_are_gui_editable(self):
+        """The GUI contract: every field is editable."""
         for name, field in LimitFrameConfig.model_fields.items():
             extra = field.json_schema_extra
             assert isinstance(extra, dict), f"{name}: missing json_schema_extra"
             assert extra["ui"]["editable"] is True, f"{name}: not GUI-editable"
-            assert UserCapabilities.CAN_CHANGE_CONFIGURATION.value in extra["required_capabilities"], (
-                f"{name}: missing CAN_CHANGE_CONFIGURATION"
-            )
 
     def test_mode_select_offers_every_mode(self):
         options = LimitFrameConfig.model_fields["mode"].json_schema_extra["ui"]["options"]
