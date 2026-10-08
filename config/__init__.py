@@ -25,7 +25,6 @@ from ._memo import by_generation, make_memo
 from ._snapshot import ConfigSnapshot
 from ._source import ConfigSource, MongoConfigSource
 from ._watcher import ConfigWatcher
-from .identification import GroupConfig, UserConfig
 from .local import ConfigError, LocalConfig, load_local_config
 from .site import Site
 from .unit import UnitConfig
@@ -33,7 +32,7 @@ from .vault import VaultConfig, load_vault
 
 # The collections that make up the MAST configuration database. This is the DB
 # schema/layout (not a per-deployment setting), so it stays a module constant.
-DEFAULT_COLLECTIONS = ("groups", "services", "sites", "specs", "units", "users")
+DEFAULT_COLLECTIONS = ("services", "sites", "specs", "units")
 
 #: Fail fast rather than at pymongo's 30 s default. A unit whose controller is down
 #: would otherwise block half a minute at startup discovering that, and every later
@@ -629,9 +628,8 @@ class Config:
         A copy, not the stored list. The store is compared against a fresh read to decide
         whether anything actually changed, so a caller that edits what it was handed makes
         the store permanently differ from the database and every refresh would republish
-        for ever. `get_specs` and `get_users` both used to do exactly that -- see their
-        comments. Handing out a copy makes that class of bug impossible rather than
-        merely fixed.
+        for ever. `get_specs` used to do exactly that -- see its comment. Handing out a
+        copy makes that class of bug impossible rather than merely fixed.
 
         `ConfigError` rather than the previous bare `assert`: asserts vanish under `-O`,
         and an `AssertionError` naming nothing is not a diagnosis.
@@ -942,44 +940,6 @@ class Config:
             Config._vault = load_vault()
         return Config._vault
 
-    @by_generation("users", "groups")
-    def get_users(self, *, _snapshot: ConfigSnapshot | None = None) -> list[UserConfig]:
-        all_user_dicts = self._section("users", _snapshot)
-        user_configs: list[UserConfig] = []
-
-        all_group_configs = [GroupConfig(**group) for group in self._section("groups", _snapshot)]
-        group_config_by_name: dict[str, GroupConfig] = {group.name: group for group in all_group_configs}
-
-        for user_dict in all_user_dicts:
-            # `user_dict["capabilities"] = []` used to stand here, injecting a key into
-            # the shared store on every call because the model required a field no
-            # `users` document has ever carried. `UserConfig.capabilities` now defaults.
-            user_config = UserConfig(**user_dict)
-
-            if "everybody" not in user_config.groups:
-                user_config.groups.append("everybody")
-
-            for group_name in user_config.groups:
-                grp = group_config_by_name.get(group_name)
-                if grp is None:
-                    logger.warning(f"unknown group '{group_name}' for user '{user_config.name}', ignored!")
-                    continue
-                for cap in grp.capabilities or []:
-                    user_config.capabilities.append(cap)
-
-            user_config.capabilities = sorted(set(user_config.capabilities))  # set() makes unique
-            user_configs.append(user_config)
-
-        return user_configs
-
-    def get_user(self, user_name: str) -> UserConfig | None:
-        found = [u for u in self.get_users() if u.name == user_name]
-        if not found:
-            logger.warning(f"no user configuration for '{user_name=}'")
-            return None
-
-        return found[0]
-
     @property
     def sites(self) -> list[Site]:
         return self.get_sites()
@@ -1018,10 +978,6 @@ def test_service_config(service_name: str | None):
     [print(json.dumps(service.model_dump(), indent=2)) for service in result if service.name == service_name]
 
 
-def test_user(name: str):
-    print(json.dumps(Config().get_user(name), indent=2))
-
-
 def test_unit_config(site_name: str | None = None, unit_name: str | None = None):
     unit_conf = Config().get_unit(site_name=site_name, unit_name=unit_name)
     assert unit_conf is not None
@@ -1030,7 +986,6 @@ def test_unit_config(site_name: str | None = None, unit_name: str | None = None)
 
 def main():
     # test_specs_config()
-    # test_users()
 
     # test_service_config("control")
     # test_service_config("spec")

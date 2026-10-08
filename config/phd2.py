@@ -2,8 +2,6 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field, model_validator
 
-from common.config.identification import UserCapabilities
-
 
 class PHD2SettleConfig(BaseModel):
     """Configuration for PHD2 settle settings."""
@@ -46,7 +44,6 @@ class LimitFrameConfig(BaseModel):
                 "tooltip": "derived: from fiber position/margins; full_frame: no limit "
                 "frame (full-sensor star selection); fixed: the rectangle below",
             },
-            "required_capabilities": [UserCapabilities.CAN_CHANGE_CONFIGURATION.value],
         },
     )
     x: int = Field(
@@ -60,7 +57,6 @@ class LimitFrameConfig(BaseModel):
                 "label": "X",
                 "tooltip": "Limit frame origin X (unbinned camera pixels; mode 'fixed' only)",
             },
-            "required_capabilities": [UserCapabilities.CAN_CHANGE_CONFIGURATION.value],
         },
     )
     y: int = Field(
@@ -74,7 +70,6 @@ class LimitFrameConfig(BaseModel):
                 "label": "Y",
                 "tooltip": "Limit frame origin Y (unbinned camera pixels; mode 'fixed' only)",
             },
-            "required_capabilities": [UserCapabilities.CAN_CHANGE_CONFIGURATION.value],
         },
     )
     width: int = Field(
@@ -88,7 +83,6 @@ class LimitFrameConfig(BaseModel):
                 "label": "Width",
                 "tooltip": "Limit frame width (unbinned camera pixels; mode 'fixed' only)",
             },
-            "required_capabilities": [UserCapabilities.CAN_CHANGE_CONFIGURATION.value],
         },
     )
     height: int = Field(
@@ -102,7 +96,6 @@ class LimitFrameConfig(BaseModel):
                 "label": "Height",
                 "tooltip": "Limit frame height (unbinned camera pixels; mode 'fixed' only)",
             },
-            "required_capabilities": [UserCapabilities.CAN_CHANGE_CONFIGURATION.value],
         },
     )
 

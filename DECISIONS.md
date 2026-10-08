@@ -2,6 +2,30 @@
 
 ---
 
+## [2026-10-08] Retire the `users` and `groups` config collections
+
+**Why:** Django is the sole source of truth for MAST users and permissions. The GUI
+authenticates against its own database and authorizes with Django permissions. The Mongo
+`users` and `groups` collections served only `get_users()` / `get_user()`, whose one
+consumer, MAST-control's `/config/users` and `/config/user` routes, nothing called. Keeping
+them suggested a second permission model that does not exist (MAST_common#146).
+
+**What:** `DEFAULT_COLLECTIONS` no longer names them, and `get_users()`, `get_user()`,
+`UserConfig`, `GroupConfig` and `UserCapabilities` (`config/identification.py`) are deleted,
+together with the `required_capabilities` metadata on the focuser, opmode and PHD2 fields,
+which nothing read. `models/plans.py` keeps its `required_capabilities`, which already use
+Django permission names. The routes went first (MAST_control#41), and dropping the data is
+MAST_config_db#19.
+
+**Implications:** a process no longer reads or caches either collection, and their absence
+from the database is not an outage. Against a scratch replica set seeded from the backup,
+current `master` and this change both boot without them, survive a live drop, and boot
+degraded from a cache that still holds them. A boot cache written by this code lacks them,
+so code from before this change, booting from such a cache while MongoDB is down, refuses it
+as incomplete. That needs a rollback and a database outage together.
+
+---
+
 ## [2026-10-05] `set_unit` diffs against the raw `common` again; the fix is reopened as #143
 
 **Supersedes** the 2026-09-24 entry "`set_unit` diffs against `common` as the model reads it".
