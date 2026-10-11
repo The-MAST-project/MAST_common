@@ -4,6 +4,7 @@ import logging
 import os
 import platform
 import time
+from enum import StrEnum
 
 from rich.logging import RichHandler
 from rich.text import Text
@@ -11,6 +12,23 @@ from rich.text import Text
 from common.filer import Filer
 
 default_log_level = logging.DEBUG
+
+
+class LogProgram(StrEnum):
+    """Which program on a machine is logging. The machine itself is ``machine_role`` in config.toml.
+
+    The caller names the program and never the file: the name stays derived from the configured
+    role, so two programs on one machine each get their own daily file without either stating
+    the machine's identity.
+    """
+
+    APP = "app"
+    SUPERVISOR = "supervisor"
+
+    def file_name(self, role: str) -> str:
+        if self is LogProgram.APP:
+            return f"mast-{role}-log.txt"
+        return f"mast-{role}-{self}-log.txt"
 
 
 class UtcFormatter(logging.Formatter):
@@ -126,8 +144,10 @@ class DailyFileHandler(logging.FileHandler):
         encoding=None,
         delay=True,
         errors=None,
+        program: LogProgram = LogProgram.APP,
     ):
         self.leaf = filename
+        self.program = program
         self.base_dir = base_dir or self.default_base_dir()
         self.current_path: str | None = None
         self._next_open_attempt: float = 0.0
@@ -277,7 +297,7 @@ def resolve_log_level(cli_level: str | None = None) -> int:
     return default_log_level
 
 
-def configure_logging(cli_level: str | None = None) -> int:
+def configure_logging(cli_level: str | None = None, program: LogProgram = LogProgram.APP) -> int:
     """
     Configure logging for a process.  Call once, from the application entry
     point, BEFORE anything logs.
@@ -288,10 +308,11 @@ def configure_logging(cli_level: str | None = None) -> int:
     loudly it talks.
 
     `cli_level` is whatever a --log-level flag produced (None if absent);
-    precedence is CLI > MAST_LOG_LEVEL > default. Returns the level applied.
+    precedence is CLI > MAST_LOG_LEVEL > default. `program` names the daily file
+    (see LogProgram). Returns the level applied.
     """
     level = resolve_log_level(cli_level)
-    init_log(level=level)
+    init_log(level=level, program=program)
     quiet_libraries()
     return level
 
@@ -299,6 +320,7 @@ def configure_logging(cli_level: str | None = None) -> int:
 def init_log(
     logger_: logging.Logger | None = None,
     level: int | None = None,
+    program: LogProgram = LogProgram.APP,
 ):
     """
     Attach the MAST handlers (rich console + daily file).
@@ -311,6 +333,10 @@ def init_log(
     only so consumers that still call it per module keep working until they are
     converted. That path also keeps propagate=False, as it always did, so a
     logger with its own handlers cannot emit twice.
+
+    `program` names which program on the machine this is (see LogProgram). A
+    second call for a different program than the daily file already attached
+    raises: ignoring it would put two processes in one file.
     """
     logger_ = logging.getLogger() if logger_ is None else logger_
     if logger_ is not logging.getLogger():
@@ -330,7 +356,7 @@ def init_log(
         role = load_local_config().machine_role
     except Exception:  # noqa: BLE001 -- runs at import; any config problem must degrade, not raise
         role = "STARTUP"
-    file_name = f"mast-{role}-log.txt"
+    file_name = program.file_name(role)
 
     formatter = UtcFormatter(
         "%(asctime)s - %(levelname)-8s - {%(name)s:%(funcName)s:%(threadName)s:%(thread)s} -  %(message)s"
@@ -364,11 +390,15 @@ def init_log(
         logger_.addHandler(rich_handler)
 
     daily_handlers = [h for h in logger_.handlers if isinstance(h, DailyFileHandler)]
+    conflicting = [h.leaf for h in daily_handlers if h.program is not program]
+    if conflicting:
+        raise ValueError(f"init_log({program=}): this logger already writes {conflicting[0]}")
     if not daily_handlers:
         handler = DailyFileHandler(
             filename=file_name,
             base_dir=Filer().machine_log_root(),
             mode="a",
+            program=program,
         )
 
         handler.setLevel(level)

@@ -2,6 +2,32 @@
 
 ---
 
+## [2026-10-11] The daily log file is named per program, and the role still comes from config
+
+**Why:** the MAST supervisor runs on a unit beside the unit app, as a second long-lived
+process. Both called `init_log()`, which names the file `mast-<machine_role>-log.txt`, so both
+would append to one file, over SMB, with no PID in the format to tell their lines apart
+(#148). The first proposal was a `file_leaf` parameter naming the file outright. That would
+have let a caller hard-code the machine's identity again, which the 2026-07-20 entry moved into
+config.toml's `machine_role`. Its proposed `mast-supervisor-log.txt` would also have dropped
+the role, giving the same name on a unit and on a spec machine.
+
+**What:** `LogProgram` (`APP`, `SUPERVISOR`) in `mast_logging.py`. `init_log()` and
+`configure_logging()` take `program=LogProgram.APP`, and `LogProgram.file_name(role)` derives
+the name: `mast-<role>-log.txt` for `APP`, unchanged for every existing caller, and
+`mast-<role>-supervisor-log.txt` for `SUPERVISOR`. The `STARTUP` fallback composes the same
+way. `DailyFileHandler` records its `program`. A second `init_log()` on a logger whose daily
+handler belongs to another program raises `ValueError`, where it used to be silently ignored.
+Only the program is compared, so a later call that resolves the real role after a `STARTUP`
+fallback still keeps the first file, as before.
+
+**Implications:** the supervisor calls `configure_logging(program=LogProgram.SUPERVISOR)`.
+`mast-service` is deliberately not a member: it runs in session 0, logs outside the share and
+never calls `configure_logging()`. A new long-lived program on a MAST machine gets a member here
+rather than a file name of its own.
+
+---
+
 ## [2026-10-08] Retire the `users` and `groups` config collections
 
 **Why:** Django is the sole source of truth for MAST users and permissions. The GUI
