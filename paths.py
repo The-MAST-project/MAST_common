@@ -17,6 +17,7 @@ CALIBRATION_PHASE_FOLDERS = {
     "focuser": "Focuser",
     "optical_center": "OpticalCenter",
     "stage": "Stage",
+    "focus_on_star": "FocusOnStar",
 }
 
 

@@ -239,6 +239,58 @@ class FocusConvergenceCampaignSettings(BaseModel):
     restore_focus_on_exit: bool = True
 
 
+class FocusOnStarSettings(BaseModel):
+    """Inputs for ``PUT /unit/focus_on_star``: a narrow-field V-curve on one star.
+
+    The run picks one isolated GAIA DR3 star near a sky position, acquires it on
+    the fibre pixel (the ``spec`` acquisition phase, no guiding), and sweeps the
+    focuser measuring HFD only inside a box of ``fov_percent`` of the frame about
+    that pixel.  It refines focus after ``/calibrate/focuser``; it writes no
+    product and never touches ``known_as_good_position``.
+
+    The fibre pixel stands in for the optical axis until the optical-center
+    calibration is trusted.  Design: mast-claude-config plans/focus_on_star_design.md.
+    """
+
+    # Catalog: catsHTM layout -- <name>_htm.hdf5 index, <name>_htmColCell.mat
+    # column names, <name>_htm_NNNN00.hdf5 data files.
+    catalog_root: str = r"\\last0\catalogs\GAIA\DR3"
+    catalog_name: str = "GAIADR3"
+    mag_column: str = "phot_g_mean_mag"  # Gaia G: broad band, close to the unfiltered ASI294
+    catalog_epoch: float = 2016.0  # Julian year of the catalog positions (GAIA DR3)
+    apply_proper_motion: bool = True  # propagate positions from catalog_epoch to now
+
+    # Star search.  The radius grows by search_growth until a candidate is found
+    # or max_search_radius_deg is passed.  The isolation check is a circle around
+    # the candidate: the fov box's half-diagonal plus isolation_margin_px, because
+    # the camera's position angle on the sky is not known.
+    search_radius_deg: float = 0.5
+    search_growth: float = 2.0
+    max_search_radius_deg: float = 4.0
+    isolation_margin_px: int = 80  # about one HFD stamp, so a neighbour's wings stay out
+
+    # Endpoint defaults (each may be overridden per call).
+    fov_percent: float = 10.0  # LINEAR percent of the frame's width and height
+    star_magnitude: float = 10.0  # the star must be no brighter than this (G >= limit)
+    steps: int = 5  # V-curve points; MUST be odd so a point sits on the seed
+    ticks_per_step: int = 50
+
+    # Exposure and analysis.
+    exposure: float = 3.0  # seconds; halved on saturation, up to max_saturation_retries times
+    binning: ASI_294MM_SUPPORTED_BINNINGS_LITERAL = 1
+    max_saturation_retries: int = 2
+    max_tries: int = 1  # 1 = one sweep, exactly as asked; 2 allows one re-centred sweep
+    tolerance_frac: float = 0.025
+    #
+    # The shape gate, looser than /calibrate/focuser's: a 5 x 50-tick sweep spans
+    # only +-100 ticks, over which HFD rises ~1.1-1.2x on recorded sweeps, so the
+    # calibration's min_edge_rise of 1.25 would reject good runs.  ESTIMATES --
+    # re-check against on-sky runs.
+    min_fit_r2: float = 0.85
+    min_edge_rise: float = 1.10
+    max_best_hfd_px: float = 35.0
+
+
 class CalibrationSettings(BaseModel):
     """All calibration inputs, one sub-block per phase plus the shared pointing."""
 
@@ -247,6 +299,7 @@ class CalibrationSettings(BaseModel):
     optical_center: OpticalCenterCalibrationSettings = Field(default_factory=OpticalCenterCalibrationSettings)
     stage: StageCalibrationSettings = Field(default_factory=StageCalibrationSettings)
     campaign: FocusConvergenceCampaignSettings = Field(default_factory=FocusConvergenceCampaignSettings)
+    focus_on_star: FocusOnStarSettings = Field(default_factory=FocusOnStarSettings)
 
 
 # ---------------------------------------------------------------------------
