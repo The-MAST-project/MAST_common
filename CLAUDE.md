@@ -137,8 +137,14 @@ callers are converted.
 Two handlers: a Rich console (on by default) and `DailyFileHandler`, which writes
 
 ```
-<base>/<observing-night>/mast-<machine_role>-log.txt
+<base>/<observing-night>/mast-<machine_role>-log.txt              (LogProgram.APP, the default)
+<base>/<observing-night>/mast-<machine_role>-supervisor-log.txt   (LogProgram.SUPERVISOR)
 ```
+
+A second long-lived program on a machine passes `program=` to `configure_logging()` /
+`init_log()`. Name the program, never the file: the role stays from config.toml (see the
+2026-10-11 `DECISIONS.md` entry). Asking for a different program than the daily file
+already attached raises.
 
 **`<base>` is `Filer().machine_log_root()`** — this machine's folder on the operational
 share (`Z:/MAST/<hostname>/` on Windows, `/Storage/mast-share/MAST/<hostname>` on Linux),
