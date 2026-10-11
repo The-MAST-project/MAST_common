@@ -15,7 +15,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from common.config import Config, ConfigChange
+from common.config import DEFAULT_COLLECTIONS, Config, ConfigChange
 from common.config import _cache as cache_mod
 from common.config._watcher import ConfigWatcher
 from common.config.local import ConfigError
@@ -31,8 +31,6 @@ SITES = [
 ]
 BASE = {
     "sites": SITES,
-    "groups": [{"name": "everybody", "capabilities": ["canView"]}],
-    "users": [{"name": "arie", "groups": []}],
     "services": [{"name": "control", "port": 8002}],
     "specs": [{"marker": 1}],
     "units": [{"name": "common"}],
@@ -143,10 +141,10 @@ def test_publish_bumps_only_what_changed():
     cfg = make_config()
     before = cfg.snapshot
 
-    changed = cfg._publish({"users": [{"name": "arie", "groups": []}, {"name": "new", "groups": []}]})
+    changed = cfg._publish({"units": [{"name": "common"}, {"name": "new"}]})
 
-    assert changed == {"users"}
-    assert cfg.snapshot.generations["users"] == before.generations["users"] + 1
+    assert changed == {"units"}
+    assert cfg.snapshot.generations["units"] == before.generations["units"] + 1
     assert cfg.snapshot.generations["sites"] == before.generations["sites"]
     assert cfg.snapshot.generation == before.generation + 1
 
@@ -155,7 +153,7 @@ def test_publishing_identical_documents_changes_nothing():
     cfg = make_config()
     before = cfg.snapshot
 
-    assert cfg._publish({"users": [dict(d) for d in before.collections["users"]]}) == frozenset()
+    assert cfg._publish({"units": [dict(d) for d in before.collections["units"]]}) == frozenset()
     assert cfg.snapshot.generation == before.generation
 
 
@@ -174,7 +172,7 @@ def test_reload_reads_only_the_named_collections():
     cfg = make_config(source)
     source.reads = 0
 
-    cfg._reload(["users"])
+    cfg._reload(["units"])
 
     assert source.reads == 1
 
@@ -197,11 +195,11 @@ def test_callback_receives_only_what_changed():
     seen: list[ConfigChange] = []
     cfg.on_change(seen.append, name="test")
 
-    cfg.source.set("users", [{"name": "solo", "groups": []}])
-    cfg._reload(["users"])
+    cfg.source.set("units", [{"name": "solo"}])
+    cfg._reload(["units"])
 
     assert wait_for(lambda: seen)
-    assert seen[-1].collections == {"users"}
+    assert seen[-1].collections == {"units"}
     assert seen[-1].degraded is False
 
 
@@ -210,8 +208,8 @@ def test_a_filtered_callback_is_not_woken_by_another_collection():
     woken = threading.Event()
     cfg.on_change(lambda _: woken.set(), collections=("units",), name="units-only")
 
-    cfg.source.set("users", [{"name": "solo", "groups": []}])
-    cfg._reload(["users"])
+    cfg.source.set("services", [{"name": "solo"}])
+    cfg._reload(["services"])
 
     assert not wait_for(woken.is_set, timeout=0.5)
 
@@ -231,8 +229,8 @@ def test_changes_during_a_slow_callback_coalesce_into_one():
 
     cfg.on_change(slow, name="slow")
 
-    cfg._publish({"users": [{"name": "a", "groups": []}]})
-    cfg._enqueue_change(ConfigChange(generation=1, collections=frozenset({"users"}), degraded=False))
+    cfg._publish({"units": [{"name": "a"}]})
+    cfg._enqueue_change(ConfigChange(generation=1, collections=frozenset({"units"}), degraded=False))
     assert started.wait(timeout=3)
 
     for name, docs in (("sites", []), ("services", []), ("specs", [])):
@@ -255,8 +253,8 @@ def test_a_raising_callback_does_not_silence_the_others():
     cfg.on_change(bad, name="bad")
     cfg.on_change(survived.append, name="good")
 
-    cfg.source.set("users", [{"name": "solo", "groups": []}])
-    cfg._reload(["users"])
+    cfg.source.set("units", [{"name": "solo"}])
+    cfg._reload(["units"])
 
     assert wait_for(lambda: survived)
 
@@ -273,8 +271,8 @@ def test_a_failing_callback_is_not_unregistered():
     cfg.on_change(bad, name="bad")
 
     for i in range(3):
-        cfg.source.set("users", [{"name": f"u{i}", "groups": []}])
-        cfg._reload(["users"])
+        cfg.source.set("units", [{"name": f"u{i}"}])
+        cfg._reload(["units"])
         assert wait_for(lambda n=i: len(calls) >= n + 1)
 
     assert len(calls) == 3
@@ -286,8 +284,8 @@ def test_unsubscribe_stops_delivery():
     unsubscribe = cfg.on_change(seen.append, name="temp")
     unsubscribe()
 
-    cfg.source.set("users", [{"name": "solo", "groups": []}])
-    cfg._reload(["users"])
+    cfg.source.set("units", [{"name": "solo"}])
+    cfg._reload(["units"])
 
     assert not wait_for(lambda: seen, timeout=0.5)
 
@@ -317,12 +315,12 @@ def test_recovery_reports_what_changed_while_blind():
     cfg.on_change(seen.append, name="test")
 
     cfg._set_degraded("database unreachable")
-    cfg.source.set("users", [{"name": "changed-while-down", "groups": []}])
+    cfg.source.set("units", [{"name": "changed-while-down"}])
     cfg._reload_all()
 
     assert cfg.degraded is False
     assert wait_for(lambda: any(c.reason == "recovered" for c in seen))
-    assert seen[-1].collections == {"users"}
+    assert seen[-1].collections == {"units"}
 
 
 def test_recovery_notifies_even_with_nothing_changed():
@@ -397,7 +395,7 @@ def test_watcher_reloads_each_collection_in_a_burst():
     try:
         assert wait_for(lambda: ("all",) in reloaded)
         source.set("units", [{"name": "common"}])
-        source.set("users", [{"name": "x", "groups": []}])
+        source.set("services", [{"name": "x"}])
         source.set("sites", SITES)
 
         assert wait_for(
@@ -405,7 +403,7 @@ def test_watcher_reloads_each_collection_in_a_burst():
                 {n for kind, n in (r for r in reloaded if r[0] == "some")}
                 >= {
                     frozenset({"units"}),
-                    frozenset({"users"}),
+                    frozenset({"services"}),
                     frozenset({"sites"}),
                 }
             )
@@ -427,13 +425,13 @@ def test_a_burst_reaches_a_callback_once():
 
     cfg.on_change(slow, name="slow")
 
-    for name, docs in (("users", [{"name": "u", "groups": []}]), ("services", []), ("specs", [])):
+    for name, docs in (("units", [{"name": "u"}]), ("services", []), ("specs", [])):
         cfg.source.set(name, docs)
         cfg._reload([name])
     blocked.set()
 
     assert wait_for(lambda: len(seen) >= 2)
-    assert set().union(*(c.collections for c in seen)) == {"users", "services", "specs"}
+    assert set().union(*(c.collections for c in seen)) == {"units", "services", "specs"}
 
 
 def test_watcher_polls_when_change_streams_are_unavailable():
@@ -584,6 +582,14 @@ def test_a_cache_missing_a_collection_is_refused(tmp_path):
     write_cache(tmp_path, collections={k: v for k, v in BASE.items() if k != "units"})
 
     assert cache_mod.load(str(tmp_path), mongo_uri=URI, database=DB, required=BASE) is None
+
+
+def test_a_cache_holding_retired_collections_is_accepted(tmp_path):
+    """A cache written before `users` and `groups` were retired still holds them, and must
+    still boot a machine whose code no longer loads them (MAST_common#147)."""
+    write_cache(tmp_path, collections={**BASE, "users": [{"name": "arie"}], "groups": [{"name": "everybody"}]})
+
+    assert cache_mod.load(str(tmp_path), mongo_uri=URI, database=DB, required=DEFAULT_COLLECTIONS) is not None
 
 
 def test_a_corrupt_copy_is_skipped_for_an_older_good_one(tmp_path):

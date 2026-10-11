@@ -6,7 +6,6 @@ from typing import Any
 
 from pydantic import Field
 
-from common.config.identification import UserCapabilities
 from common.opmode import DEFAULT_OPMODE, OpMode
 
 
@@ -22,6 +21,5 @@ def opmode_field() -> Any:
                 "label": "Operating mode",
                 "tooltip": "operated: run by an operator, starts at once; controlled: run by the supervisor, waits",
             },
-            "required_capabilities": [UserCapabilities.CAN_CHANGE_CONFIGURATION.value],
         },
     )

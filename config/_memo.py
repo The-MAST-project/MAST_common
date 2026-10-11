@@ -50,9 +50,8 @@ def by_generation(*deps: str) -> Callable:
     """Memoize a `Config` accessor against the generations of the collections it reads.
 
     `deps` must name every collection the accessor consults, including indirectly --
-    `get_unit` reads `units` but also `sites`, because it verifies site membership, and
-    `get_users` reads `users` but also `groups`, because capabilities come from group
-    membership. Under-declaring a dependency is the one way to get a stale value out of
+    `get_unit` reads `units` but also `sites`, because it verifies site membership.
+    Under-declaring a dependency is the one way to get a stale value out of
     this: the entry would survive a change it should not have.
 
     The decorated function is called with an extra `_snapshot` keyword holding the exact

@@ -65,8 +65,8 @@ Two layers:
    read from the fixed path `C:\WIS\config.toml` (Windows) / `/etc/wis/config.toml`
    (*nix); set `MAST_CONFIG` to override the path (dev/VM/tests). There is **no**
    `MAST_PROJECT` / `MAST_ROLE` env var — the machine's role is the required
-   `machine_role` field (`unit`, `spec`, or `control`; distinct from the *user* role
-   in `UserConfig`/`GroupConfig`), validated against `VALID_MACHINE_ROLES`.
+   `machine_role` field (`unit`, `spec`, or `control`; distinct from a person's
+   permissions, which are MAST_gui's Django accounts), validated against `VALID_MACHINE_ROLES`.
    `load_local_config()` parses it into a `LocalConfig` (`site`, `project`,
    `machine_role`, `controller_host`, `database`, `domain`, `location`, `mongo_port`)
    — cached and MongoDB-free. On any problem it raises `ConfigError` with a detailed
@@ -83,7 +83,7 @@ The site is **never** derived from the hostname — it comes from the config fil
 DNS `domain` likewise has a single source (`local.domain`).
 
 Key `Config` methods: `get_unit()`, `get_sites()`, `get_service()`, `get_specs()`,
-`get_users()`, `local_site`.
+`local_site`.
 
 ### Operating mode (`common/opmode.py`)
 

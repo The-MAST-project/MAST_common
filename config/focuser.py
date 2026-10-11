@@ -1,7 +1,5 @@
 from pydantic import BaseModel, Field
 
-from common.config.identification import UserCapabilities
-
 
 class FocuserConfig(BaseModel):
     """Configuration for the telescope focuser."""
@@ -26,6 +24,5 @@ class FocuserConfig(BaseModel):
                 "label": "Known As Good Position",
                 "tooltip": "Latest successful autofocus position",
             },
-            "required_capabilities": [UserCapabilities.CAN_CHANGE_CONFIGURATION.value],
         },
     )
