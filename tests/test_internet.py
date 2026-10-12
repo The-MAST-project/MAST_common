@@ -29,7 +29,8 @@ def env(monkeypatch):
 
 def test_the_environment_wins_when_it_names_a_proxy(env, monkeypatch):
     env(https_proxy=PROXY, http_proxy=PROXY)
-    monkeypatch.setattr(internet.urllib.request, "getproxies_registry", lambda: {"https": "http://other:1"})
+    # raising=False: getproxies_registry exists only on Windows (CI also runs on Linux).
+    monkeypatch.setattr(internet.urllib.request, "getproxies_registry", lambda: {"https": "http://other:1"}, raising=False)
 
     assert internet.internet_proxies() == {"http": PROXY, "https": PROXY}
 
@@ -38,7 +39,12 @@ def test_no_proxy_alone_does_not_hide_the_registry(env, monkeypatch):
     """The unit's environment exactly: no_proxy set, http(s)_proxy deleted."""
     env(no_proxy="localhost,127.0.0.1,10.23.0.0/16")
     monkeypatch.setattr(internet.sys, "platform", "win32")
-    monkeypatch.setattr(internet.urllib.request, "getproxies_registry", lambda: {"http": PROXY, "https": PROXY})
+    monkeypatch.setattr(
+        internet.urllib.request,
+        "getproxies_registry",
+        lambda: {"http": PROXY, "https": PROXY},
+        raising=False,
+    )
 
     assert internet.internet_proxies() == {"http": PROXY, "https": PROXY}
 
