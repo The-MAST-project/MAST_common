@@ -59,6 +59,7 @@ import time
 from dataclasses import asdict, dataclass
 from urllib.parse import quote
 
+from common.internet import internet_proxy
 from common.mast_logging import get_logger
 
 logger = get_logger(__name__)
@@ -413,7 +414,10 @@ def _query_sesame_mirror(name: str, mirror: str, url: str, timeout: float) -> Re
     """One mirror. Returns a result, or raises -- `SesameMissError` for a definitive no."""
     import httpx
 
-    response = httpx.get(url + quote(name), timeout=timeout, follow_redirects=True)
+    # Proxy from common.internet, trust_env=False: httpx's own lookup goes direct inside the unit.
+    response = httpx.get(
+        url + quote(name), timeout=timeout, follow_redirects=True, proxy=internet_proxy(url), trust_env=False
+    )
     response.raise_for_status()
     resolved = _parse_sesame(name, response.text, mirror)
     if resolved is None:
@@ -627,7 +631,13 @@ def _resolve_via_tns(name: str, credentials: tuple[str, str, str], timeout: floa
     payload = {"api_key": api_key, "data": f'{{"objname": "{_tns_objname(name)}"}}'}
 
     response = httpx.post(
-        TNS_OBJECT_URL, data=payload, headers={"User-Agent": marker}, timeout=timeout, follow_redirects=True
+        TNS_OBJECT_URL,
+        data=payload,
+        headers={"User-Agent": marker},
+        timeout=timeout,
+        follow_redirects=True,
+        proxy=internet_proxy(TNS_OBJECT_URL),
+        trust_env=False,
     )
     response.raise_for_status()
     body = response.json()

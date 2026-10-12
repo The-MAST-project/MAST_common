@@ -5,10 +5,8 @@ predictions have gone stale. Its own remedy is to fetch a newer `finals2000A.all
 **that remedy is not sufficient here, which is the point of this module.**
 
 It is tempting to read the 2026-10-01 incident as "the site proxy blocked the fetch". It was
-not that. These machines reach the IERS data centre perfectly well with no `HTTP(S)_PROXY` in
-the environment at all, because `urllib.request.getproxies()` reads the WinINET registry
-settings on Windows -- verified by downloading the table with every proxy variable unset. What
-actually happened is simpler and worse: the table **the server was publishing** carried
+not that (but see `common.internet` for the 2026-10-12 one, which was). What actually happened is
+simpler and worse: the table **the server was publishing** carried
 measured values only to 2026-07-31, so a *successful* download still left astropy more than 30
 days past its last measured value, and it raised anyway.
 
@@ -64,14 +62,16 @@ import contextlib
 import os
 import platform
 import re
+import shutil
 import tempfile
 import threading
+import urllib.request
 from datetime import UTC, datetime, timedelta
 
 from astropy.utils import iers
-from astropy.utils.data import download_file
 from astropy.utils.iers import IERS_A
 
+from common.internet import internet_proxies, tls_context
 from common.mast_logging import get_logger
 
 if platform.system() == "Windows":
@@ -503,6 +503,18 @@ def should_fetch(directory: str, when: datetime | None = None) -> bool:
     return True
 
 
+def download_table(url: str, timeout: int = FETCH_TIMEOUT_SECONDS) -> str:
+    """Download `url` to a temporary file, through `common.internet`'s proxy and CA bundle, and
+    return its path."""
+    opener = urllib.request.build_opener(
+        urllib.request.ProxyHandler(internet_proxies()),
+        urllib.request.HTTPSHandler(context=tls_context()),
+    )
+    with opener.open(url, timeout=timeout) as response, tempfile.NamedTemporaryFile(delete=False) as out:
+        shutil.copyfileobj(response, out)
+    return out.name
+
+
 def fetch_once(directory: str, url: str | None = None, timeout: int = FETCH_TIMEOUT_SECONDS) -> str | None:
     """Attempt one fetch. Returns the stored path, or None if nothing was stored.
 
@@ -510,22 +522,17 @@ def fetch_once(directory: str, url: str | None = None, timeout: int = FETCH_TIME
     what came back is not a table, or it is a table whose predictions do not advance on what we
     already have -- `write()` refuses that.
 
-    `download_file` rather than `urllib` directly, because it is what demonstrably reaches the
-    IERS data centre from these machines. **No proxy configuration is needed or wanted**:
-    `urllib.request.getproxies()` reads the WinINET registry settings on Windows, which is how
-    a MAST service reaches the internet with no `HTTP(S)_PROXY` in its environment. Note that
-    `MAST_unit`'s `start_supporting_processes()` deliberately DELETES those variables so that
-    talking to PWI4 on 127.0.0.1 is not proxied -- a fetcher that depended on them could
-    therefore never work inside the unit.
-
-    `cache=False`: astropy's own download cache is bypassed entirely. This module's cache is
-    the one that matters, and astropy's has been observed not to serve what it holds.
+    Downloaded by `download_table`, through an explicit proxy (`common.internet`), not astropy's
+    `download_file`, whose opener takes whatever urllib's own proxy lookup returns -- and inside
+    the unit that is no proxy at all. astropy's download cache is bypassed either way: this
+    module's cache is the one that matters, and astropy's has been observed not to serve what
+    it holds.
     """
     url = url or iers.conf.iers_auto_url
     record_attempt(directory)
 
     try:
-        downloaded = download_file(url, cache=False, timeout=timeout)
+        downloaded = download_table(url, timeout=timeout)
     except Exception as ex:  # noqa: BLE001 -- offline, DNS, TLS, 404: one answer covers them all
         logger.info(f"iers: fetch from '{url}' did not succeed ({type(ex).__name__}: {ex}); keeping the cached table")
         return None
