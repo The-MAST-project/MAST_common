@@ -356,7 +356,7 @@ def test_the_rate_limit_counts_attempts_not_successes(cache, monkeypatch):
         calls.append(1)
         raise OSError("offline")
 
-    monkeypatch.setattr(iers_policy, "download_file", never_works)
+    monkeypatch.setattr(iers_policy, "download_table", never_works)
 
     assert iers_policy.fetch_once(cache) is None
     assert calls == [1]
@@ -392,7 +392,7 @@ def test_a_download_that_is_not_a_table_is_not_stored(cache, monkeypatch, tmp_pa
     """A captive portal, an error page or a truncated file: parsing is the only validation."""
     junk = tmp_path / "junk.all"
     junk.write_bytes(b"<html>login required</html>")
-    monkeypatch.setattr(iers_policy, "download_file", lambda *a, **k: str(junk))
+    monkeypatch.setattr(iers_policy, "download_table", lambda *a, **k: str(junk))
 
     assert iers_policy.fetch_once(cache) is None
     assert iers_policy.cache_files(cache) == []
@@ -404,7 +404,7 @@ def test_a_download_that_is_not_a_table_is_not_stored(cache, monkeypatch, tmp_pa
 def test_a_successful_fetch_is_stored_and_the_download_is_cleaned_up(cache, monkeypatch, tmp_path):
     downloaded = tmp_path / "downloaded.all"
     downloaded.write_bytes(CONTENT)
-    monkeypatch.setattr(iers_policy, "download_file", lambda *a, **k: str(downloaded))
+    monkeypatch.setattr(iers_policy, "download_table", lambda *a, **k: str(downloaded))
     monkeypatch.setattr(iers_policy, "read_predictive_mjd", lambda _path: 61315.0)
 
     path = iers_policy.fetch_once(cache)
@@ -423,7 +423,7 @@ def test_a_fetch_that_does_not_advance_leaves_the_good_table_in_place(cache, mon
 
     stale = tmp_path / "stale.all"
     stale.write_bytes(b"an older table")
-    monkeypatch.setattr(iers_policy, "download_file", lambda *a, **k: str(stale))
+    monkeypatch.setattr(iers_policy, "download_table", lambda *a, **k: str(stale))
     monkeypatch.setattr(iers_policy, "read_predictive_mjd", lambda _path: 61252.0)
 
     assert iers_policy.fetch_once(cache) is None
@@ -493,3 +493,79 @@ def test_a_second_process_does_not_also_refresh(cache, monkeypatch):
     monkeypatch.setattr(iers_policy, "_take_guard", lambda: False)
     assert iers_policy.start_iers_refresher(cache) is False
     assert iers_policy._refresher is None or not iers_policy._refresher.is_alive()
+
+
+# ------------------------------------------------------------------ the proxy for the fetch
+#
+# mast00, 2026-10-12: inside the unit, whose app.py deletes http(s)_proxy but leaves no_proxy,
+# urllib's getproxies() returned only {'no': ...} -- the registry is read only when the
+# environment holds no proxy setting at all -- so the fetch went direct and timed out.
+
+
+class TestProxies:
+    PROXY = "http://bcproxy.example:8080"
+
+    def _env(self, monkeypatch, **values):
+        for name in ("http_proxy", "https_proxy", "no_proxy", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY"):
+            monkeypatch.delenv(name, raising=False)
+        for name, value in values.items():
+            monkeypatch.setenv(name, value)
+
+    def test_the_environment_wins_when_it_names_a_proxy(self, monkeypatch):
+        self._env(monkeypatch, https_proxy=self.PROXY, http_proxy=self.PROXY)
+        monkeypatch.setattr(iers_policy.urllib.request, "getproxies_registry", lambda: {"https": "http://other:1"})
+
+        assert iers_policy._proxies() == {"http": self.PROXY, "https": self.PROXY}
+
+    def test_no_proxy_alone_does_not_hide_the_registry(self, monkeypatch):
+        """The unit's environment exactly: no_proxy set, http(s)_proxy deleted."""
+        self._env(monkeypatch, no_proxy="localhost,127.0.0.1,10.23.0.0/16")
+        monkeypatch.setattr(iers_policy.sys, "platform", "win32")
+        monkeypatch.setattr(
+            iers_policy.urllib.request, "getproxies_registry", lambda: {"http": self.PROXY, "https": self.PROXY}
+        )
+
+        assert iers_policy._proxies() == {"http": self.PROXY, "https": self.PROXY}
+
+    def test_off_windows_with_nothing_set_it_goes_direct(self, monkeypatch):
+        self._env(monkeypatch)
+        monkeypatch.setattr(iers_policy.sys, "platform", "linux")
+
+        assert iers_policy._proxies() == {}
+
+    def test_download_table_uses_the_chosen_proxy(self, monkeypatch, tmp_path):
+        handlers: list = []
+
+        class _Response:
+            def __init__(self):
+                self._chunks = [b"finals", b""]
+
+            def read(self, *_):
+                return self._chunks.pop(0)
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_):
+                return False
+
+        class _Opener:
+            def open(self, url, timeout):
+                return _Response()
+
+        def build_opener(*given):
+            handlers.extend(given)
+            return _Opener()
+
+        monkeypatch.setattr(iers_policy, "_proxies", lambda: {"https": self.PROXY})
+        monkeypatch.setattr(iers_policy.urllib.request, "build_opener", build_opener)
+
+        path = iers_policy.download_table("https://datacenter.example/finals2000A.all", timeout=5)
+        try:
+            with open(path, "rb") as fp:
+                assert fp.read() == b"finals"
+        finally:
+            os.unlink(path)
+
+        (proxy_handler,) = [h for h in handlers if isinstance(h, iers_policy.urllib.request.ProxyHandler)]
+        assert proxy_handler.proxies == {"https": self.PROXY}
