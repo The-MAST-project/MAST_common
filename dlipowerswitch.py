@@ -489,7 +489,16 @@ class DliPowerSwitch(Component):
 
     @property
     def connected(self) -> bool:
-        return False
+        """`detected`: there is no session to hold, so "connected" means we can talk to it.
+
+        `detected` is set by every HTTP exchange (`get` / `put`) and, until the switch first
+        answers, by `probe`, which also requires `identify()` to pass. This used to return a
+        constant False, and the unit's `connected` is `all()` over its components, the switch
+        among them -- so the unit always read disconnected, and every shutdown reconnected
+        every component: PHD2 dropped and reopened its JSON-RPC connection, and the stage
+        reopened an open device and lost it (mast00, 2026-10-12).
+        """
+        return self.detected
 
 
 class PowerSwitchFactory:
