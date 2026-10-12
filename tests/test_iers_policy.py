@@ -502,36 +502,10 @@ def test_a_second_process_does_not_also_refresh(cache, monkeypatch):
 # environment holds no proxy setting at all -- so the fetch went direct and timed out.
 
 
-class TestProxies:
+class TestDownloadTable:
+    """The proxy choice itself is tested in test_internet.py."""
+
     PROXY = "http://bcproxy.example:8080"
-
-    def _env(self, monkeypatch, **values):
-        for name in ("http_proxy", "https_proxy", "no_proxy", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY"):
-            monkeypatch.delenv(name, raising=False)
-        for name, value in values.items():
-            monkeypatch.setenv(name, value)
-
-    def test_the_environment_wins_when_it_names_a_proxy(self, monkeypatch):
-        self._env(monkeypatch, https_proxy=self.PROXY, http_proxy=self.PROXY)
-        monkeypatch.setattr(iers_policy.urllib.request, "getproxies_registry", lambda: {"https": "http://other:1"})
-
-        assert iers_policy._proxies() == {"http": self.PROXY, "https": self.PROXY}
-
-    def test_no_proxy_alone_does_not_hide_the_registry(self, monkeypatch):
-        """The unit's environment exactly: no_proxy set, http(s)_proxy deleted."""
-        self._env(monkeypatch, no_proxy="localhost,127.0.0.1,10.23.0.0/16")
-        monkeypatch.setattr(iers_policy.sys, "platform", "win32")
-        monkeypatch.setattr(
-            iers_policy.urllib.request, "getproxies_registry", lambda: {"http": self.PROXY, "https": self.PROXY}
-        )
-
-        assert iers_policy._proxies() == {"http": self.PROXY, "https": self.PROXY}
-
-    def test_off_windows_with_nothing_set_it_goes_direct(self, monkeypatch):
-        self._env(monkeypatch)
-        monkeypatch.setattr(iers_policy.sys, "platform", "linux")
-
-        assert iers_policy._proxies() == {}
 
     def test_download_table_uses_the_chosen_proxy(self, monkeypatch, tmp_path):
         handlers: list = []
@@ -557,7 +531,7 @@ class TestProxies:
             handlers.extend(given)
             return _Opener()
 
-        monkeypatch.setattr(iers_policy, "_proxies", lambda: {"https": self.PROXY})
+        monkeypatch.setattr(iers_policy, "internet_proxies", lambda: {"https": self.PROXY})
         monkeypatch.setattr(iers_policy.urllib.request, "build_opener", build_opener)
 
         path = iers_policy.download_table("https://datacenter.example/finals2000A.all", timeout=5)

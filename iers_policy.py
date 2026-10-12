@@ -5,7 +5,7 @@ predictions have gone stale. Its own remedy is to fetch a newer `finals2000A.all
 **that remedy is not sufficient here, which is the point of this module.**
 
 It is tempting to read the 2026-10-01 incident as "the site proxy blocked the fetch". It was
-not that (but see `_proxies` for the 2026-10-12 one, which was). What actually happened is
+not that (but see `common.internet` for the 2026-10-12 one, which was). What actually happened is
 simpler and worse: the table **the server was publishing** carried
 measured values only to 2026-07-31, so a *successful* download still left astropy more than 30
 days past its last measured value, and it raised anyway.
@@ -63,8 +63,6 @@ import os
 import platform
 import re
 import shutil
-import ssl
-import sys
 import tempfile
 import threading
 import urllib.request
@@ -73,6 +71,7 @@ from datetime import UTC, datetime, timedelta
 from astropy.utils import iers
 from astropy.utils.iers import IERS_A
 
+from common.internet import internet_proxies, tls_context
 from common.mast_logging import get_logger
 
 if platform.system() == "Windows":
@@ -504,40 +503,12 @@ def should_fetch(directory: str, when: datetime | None = None) -> bool:
     return True
 
 
-def _proxies() -> dict[str, str]:
-    """The proxy for an internet fetch: `http_proxy` / `https_proxy` if set, else the registry's.
-
-    Not `urllib.request.getproxies()`. On Windows that reads the WinINET registry only when the
-    environment holds *no* proxy setting at all -- and `no_proxy` counts. MAST_unit's `app.py`
-    deletes `http_proxy` / `https_proxy` so that PWI4 on this machine is not proxied, but leaves
-    `no_proxy`; so inside the unit `getproxies()` returned `{'no': ...}`, the fetch went direct,
-    and timed out (WinError 10060, mast00, 2026-10-12). The same download with `no_proxy` unset
-    too reached the data centre through the registry proxy in 12 s.
-    """
-    environment = urllib.request.getproxies_environment()
-    chosen = {scheme: environment[scheme] for scheme in ("http", "https") if scheme in environment}
-    if not chosen and sys.platform == "win32":
-        registry = urllib.request.getproxies_registry()
-        chosen = {scheme: registry[scheme] for scheme in ("http", "https") if scheme in registry}
-    return chosen
-
-
-def _tls_context() -> ssl.SSLContext:
-    """certifi's CA bundle when installed, as astropy's `download_file` uses: Python's default
-    store does not verify the IERS data centre's chain on these machines (CERTIFICATE_VERIFY_FAILED,
-    "unable to get local issuer certificate", mast00, 2026-10-12)."""
-    try:
-        import certifi
-    except ImportError:
-        return ssl.create_default_context()
-    return ssl.create_default_context(cafile=certifi.where())
-
-
 def download_table(url: str, timeout: int = FETCH_TIMEOUT_SECONDS) -> str:
-    """Download `url` to a temporary file, through `_proxies()`, and return its path."""
+    """Download `url` to a temporary file, through `common.internet`'s proxy and CA bundle, and
+    return its path."""
     opener = urllib.request.build_opener(
-        urllib.request.ProxyHandler(_proxies()),
-        urllib.request.HTTPSHandler(context=_tls_context()),
+        urllib.request.ProxyHandler(internet_proxies()),
+        urllib.request.HTTPSHandler(context=tls_context()),
     )
     with opener.open(url, timeout=timeout) as response, tempfile.NamedTemporaryFile(delete=False) as out:
         shutil.copyfileobj(response, out)
@@ -551,7 +522,7 @@ def fetch_once(directory: str, url: str | None = None, timeout: int = FETCH_TIME
     what came back is not a table, or it is a table whose predictions do not advance on what we
     already have -- `write()` refuses that.
 
-    Downloaded by `download_table`, through an explicit proxy (`_proxies`), not astropy's
+    Downloaded by `download_table`, through an explicit proxy (`common.internet`), not astropy's
     `download_file`, whose opener takes whatever urllib's own proxy lookup returns -- and inside
     the unit that is no proxy at all. astropy's download cache is bypassed either way: this
     module's cache is the one that matters, and astropy's has been observed not to serve what
