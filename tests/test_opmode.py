@@ -7,7 +7,15 @@ from types import SimpleNamespace
 
 import pytest
 
-from common.opmode import DEFAULT_OPMODE, OPMODE_ENV, OpMode, OpState, opmode_from_env, resolve_opmode
+from common.opmode import (
+    DEFAULT_OPMODE,
+    OPMODE_ENV,
+    OpMode,
+    OpState,
+    opmode_from_env,
+    resolve_opmode,
+    resolve_opmode_with_source,
+)
 
 
 @pytest.fixture
@@ -86,6 +94,46 @@ class TestResolve:
         monkeypatch.setenv(OPMODE_ENV, "controled")
         with pytest.raises(ValueError):
             resolve_opmode()
+
+
+class TestSource:
+    """The phrase naming where the mode came from, for the startup log line."""
+
+    def test_env(self, monkeypatch):
+        monkeypatch.setenv(OPMODE_ENV, "controlled")
+        _machine(monkeypatch, "unit", unit=SimpleNamespace(opmode=OpMode.OPERATED))
+        assert resolve_opmode_with_source() == (OpMode.CONTROLLED, OPMODE_ENV)
+
+    def test_unit_configuration(self, monkeypatch, no_env):
+        _machine(monkeypatch, "unit", unit=SimpleNamespace(opmode=OpMode.CONTROLLED))
+        assert resolve_opmode_with_source() == (OpMode.CONTROLLED, "unit configuration")
+
+    def test_specs_configuration(self, monkeypatch, no_env):
+        _machine(monkeypatch, "spec", specs=SimpleNamespace(opmode=OpMode.CONTROLLED))
+        assert resolve_opmode_with_source() == (OpMode.CONTROLLED, "specs configuration")
+
+    def test_control_names_its_role(self, monkeypatch, no_env):
+        _machine(monkeypatch, "control")
+        assert resolve_opmode_with_source() == (DEFAULT_OPMODE, "default, machine_role control")
+
+    def test_missing_unit_configuration(self, monkeypatch, no_env):
+        _machine(monkeypatch, "unit", unit=None)
+        assert resolve_opmode_with_source() == (DEFAULT_OPMODE, "default, no configuration for this unit")
+
+    def test_opmode_base_caches_the_source_with_the_mode(self, monkeypatch, no_env):
+        from common.opmode import OpmodeBase
+
+        _machine(monkeypatch, "unit", unit=SimpleNamespace(opmode=OpMode.CONTROLLED))
+        base = OpmodeBase()
+        assert base.opmode_source == "unit configuration"
+        assert base.opmode is OpMode.CONTROLLED
+
+    def test_a_preset_mode_reports_preset(self):
+        from common.opmode import OpmodeBase
+
+        base = OpmodeBase()
+        base._opmode = OpMode.OPERATED
+        assert base.opmode_source == "preset"
 
 
 class TestOpmodeBase:

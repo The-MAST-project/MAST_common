@@ -92,9 +92,18 @@ def resolve_opmode() -> OpMode:
     A configuration that cannot be read yields the default with a WARNING, never an
     exception -- the mode is asked for early, and the caller must still come up.
     """
+    return resolve_opmode_with_source()[0]
+
+
+def resolve_opmode_with_source() -> tuple[OpMode, str]:
+    """:func:`resolve_opmode`, plus a short phrase naming where the mode came from.
+
+    The phrase is for the log: ``MAST_OPMODE`` left set in a shell is otherwise
+    indistinguishable from the configuration saying the same thing.
+    """
     from_env = opmode_from_env()
     if from_env is not None:
-        return from_env
+        return from_env, OPMODE_ENV
 
     try:
         from common.config import Config
@@ -105,15 +114,15 @@ def resolve_opmode() -> OpMode:
                 unit = Config().get_unit()
                 if unit is None:
                     logger.warning(f"resolve_opmode: no configuration for this unit; using {DEFAULT_OPMODE}")
-                    return DEFAULT_OPMODE
-                return unit.opmode
+                    return DEFAULT_OPMODE, "default, no configuration for this unit"
+                return unit.opmode, "unit configuration"
             case "spec":
-                return Config().get_specs().opmode
-            case _:
-                return DEFAULT_OPMODE
+                return Config().get_specs().opmode, "specs configuration"
+            case role:
+                return DEFAULT_OPMODE, f"default, machine_role {role}"
     except Exception:  # noqa: BLE001 -- an unreadable configuration is a reported, defaulted state
         logger.warning(f"resolve_opmode: configuration unreadable; using {DEFAULT_OPMODE}", exc_info=True)
-        return DEFAULT_OPMODE
+        return DEFAULT_OPMODE, "default, configuration unreadable"
 
 
 class OpmodeBase:
@@ -125,6 +134,7 @@ class OpmodeBase:
 
     def __init__(self) -> None:
         self._opmode: OpMode | None = None
+        self._opmode_source: str | None = None
         self._opstate: OpState = OpState.INITIALIZING
 
     @property
@@ -145,8 +155,17 @@ class OpmodeBase:
     def opmode(self) -> OpMode:
         """The effective operating mode, cached after first access."""
         if self._opmode is None:
-            self._opmode = resolve_opmode()
+            self._opmode, self._opmode_source = resolve_opmode_with_source()
         return self._opmode
+
+    @property
+    def opmode_source(self) -> str:
+        """Where :attr:`opmode` came from (see :func:`resolve_opmode_with_source`).
+
+        ``preset`` when ``_opmode`` was assigned directly, as tests do, bypassing resolution.
+        """
+        _ = self.opmode
+        return self._opmode_source or "preset"
 
     @property
     def is_operated(self) -> bool:
