@@ -2,6 +2,32 @@
 
 ---
 
+## [2026-10-12] The opmodes are renamed `development` / `production`
+
+**Why:** `operated` / `controlled` (2026-10-06) named who starts the app. Endpoint admission
+(mast-claude-config `plans/endpoint-admission-design.md`) makes the mode decide what a machine
+accepts -- a production unit is governed only through its unit-level endpoints, component
+endpoints are development-only -- and the names should say that. Unlike the 2026-10-06 rename,
+config documents already carry `opmode` (`units/common: operated`, `units/mast00: controlled`),
+and every machine reads one shared DB, so the stored values cannot change at the same instant as
+the code everywhere.
+
+**What:** `OpMode.DEVELOPMENT = "development"`, `OpMode.PRODUCTION = "production"`; the default
+is `development`. `OpMode._missing_` accepts `operated` / `controlled` with a WARNING naming the
+replacement, which covers `MAST_OPMODE` and pydantic validation of `UnitConfig` / `SpecsConfig`
+alike. `OpmodeBase.is_development` / `is_production`. Deprecated, for consumers not converted in
+the same change (a `common` pull reaches every project on a machine at once): `is_operated`,
+`is_controlled`, and the Enum aliases `OpMode.OPERATED` / `OpMode.CONTROLLED`, which are the
+same members, so iterating `OpMode` still yields two modes.
+
+**Rollout:** merge, pull `common` on every machine, then update the config documents. In the
+other order, a machine still on old code fails to validate a document that says `production`.
+
+**Rejected:** a flag-day migration with no aliases -- impossible against one shared DB without
+stopping every unit at once.
+
+---
+
 ## [2026-10-11] The daily log file is named per program, and the role still comes from config
 
 **Why:** the MAST supervisor runs on a unit beside the unit app, as a second long-lived

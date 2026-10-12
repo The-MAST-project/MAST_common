@@ -30,13 +30,13 @@ def test_the_fields_follow_activities_verbal_on_the_wire():
 
 
 def test_they_serialise_as_the_bare_lower_case_literals():
-    payload = json.loads(_status(opmode=OpMode.CONTROLLED, opstate=OpState.INITIALIZED).model_dump_json())
-    assert payload["opmode"] == "controlled"
+    payload = json.loads(_status(opmode=OpMode.PRODUCTION, opstate=OpState.INITIALIZED).model_dump_json())
+    assert payload["opmode"] == "production"
     assert payload["opstate"] == "initialized"
 
 
 def test_a_stored_payload_round_trips():
-    original = _status(opmode=OpMode.OPERATED, opstate=OpState.SHUTDOWN)
+    original = _status(opmode=OpMode.DEVELOPMENT, opstate=OpState.SHUTDOWN)
     again = FullUnitStatus.model_validate_json(original.model_dump_json())
-    assert again.opmode is OpMode.OPERATED
+    assert again.opmode is OpMode.DEVELOPMENT
     assert again.opstate is OpState.SHUTDOWN

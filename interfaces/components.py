@@ -11,8 +11,8 @@ class Component(ABC, Activities):
 
     - ``__init__()`` -- initialises the component's fields, powers it on and connects. It does
       NOT consult the opmode: only the top component (the unit or spec) reads it, and decides
-      in ``start_lifespan`` whether to call ``startup()`` at once (``operated``) or wait for
-      the command (``controlled``).
+      in ``start_lifespan`` whether to call ``startup()`` at once (``development``) or wait for
+      the command (``production``).
     - ``startup()`` -- tries to make the component operational; success is reported through
       ``operational`` / ``why_not_operational``.
     - ``shutdown()`` -- performs the component's shutdown activities, sets ``was_shut_down``, and

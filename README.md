@@ -24,9 +24,9 @@ package from within each host project.
   writes back only the delta from `common`. Fields tagged with
   `json_schema_extra` UI metadata are editable from the GUI; who may edit
   them is a Django permission in MAST_gui.
-- **Operating mode** (`opmode.py`) — `OpMode` (`operated` | `controlled`) and
+- **Operating mode** (`opmode.py`) — `OpMode` (`development` | `production`) and
   `resolve_opmode()`: the `MAST_OPMODE` env var, then the machine's
-  `UnitConfig.opmode` / `SpecsConfig.opmode`, then `operated`.
+  `UnitConfig.opmode` / `SpecsConfig.opmode`, then `development`.
 - **Supervisor configuration** (`config/supervisor.py`) — `SupervisorConfig`,
   the schema read by `mast-supervisor` (MAST_supervision), carried as
   `UnitConfig.supervisor` and `SpecsConfig.supervisor`.
