@@ -396,6 +396,12 @@ class Filer:
             # comparison in `_is_under`. Keying it posix-style made `_folder_drained`'s
             # queued-move check silently never match on Windows, where the two differ.
             posix_src = str(Path(file).as_posix())
+            if not posix_src.startswith(self.ram.root):
+                # Its destination would be itself, and `_move_ram_file` reads a surviving
+                # source as a failed move: queued, it is never cleared and every `flush`
+                # waits out its timeout (MAST_common#156). `move_to` skips the same case.
+                self.info(f"move_ram_to_shared: '{posix_src}' is not on the ram area; nothing to move")
+                continue
             dst = str(Path(posix_src.replace(self.ram.root, self.shared.root)))
             src = os.path.realpath(posix_src)
 

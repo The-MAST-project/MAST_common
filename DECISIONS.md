@@ -2,6 +2,22 @@
 
 ---
 
+## [2026-10-13] `move_ram_to_shared` skips a path that is not on the RAM area
+
+**Why:** for such a path the derived destination is the path itself, and `_move_ram_file` reads
+a surviving source as a failed move, so the entry was never dequeued: every `flush` waited out
+its timeout and the sweeper retried it for the life of the process. MAST_unit's solver cleanup
+hit it with outputs written beside a flux reference frame already on the share (mast03,
+2026-10-12). MAST_common#156.
+
+**What:** `move_ram_to_shared` logs such a path at INFO and skips it, as `move_to` already
+skips a source on its destination root.
+
+**Implications:** callers may hand the mover a path without knowing where it lives; a file
+already off the RAM area is left where it is.
+
+---
+
 ## [2026-10-12] The opmodes are renamed `development` / `production`
 
 **Why:** `operated` / `controlled` (2026-10-06) named who starts the app. Endpoint admission

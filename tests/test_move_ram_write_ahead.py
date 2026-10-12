@@ -192,3 +192,17 @@ def test_movers_are_bounded(filer):
     assert len(pool._threads) <= Filer._MOVER_WORKERS, "one thread per file would be 40"
     assert not any(os.path.exists(s) for s in sources)
     assert not Filer._pending
+
+
+def test_a_file_already_on_the_share_is_not_queued(filer):
+    """A path off the RAM area has nowhere to go: its destination is itself, and a surviving
+    source reads as a failed move, so the entry was never cleared and every `flush` waited
+    out its timeout (MAST_common#156)."""
+    already_shared = filer.shared_dir / "reference-00,solver=mastrometry.net.fits"
+    already_shared.write_text("solved")
+
+    filer.move_ram_to_shared(str(already_shared))
+
+    assert already_shared.read_text() == "solved"
+    assert os.path.realpath(str(already_shared)) not in Filer._pending
+    assert filer.flush(timeout=0.5) is True
