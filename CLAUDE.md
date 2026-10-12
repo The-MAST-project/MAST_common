@@ -88,12 +88,15 @@ Key `Config` methods: `get_unit()`, `get_sites()`, `get_service()`, `get_specs()
 ### Operating mode (`common/opmode.py`)
 
 `resolve_opmode()` is the one place a machine's `opmode` is decided: `MAST_OPMODE`, then
-`UnitConfig.opmode` / `SpecsConfig.opmode` by `machine_role`, then `operated`. An
+`UnitConfig.opmode` / `SpecsConfig.opmode` by `machine_role`, then `development`. An
 unrecognized `MAST_OPMODE` raises; an unreadable configuration defaults with a WARNING.
-The modes are named for who is in charge: `operated` -- a person (the operator) runs the app
-from VSCode, and it starts the machine immediately; `controlled` -- the control machine's
-supervisor runs the app, and it waits for `startup`. (`operated` was `automatic` until
-2026-10-06.) Do not re-implement the chain in a consumer.
+The modes are named for what the machine is used for: `development` -- an engineer runs the
+app from VSCode, it starts the machine immediately, and component endpoints are open;
+`production` -- the control machine's supervisor runs the app, it waits for `startup`, and the
+machine is governed only through its unit-level endpoints. (`automatic` / `controlled` until
+2026-10-06, then `operated` / `controlled` until 2026-10-12. The old values are still accepted
+with a WARNING, and `is_operated` / `is_controlled` / `OpMode.OPERATED` / `OpMode.CONTROLLED`
+remain as deprecated aliases.) Do not re-implement the chain in a consumer.
 
 ## API Conventions
 

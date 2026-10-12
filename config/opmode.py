@@ -19,7 +19,7 @@ def opmode_field() -> Any:
                 "widget": "select",
                 "options": [mode.value for mode in OpMode],
                 "label": "Operating mode",
-                "tooltip": "operated: run by an operator, starts at once; controlled: run by the supervisor, waits",
+                "tooltip": "development: run by an engineer, starts at once; production: run by the supervisor, waits",
             },
         },
     )

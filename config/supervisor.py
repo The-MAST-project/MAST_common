@@ -58,7 +58,7 @@ class AppConfig(BaseModel):
 
 
 class VSCodeConfig(BaseModel):
-    """The editor launched once under ``operated``."""
+    """The editor launched once under ``development``."""
 
     exe: str | None = None  # None: located at runtime
     workspace: str = "mast-{role}.code-workspace"  # under <top>; {role} is the machine role

@@ -1,18 +1,21 @@
 """How far a unit or spec machine takes itself on boot: its operating mode, ``opmode``.
 
-The modes are named for who is in charge of the machine:
+The modes are named for what the machine is being used for:
 
-- ``operated`` -- a person (the operator) runs the app from VSCode, and it starts the
-  machine immediately: ``start_lifespan`` calls ``startup()`` with no command.
-- ``controlled`` -- the control machine's supervisor runs the app, and it waits for
-  ``startup``.
+- ``development`` -- an engineer runs the app from VSCode, and it starts the machine
+  immediately: ``start_lifespan`` calls ``startup()`` with no command. The machine may be
+  driven through its component endpoints as well as its own.
+- ``production`` -- the control machine's supervisor runs the app, and it waits for
+  ``startup``. The machine is governed only through its own (unit-level) endpoints.
 
-(``operated`` was ``automatic`` until 2026-10-06. ``manual`` was rejected: it reads as "nothing
-happens until someone commands it", the opposite of this mode.)
+History: ``automatic`` / ``controlled`` until 2026-10-06, then ``operated`` / ``controlled``
+until 2026-10-12. Those named who started the app; these name what the mode is *for*, which
+is also what endpoint admission keys on (mast-claude-config ``plans/endpoint-admission-design.md``).
+The two previous values are still accepted, with a WARNING (see ``OpMode._missing_``).
 
 Resolved from one place, :func:`resolve_opmode`: the ``MAST_OPMODE`` environment
 variable, then the machine's configuration (``UnitConfig.opmode`` / ``SpecsConfig.opmode``),
-then ``operated``.
+then ``development``.
 
 This module imports nothing from ``common.config`` at module scope: the config package
 imports pymongo, and a caller that only needs the environment must not pay for that.
@@ -20,7 +23,7 @@ Design: mast-claude-config ``plans/opmode-design.md``.
 
 Changing the operating mode:
 
-- The ``mast-supervisor`` can switch the opmode between ``operated`` and ``controlled`` in the
+- The ``mast-supervisor`` can switch the opmode between ``development`` and ``production`` in the
   machine's configuration. It then restarts the app, which comes up in the new mode.
 - The mode is picked up only at startup and is not persisted in the app's state: the app does
   not change its mode on the fly.
@@ -37,9 +40,35 @@ from common.mast_logging import get_logger
 logger = get_logger(__name__)
 
 
+#: The values these modes had before 2026-10-12. Still stored in config documents and
+#: `MAST_OPMODE` settings written before then; drop once none remain.
+_LEGACY_OPMODES = {"operated": "development", "controlled": "production"}
+
+
 class OpMode(StrEnum):
-    OPERATED = "operated"  # a person runs the app from VSCode; it starts the machine at once
-    CONTROLLED = "controlled"  # the supervisor runs the app; it waits for ``startup``
+    DEVELOPMENT = "development"  # an engineer runs the app from VSCode; it starts the machine at once
+    PRODUCTION = "production"  # the supervisor runs the app; it waits for ``startup``
+
+    # Deprecated member names: Enum aliases (same value), so `OpMode.CONTROLLED is
+    # OpMode.PRODUCTION` and iterating `OpMode` still yields two modes. Same lifetime as
+    # `OpmodeBase.is_operated` / `is_controlled`.
+    OPERATED = "development"
+    CONTROLLED = "production"
+
+    @classmethod
+    def _missing_(cls, value: object) -> OpMode | None:
+        """Accept a pre-2026-10-12 value, with a WARNING naming its replacement.
+
+        Every machine reads one shared config DB, so the stored values cannot change at the
+        same instant as the code on every machine. New code accepting the old names is what
+        lets the code roll out first and the documents change after. Pydantic validation goes
+        through here too, so a `UnitConfig` holding `controlled` still loads.
+        """
+        new = _LEGACY_OPMODES.get(str(value).strip().lower())
+        if new is None:
+            return None
+        logger.warning(f"opmode {value!r} is the pre-2026-10-12 name; read as {new!r} -- update the setting")
+        return cls(new)
 
 
 class OpState(StrEnum):
@@ -49,9 +78,9 @@ class OpState(StrEnum):
 
     - ``INITIALIZING`` -- from the start of the top component's ``__init__``. Never seen over
       HTTP: uvicorn opens its port only once the lifespan's startup half has returned.
-    - ``INITIALIZED`` -- set at the end of ``start_lifespan`` under ``controlled``; awaiting the
+    - ``INITIALIZED`` -- set at the end of ``start_lifespan`` under ``production``; awaiting the
       first ``startup``. Entered once per process.
-    - ``RUNNING`` -- set on receipt of ``startup`` (under ``operated``, ``start_lifespan`` sends it).
+    - ``RUNNING`` -- set on receipt of ``startup`` (under ``development``, ``start_lifespan`` sends it).
     - ``SHUTDOWN`` -- set on receipt of ``shutdown``; a repeat ``shutdown`` leaves it there.
 
     Health is not part of it: that is ``operational`` / ``why_not_operational``. Only the top
@@ -66,15 +95,15 @@ class OpState(StrEnum):
 
 
 OPMODE_ENV = "MAST_OPMODE"
-DEFAULT_OPMODE = OpMode.OPERATED
+DEFAULT_OPMODE = OpMode.DEVELOPMENT
 
 
 def opmode_from_env() -> OpMode | None:
     """The mode named by ``MAST_OPMODE``, or ``None`` when it is unset.
 
-    An unrecognized value raises rather than falling back: ``MAST_OPMODE=controled``
-    silently becoming ``operated`` would have a unit run its startup while its supervisor
-    believes it is waiting.
+    An unrecognized value raises rather than falling back: ``MAST_OPMODE=prodution``
+    silently becoming ``development`` would have a unit run its startup while its supervisor
+    believes it is waiting. A pre-2026-10-12 value is accepted, with a WARNING.
     """
     raw = os.environ.get(OPMODE_ENV)
     if raw is None:
@@ -168,11 +197,25 @@ class OpmodeBase:
         return self._opmode_source or "preset"
 
     @property
+    def is_development(self) -> bool:
+        """True when the machine is in ``development`` mode, false when ``production``."""
+        return self.opmode == OpMode.DEVELOPMENT
+
+    @property
+    def is_production(self) -> bool:
+        """True when the machine is in ``production`` mode, false when ``development``."""
+        return not self.is_development
+
+    # The pre-2026-10-12 names. A `common` pull updates every consumer on a machine at once
+    # (CLAUDE.md), and MAST_spec -- not converted in the same change -- may still read these.
+    # Drop once no consumer does.
+
+    @property
     def is_operated(self) -> bool:
-        """True when the machine is in ``operated`` mode, false when ``controlled``."""
-        return self.opmode == OpMode.OPERATED
+        """Deprecated: :attr:`is_development`."""
+        return self.is_development
 
     @property
     def is_controlled(self) -> bool:
-        """True when the machine is in ``controlled`` mode, false when ``operated``."""
-        return not self.is_operated
+        """Deprecated: :attr:`is_production`."""
+        return self.is_production
