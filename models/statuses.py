@@ -779,6 +779,15 @@ class FullUnitStatus(ComponentStatus, PowerStatus):
     # unit never claimed -- "not reported" is the honest reading of an old unit.
     opmode: OpMode | None = None
     opstate: OpState | None = None
+    # Idleness (mast-claude-config plans/unit_idleness_design.md). `None` means UNKNOWN -- an
+    # old unit, control's fabricated BasicUnitStatus, or a unit not RUNNING -- and that is
+    # load-bearing: `why_busy` must never default to `{}`, which encodes "known and idle", or a
+    # new consumer reading an old unit would see an idle unit. `{}` known idle; non-empty busy,
+    # keyed by owner ("unit", "mount", ...) and valued from activities_verbal. `idle_seconds` is
+    # None while busy.
+    idle_seconds: float | None = None
+    active_seconds: float | None = None
+    why_busy: dict[str, list[str]] | None = None
     id: int
     guiding: bool = False
     autofocusing: bool = False
