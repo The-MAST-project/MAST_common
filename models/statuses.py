@@ -768,6 +768,21 @@ class FluxMeteringStatus(BaseModel):
     result: FluxMeteringResult | None = None
 
 
+class LatestAcquisition(BaseModel):
+    """The unit's latest acquisition and how it ended (MAST_unit#326).
+
+    `succeeded` is None until the outcome is known. The acquisition has ended when the unit's
+    `Acquiring` activity clears, which with a guider handover is after guiding stops; `folder`
+    tells a caller whether this record is the one its request started.
+    """
+
+    folder: str
+    target_ra_j2000_hours: float
+    target_dec_j2000_degs: float
+    succeeded: bool | None = None
+    failure: str | None = None
+
+
 class FullUnitStatus(ComponentStatus, PowerStatus):
     """Full unit status with all components, returned from the unit itself."""
 
@@ -799,6 +814,7 @@ class FullUnitStatus(ComponentStatus, PowerStatus):
     stage: StageStatus | None = None
     guider: GuiderStatus | None = None
     flux_metering: FluxMeteringStatus | None = None
+    latest_acquisition: LatestAcquisition | None = None
     errors: list[str] | None = None
     autofocus: dict | None = None
     corrections: list | None = None
