@@ -36,7 +36,7 @@ def test_they_serialise_as_the_bare_lower_case_literals():
 
 
 def test_a_stored_payload_round_trips():
-    original = _status(opmode=OpMode.DEVELOPMENT, opstate=OpState.SHUTDOWN)
+    original = _status(opmode=OpMode.DEVELOPMENT, opstate=OpState.SHUT_DOWN)
     again = FullUnitStatus.model_validate_json(original.model_dump_json())
     assert again.opmode is OpMode.DEVELOPMENT
-    assert again.opstate is OpState.SHUTDOWN
+    assert again.opstate is OpState.SHUT_DOWN

@@ -2,6 +2,26 @@
 
 ---
 
+## [2026-10-13] The opstate is the lifecycle state reached: `STARTED_UP` / `SHUT_DOWN`, set on completion
+
+**Why:** `RUNNING` and `SHUTDOWN` were set on *receipt* of `startup` / `shutdown`, so `opstate` said
+what had been asked for, not what had happened: a unit reported `running` 35 s before its startup
+finished, with the covers still opening. The activities already say what is in progress
+(`StartingUp`, `ShuttingDown`), so the opstate can say what has been reached.
+
+**What:** `OpState.STARTED_UP = "startedup"` replaces `RUNNING = "running"`, and
+`OpState.SHUT_DOWN = "shutdown"` replaces `SHUTDOWN` (same value). Both are set when the sequence
+**completes** -- when the top component's `StartingUp` / `ShuttingDown` activity ends -- and only
+if that command is still the most recent one, so a shutdown received mid-startup ends in
+`SHUT_DOWN`. During a startup the opstate stays `INITIALIZED` or `SHUT_DOWN`; during a shutdown,
+`STARTED_UP`. Health stays out of it: a startup with a failed component still completes.
+
+**No transition period:** no alias for `"running"`. `opstate` is only produced by the unit/spec
+app and read through this enum, so the common pull and the app change land together; a consumer
+still comparing against `"running"` must change with them.
+
+---
+
 ## [2026-10-12] The opmodes are renamed `development` / `production`
 
 **Why:** `operated` / `controlled` (2026-10-06) named who starts the app. Endpoint admission

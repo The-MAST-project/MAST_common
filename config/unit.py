@@ -98,7 +98,7 @@ class UnitConfig(BaseModel):
     # separate powerdown. No UI metadata yet -- no config field has a boolean widget.
     # Design: opmode-design section 4a.
     power_down_on_shutdown: bool = False
-    # Minutes of continuous idleness (RUNNING, nothing busy) after which the unit shuts itself
+    # Minutes of continuous idleness (STARTED_UP, nothing busy) after which the unit shuts itself
     # down. 0 disables, and is the default; otherwise at least 5, so a mistyped value cannot
     # shut a unit down a minute after its last command. Read live. Design: mast-claude-config
     # plans/unit_idleness_design.md.
