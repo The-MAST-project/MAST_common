@@ -156,7 +156,6 @@ class ExcludeRegionConfig(BaseModel):
                 "tooltip": "off: no exclusion region; fixed: exclude the rectangle below "
                 "(the fold-mirror shadow) from PHD2 guide-star selection",
             },
-            "required_capabilities": [UserCapabilities.CAN_CHANGE_CONFIGURATION.value],
         },
     )
     x: int = Field(
@@ -170,7 +169,6 @@ class ExcludeRegionConfig(BaseModel):
                 "label": "X",
                 "tooltip": "Exclusion region origin X (unbinned camera pixels)",
             },
-            "required_capabilities": [UserCapabilities.CAN_CHANGE_CONFIGURATION.value],
         },
     )
     y: int = Field(
@@ -184,7 +182,6 @@ class ExcludeRegionConfig(BaseModel):
                 "label": "Y",
                 "tooltip": "Exclusion region origin Y (unbinned camera pixels)",
             },
-            "required_capabilities": [UserCapabilities.CAN_CHANGE_CONFIGURATION.value],
         },
     )
     width: int = Field(
@@ -198,7 +195,6 @@ class ExcludeRegionConfig(BaseModel):
                 "label": "Width",
                 "tooltip": "Exclusion region width (unbinned camera pixels, 0 means not configured)",
             },
-            "required_capabilities": [UserCapabilities.CAN_CHANGE_CONFIGURATION.value],
         },
     )
     height: int = Field(
@@ -212,7 +208,6 @@ class ExcludeRegionConfig(BaseModel):
                 "label": "Height",
                 "tooltip": "Exclusion region height (unbinned camera pixels, 0 means not configured)",
             },
-            "required_capabilities": [UserCapabilities.CAN_CHANGE_CONFIGURATION.value],
         },
     )
     depth: float | None = Field(
@@ -226,7 +221,6 @@ class ExcludeRegionConfig(BaseModel):
                 "label": "Penumbra depth",
                 "tooltip": "Shadow-depth fraction at which the exclusion boundary is drawn (per unit)",
             },
-            "required_capabilities": [UserCapabilities.CAN_CHANGE_CONFIGURATION.value],
         },
     )
     pad_px: int | None = Field(
@@ -240,7 +234,6 @@ class ExcludeRegionConfig(BaseModel):
                 "label": "Pad",
                 "tooltip": "Safety margin added around the measured shadow band (unbinned camera pixels)",
             },
-            "required_capabilities": [UserCapabilities.CAN_CHANGE_CONFIGURATION.value],
         },
     )
     derived_from_depth: float | None = Field(
