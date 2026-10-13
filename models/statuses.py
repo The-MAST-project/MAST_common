@@ -256,8 +256,9 @@ class ImagerPixel(BaseModel):
     y: int
 
 
-# validation-context key honored by ImagerRoi.model_post_init (see ImagerRoi.verbatim)
+# validation-context keys honored by ImagerRoi.model_post_init (see ImagerRoi.verbatim, ImagerRoi.from_other)
 VERBATIM_ROI_CONTEXT_KEY = "verbatim_roi"
+CENTER_ROI_CONTEXT_KEY = "roi_center"
 
 
 class ImagerRoi(BaseModel):
@@ -270,12 +271,13 @@ class ImagerRoi(BaseModel):
     - asi ZWO constraints:
         - At any supported binning the width must be congruent to mod 8 == 0 and the height must be congruent to mod 2 == 0
 
-    Since both width and height are EVEN there is no center-pixel.  The center pixel will always be the highest pixel
-    of the lower half of the dimension (width/height).
+    Since both width and height are EVEN there is no center-pixel.  The center pixel will always be the lowest pixel
+    of the upper half of the dimension (width/height), i.e. x + width // 2.  With that definition the conditioning
+    is a projection: a rect that already meets the constraints passes through unchanged, and conditioning its own
+    output changes nothing.
 
-    An ImagerRoi can be derived from other ROIs:
-    - UnitRoi or SkyRoi: both don't specify center pixel
-    - SpecRoi: specifies a center pixel
+    An ImagerRoi can be derived from other ROIs (from_other), each of which specifies the center pixel.  The rect
+    is then shrunk symmetrically around that pixel, also where the requested rect runs off the sensor.
 
     Exception: ImagerRoi.verbatim() constructs WITHOUT conditioning, for
     consumers (PHD2 set_limit_frame) that must receive the rectangle exactly
@@ -294,10 +296,11 @@ class ImagerRoi(BaseModel):
         if context and context.get(VERBATIM_ROI_CONTEXT_KEY):
             return
 
-        if self._center:  # _center was specified, it will govern width and height
-            pass
-        else:  # no _center was specified, it will be governed by width/height
-            self._center = ImagerPixel(x=self.x + (self.width // 2) - 1, y=self.y + (self.height // 2) - 1)
+        center = context.get(CENTER_ROI_CONTEXT_KEY) if context else None
+        if center:  # a center was specified, it will govern width and height
+            self._center = center
+        else:  # no center was specified, it will be governed by width/height
+            self._center = ImagerPixel(x=self.x + (self.width // 2), y=self.y + (self.height // 2))
 
         # adjust width/height according to _center and start point
         half_width = min(
@@ -374,14 +377,26 @@ class ImagerRoi(BaseModel):
         start.x = max(0, center.x - (width // 2))
         start.y = max(0, center.y - (height // 2))
 
-        ret = ImagerRoi(x=start.x, y=start.y, width=width, height=height, _center=center)
+        ret = ImagerRoi.model_validate(
+            {"x": start.x, "y": start.y, "width": width, "height": height},
+            context={CENTER_ROI_CONTEXT_KEY: center},
+        )
         logger.debug(msg + f"{ret=}")
         return ret
 
-    def binned(self, binning: int | None):
+    def binned(self, binning: int | None) -> "ImagerRoi":
+        """
+        This ROI in binned pixels.  Not conditioned again: the constraints are set at bin 1 for the largest
+        supported binning, so the binned rect is already legal for the camera.
+        """
         b = binning or 1
+        if b == 1:
+            return self
 
-        return ImagerRoi(x=self.x // b, y=self.y // b, width=self.width // b, height=self.height // b)
+        ret = ImagerRoi.verbatim(x=self.x // b, y=self.y // b, width=self.width // b, height=self.height // b)
+        if self._center:
+            ret._center = ImagerPixel(x=self._center.x // b, y=self._center.y // b)
+        return ret
 
 
 class ImagerSettings(BaseModel):
