@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from common.asi import ASI_294MM_SUPPORTED_BINNINGS_LITERAL
 from common.opmode import OpMode
@@ -98,6 +98,30 @@ class UnitConfig(BaseModel):
     # separate powerdown. No UI metadata yet -- no config field has a boolean widget.
     # Design: opmode-design section 4a.
     power_down_on_shutdown: bool = False
+    # Minutes of continuous idleness (STARTED_UP, nothing busy) after which the unit shuts itself
+    # down. 0 disables, and is the default; otherwise at least 5, so a mistyped value cannot
+    # shut a unit down a minute after its last command. Read live. Design: mast-claude-config
+    # plans/unit_idleness_design.md.
+    minutes_to_autoshutdown_on_idle: int = Field(
+        default=0,
+        ge=0,
+        json_schema_extra={
+            "ui": {
+                "editable": True,
+                "widget": "number",
+                "unit": "min",
+                "label": "Auto-shutdown When Idle",
+                "tooltip": "Minutes idle before the unit shuts itself down; 0 disables, otherwise at least 5",
+            },
+        },
+    )
+
+    @field_validator("minutes_to_autoshutdown_on_idle")
+    @classmethod
+    def _zero_or_at_least_five(cls, minutes: int) -> int:
+        if 0 < minutes < 5:
+            raise ValueError(f"minutes_to_autoshutdown_on_idle={minutes}: use 0 to disable, or at least 5")
+        return minutes
 
     @model_validator(mode="after")
     def validate_unit_config(self):
