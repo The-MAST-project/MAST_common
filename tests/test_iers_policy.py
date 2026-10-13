@@ -11,6 +11,7 @@ test's policy leaks into the next and the suite's results depend on collection o
 
 import os
 import time
+import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -35,6 +36,18 @@ def _restore_iers_conf():
         setattr(iers.conf, name, value)
     iers_policy._configured = saved_configured
     iers_policy._last_lag_warning = saved_warning
+
+
+@pytest.fixture(autouse=True)
+def _private_guard(monkeypatch, tmp_path):
+    """A guard of this test's own, not the machine-wide one.
+
+    The real guard is a system-wide mutex (Windows) / lock file (Linux). On a unit machine
+    the running service already holds it, so a test taking the real one gets False from
+    `start_iers_refresher` and fails for a reason that has nothing to do with the code.
+    """
+    monkeypatch.setattr(iers_policy, "GUARD_NAME", f"Local\\mast_iers_refresher_test_{uuid.uuid4().hex}")
+    monkeypatch.setattr(iers_policy, "_linux_guard_path", lambda: str(tmp_path / "iers-refresher.lock"))
 
 
 @pytest.fixture
