@@ -199,14 +199,14 @@ class TestOpmodeBase:
         """One writer: components used to assign the unit's opstate directly."""
         base = self._base(OpMode.PRODUCTION)
         with pytest.raises(AttributeError):
-            base.opstate = OpState.RUNNING  # type: ignore[misc]
+            base.opstate = OpState.STARTED_UP  # type: ignore[misc]
 
     def test_set_opstate_logs_a_change_and_not_a_repeat(self, caplog):
         base = self._base(OpMode.PRODUCTION)
         with caplog.at_level("INFO"):
-            base._set_opstate(OpState.SHUTDOWN)
-            base._set_opstate(OpState.SHUTDOWN)
-        assert base.opstate is OpState.SHUTDOWN
+            base._set_opstate(OpState.SHUT_DOWN)
+            base._set_opstate(OpState.SHUT_DOWN)
+        assert base.opstate is OpState.SHUT_DOWN
         assert sum("opstate" in r.getMessage() for r in caplog.records) == 1
 
     @pytest.mark.parametrize(

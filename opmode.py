@@ -72,26 +72,36 @@ class OpMode(StrEnum):
 
 
 class OpState(StrEnum):
-    """Where a unit or spec machine is in its lifecycle: the last lifecycle command it received.
+    """Where a unit or spec machine is in its lifecycle: the lifecycle state it has REACHED.
 
-    ``INITIALIZING`` -> ``INITIALIZED`` -> ``RUNNING`` <-> ``SHUTDOWN``:
+    ``INITIALIZING`` -> ``INITIALIZED`` -> ``STARTED_UP`` <-> ``SHUT_DOWN``:
 
     - ``INITIALIZING`` -- from the start of the top component's ``__init__``. Never seen over
       HTTP: uvicorn opens its port only once the lifespan's startup half has returned.
     - ``INITIALIZED`` -- set at the end of ``start_lifespan`` under ``production``; awaiting the
       first ``startup``. Entered once per process.
-    - ``RUNNING`` -- set on receipt of ``startup`` (under ``development``, ``start_lifespan`` sends it).
-    - ``SHUTDOWN`` -- set on receipt of ``shutdown``; a repeat ``shutdown`` leaves it there.
+    - ``STARTED_UP`` -- set when the startup sequence **completes** (the top component's
+      ``StartingUp`` activity ends), not on receipt of ``startup``.
+    - ``SHUT_DOWN`` -- set when the shutdown sequence **completes** (``ShuttingDown`` ends).
 
-    Health is not part of it: that is ``operational`` / ``why_not_operational``. Only the top
-    component (the unit or the spec) carries an ``opstate``; its components do not. Not
-    persisted, but reported to the control machine. Design: opmode-design section 4.
+    A transition in progress is the ``StartingUp`` / ``ShuttingDown`` activity, not a state:
+    during a startup the opstate is still ``INITIALIZED`` or ``SHUT_DOWN``, during a shutdown
+    still ``STARTED_UP``. Only the most recent lifecycle command completes into a state, so a
+    shutdown received mid-startup ends in ``SHUT_DOWN`` even if the startup finishes later.
+
+    (Until 2026-10-13 the opstate was the last command *received*: ``RUNNING`` and ``SHUTDOWN``,
+    both set on receipt.)
+
+    Health is not part of it: that is ``operational`` / ``why_not_operational``. A startup in
+    which a component failed still completes into ``STARTED_UP``. Only the top component (the
+    unit or the spec) carries an ``opstate``; its components do not. Not persisted, but
+    reported to the control machine. Design: opmode-design section 4.
     """
 
     INITIALIZING = "initializing"
     INITIALIZED = "initialized"
-    RUNNING = "running"
-    SHUTDOWN = "shutdown"
+    STARTED_UP = "startedup"
+    SHUT_DOWN = "shutdown"
 
 
 OPMODE_ENV = "MAST_OPMODE"
