@@ -224,6 +224,30 @@ class ImagerInterface(Component, ABC):
 
     @property
     @abstractmethod
+    def set_point(self) -> float | None:
+        """The cooler set point the camera reports now (deg C), or None when it reports none.
+
+        A reading, not an echo of what was last written: a backend asks the camera.
+        """
+
+    @property
+    @abstractmethod
+    def can_set_cooler_set_point(self) -> bool:
+        """Whether `set_cooler_set_point` can apply a target on this backend.
+
+        True for ZWO (its SDK sets `TargetTemp`); for ASCOM, whatever the driver's
+        `CanSetCCDTemperature` says; False for PHD2, whose JSON-RPC can switch the cooler but
+        not set its target -- PHD2 takes the set point from its own profile. The `Imager`
+        wrapper reads this to decide whether `imager.cooler_set_point` is applied at startup.
+        """
+
+    @abstractmethod
+    def set_cooler_set_point(self, degrees: float) -> None:
+        """Apply a cooler set point (deg C). Raises `NotImplementedError` when
+        `can_set_cooler_set_point` is False, so a caller that skips the check fails loudly."""
+
+    @property
+    @abstractmethod
     def image_array(self) -> np.ndarray | None:
         """
         Get the image data from the imager.
