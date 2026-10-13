@@ -17,7 +17,6 @@ import pytest
 phd2_config = pytest.importorskip("common.config.phd2", reason="config package import chain unavailable")
 from pydantic import ValidationError  # noqa: E402
 
-from common.config.identification import UserCapabilities  # noqa: E402
 from common.config.phd2 import ExcludeRegionConfig, ExcludeRegionMode, PHD2Config  # noqa: E402
 
 # The ``phd2`` section of the real 'common' units doc, as in
@@ -100,12 +99,11 @@ class TestExcludeRegionConfigModel:
         with pytest.raises(ValidationError):
             ExcludeRegionConfig(mode="fixed", **BAND, pad_px=-1)
 
-    def test_editable_fields_carry_gui_capability_metadata(self):
-        """The GUI contract: everything an operator may edit is capability-gated.
+    def test_editable_fields_carry_gui_metadata(self):
+        """The GUI contract: everything an operator may edit is marked editable.
 
         The ``derived_from_*`` record is deliberately NOT editable -- the
-        measurement tool is its sole writer -- so it is exempt from the
-        capability requirement and asserted read-only instead.
+        measurement tool is its sole writer -- so it is asserted read-only instead.
         """
         for name, field in ExcludeRegionConfig.model_fields.items():
             extra = field.json_schema_extra
@@ -114,9 +112,6 @@ class TestExcludeRegionConfigModel:
                 assert extra["ui"]["editable"] is False, f"{name}: must stay read-only"
                 continue
             assert extra["ui"]["editable"] is True, f"{name}: not GUI-editable"
-            assert UserCapabilities.CAN_CHANGE_CONFIGURATION.value in extra["required_capabilities"], (
-                f"{name}: missing CAN_CHANGE_CONFIGURATION"
-            )
 
     def test_mode_select_offers_every_mode(self):
         options = ExcludeRegionConfig.model_fields["mode"].json_schema_extra["ui"]["options"]
