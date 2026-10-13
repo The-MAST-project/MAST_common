@@ -20,6 +20,22 @@ reading the live `/openapi.json` before scripting.
 **Implications:** no code changes. The tiers keep their meaning for the producer side
 (`MAST_unit/docs/adding-an-endpoint.md`); only the consumer guidance is relaxed. A rename of an
 operator verb can still break a script silently, which the live-schema step is there to catch.
+## [2026-10-13] A boxed log message is one record
+
+**Why:** `boxed_log` emitted a record per line, so a record from another thread could land
+between a box's borders. Over the 2026-09-08 night that happened to 4 of 3278 boxes, and one
+of them swallowed the longest mount movement of the night (198 s against a 22.38 s maximum
+among the 517 that parsed cleanly) into a box. A lock on boxed writers would not have helped:
+the swallowed record came from an ordinary `activities.end_activity` call.
+
+**What:** `boxed_log` (and so `boxed_debug` / `boxed_info`) emits the whole box as one record,
+its lines joined by newlines. `logging`'s handler holds its lock across a single emit, so
+nothing can interleave.
+
+**Implications:** continuation lines of a box carry no timestamp or thread prefix. A line
+without the prefix is therefore always box content. No code in the MAST repositories parses
+box lines. Peeled off `eli/exclude-region` (MAST_common#13), where it was carried since
+2026-09-12.
 
 ---
 
