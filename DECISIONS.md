@@ -2,6 +2,31 @@
 
 ---
 
+## [2026-10-14] ImagerRoi's center is `x + width // 2`, so conditioning is a projection
+
+**Why:** `ImagerRoi.model_post_init` took the center of an even dimension as `x + width // 2 - 1`.
+The symmetric-halves step then always cut 2 px, so every pass shrank the rect by 16x4 and shifted
+it, even a legal one (`8288x5644@0,0` came back `8272x5640@7,1`). `from_other` passed its center
+as `_center=` to the constructor, which pydantic v2 ignores, so the biased center replaced the
+requested one; mastrometry uses `_center` as the solve's reference pixel. MAST_common#17.
+
+**What:**
+- The center is the lowest pixel of the upper half, `x + width // 2`, the convention `from_other`
+  already used to place the origin. A rect meeting the constraints (width % 16, height % 4) passes
+  through unchanged, and conditioning is idempotent.
+- `from_other` hands its center in through the validation context (`CENTER_ROI_CONTEXT_KEY`, the
+  same mechanism as `verbatim()`), and the rect is shrunk symmetrically around it. Where the
+  requested rect runs off the sensor, the result is narrower but stays centered on the requested
+  pixel (team decision, 2026-10-14).
+- `binned(1)` returns the ROI itself; `binned(b)` divides without conditioning again, since the
+  bin-1 constraints already hold at the largest supported binning.
+
+**Implications:** `from_other` ROIs are centered on the requested pixel, 1 px from before, and
+up to 16 px wider / 4 px taller than the over-shrunk values. Full-sensor constructions are no-ops.
+For an unbinned `settings.roi`, the `binned_roi=` file-name tag now matches the frame PHD2
+delivers; `/unit/expose` stores a binned roi and stays wrong at binning 2 until
+MAST_unit.2024-12-12#335.
+
 ## [2026-10-13] A move reports its own outcome; the queue no longer judges it by the source
 
 **Refines** the 2026-10-13 entry "`move_ram_to_shared` skips a path that is not on the RAM area",
