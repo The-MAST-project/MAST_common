@@ -220,13 +220,12 @@ class Filer:
         else:
             print(msg)
 
-    def move(self, src, dst):
-        """
-        Moves a source path (either file or folder) to a destination path
+    def move(self, src, dst) -> bool:
+        """Move a file or folder to `dst`. True when nothing is left that a retry could change.
 
-        :param src: Source
-        :param dst: Destination
-        :return:
+        Not "the source is gone": a folder that moved completely still survives holding its
+        bookkeeping (see `_merge_into`), and the queue judged by existence never let it go
+        (MAST_common#156). False is a failure or a collision, both of which a later sweep retries.
         """
         op = "move"
         if not isinstance(src, Path):
@@ -246,7 +245,7 @@ class Filer:
             try:
                 if not src.exists():
                     self.warning(f"{op}: path does not exist, ignoring: '{src.as_posix()}'")
-                    return
+                    return True
                 if src.is_dir() and not src.is_symlink():
                     # shutil.move onto an EXISTING directory nests instead of merging:
                     # it moves the source INTO the destination, giving `<dst>/<src.name>`.
@@ -261,13 +260,14 @@ class Filer:
                     # other case through `shutil.move` carried the whole tree wholesale --
                     # sequence counter and lock claims included, which is exactly what must
                     # stay behind.
-                    self._merge_into(src, dst, op)
+                    return not self._merge_into(src, dst, op)
                 elif src.is_file() or src.is_dir() or src.is_symlink():
                     dst.parent.mkdir(parents=True, exist_ok=True)
                     shutil.move(src, dst)
+                    return True
                 else:
                     self.error(f"{op}: not a file, folder or symlink, ignoring: '{src.as_posix()}'")
-                    return
+                    return False
 
                 # self.info(f"moved '{src.as_posix()}' to '{dst.as_posix()}'")
             except (OSError, shutil.Error) as e:
@@ -276,6 +276,7 @@ class Filer:
                 # way. _move_ram_file re-queues on a surviving source, so a miss here is
                 # retried rather than lost.
                 self.error(f"failed to move '{src.as_posix()} to '{dst.as_posix()}' (exception: {e})")
+                return False
 
     def _merge_into(self, src: Path, dst: Path, op: str = "move") -> bool:
         """Move the CONTENTS of `src` into the existing directory `dst`, then drop `src`.
@@ -541,13 +542,13 @@ class Filer:
         only has to clear that record on success; every failure path leaves it for the
         sweeper by doing nothing."""
         try:
-            self.move(src, dst)
+            done = self.move(src, dst)
         finally:
             self._unmark_in_flight(str(src))
-        if os.path.exists(src):  # move() swallows errors; a surviving src means it failed
-            self._ensure_sweeper()
-        else:
+        if done:
             self._dequeue_pending(str(src))
+        else:
+            self._ensure_sweeper()
 
     def _enqueue_pending(self, src, dst):
         with Filer._pending_lock:
@@ -584,8 +585,7 @@ class Filer:
                 continue
             if MoveGuardian().is_protected(Path(src)):
                 continue  # producer still writing; leave it for the next sweep
-            self.move(src, dst)
-            if not os.path.exists(src):  # succeeded
+            if self.move(src, dst):
                 with Filer._pending_lock:
                     Filer._pending.pop(src, None)
 

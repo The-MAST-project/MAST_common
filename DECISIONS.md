@@ -2,6 +2,25 @@
 
 ---
 
+## [2026-10-13] A move reports its own outcome; the queue no longer judges it by the source
+
+**Refines** the 2026-10-13 entry "`move_ram_to_shared` skips a path that is not on the RAM area",
+which removed one way into the same fault.
+
+**Why:** `_move_ram_file` and `_drain_pending` dequeued a move only once its source was gone. A
+folder that moved completely survives holding its bookkeeping (`seq.txt`, lock claims), which
+`_merge_into` deliberately leaves, so a leftover folder relocated at startup was never dequeued
+and every later `flush` waited out its timeout (mast03, 2026-10-13). MAST_common#156.
+
+**What:** `Filer.move` returns True when nothing is left that a retry could change (moved,
+merged with only bookkeeping left, or already gone) and False on an error or a collision. Both
+callers dequeue on True and leave the entry for the sweeper on False.
+
+**Implications:** collisions and filesystem errors are retried as before. `move_to` ignores the
+result.
+
+---
+
 ## [2026-10-13] `move_ram_to_shared` skips a path that is not on the RAM area
 
 **Why:** for such a path the derived destination is the path itself, and `_move_ram_file` reads

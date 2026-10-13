@@ -206,3 +206,50 @@ def test_a_file_already_on_the_share_is_not_queued(filer):
     assert already_shared.read_text() == "solved"
     assert os.path.realpath(str(already_shared)) not in Filer._pending
     assert filer.flush(timeout=0.5) is True
+
+
+def _folder_with_counter(ram, product_content="frame"):
+    """An operation's folder as a restart leaves it: one product and its sequence counter."""
+    folder = ram / "Acquisitions" / "seq=0007" / "spec"
+    folder.mkdir(parents=True)
+    (folder / "seq=0001.fits").write_text(product_content)
+    (folder / "seq.txt").write_text("1")
+    return os.path.realpath(str(folder))
+
+
+def test_a_folder_that_keeps_its_counter_is_done_once_its_products_move(filer):
+    """`seq.txt` stays on the ram area by design, so the folder survives a move that
+    succeeded; judging success by the source being gone kept it queued for ever, and every
+    `flush` waited out its timeout (MAST_common#156)."""
+    src = _folder_with_counter(filer.ram_dir)
+
+    filer.move_ram_to_shared(src)
+    Filer._mover_pool.shutdown(wait=True)
+
+    assert (filer.shared_dir / "Acquisitions" / "seq=0007" / "spec" / "seq=0001.fits").read_text() == "frame"
+    assert os.path.exists(os.path.join(src, "seq.txt")), "the counter stays behind"
+    assert src not in Filer._pending
+    assert filer.flush(timeout=0.5) is True
+
+
+def test_the_sweeper_also_dequeues_a_folder_that_keeps_its_counter(filer):
+    src = _folder_with_counter(filer.ram_dir)
+    dst = str(filer.shared_dir / "Acquisitions" / "seq=0007" / "spec")
+    Filer._pending[src] = dst
+
+    filer._drain_pending()
+
+    assert src not in Filer._pending
+
+
+def test_a_folder_with_a_real_collision_stays_queued(filer):
+    src = _folder_with_counter(filer.ram_dir, product_content="this night")
+    clash = filer.shared_dir / "Acquisitions" / "seq=0007" / "spec"
+    clash.mkdir(parents=True)
+    (clash / "seq=0001.fits").write_text("another night")
+
+    filer.move_ram_to_shared(src)
+    Filer._mover_pool.shutdown(wait=True)
+
+    assert os.path.exists(os.path.join(src, "seq=0001.fits")), "neither product is overwritten"
+    assert src in Filer._pending, "a collision is retried, not dropped"
