@@ -245,8 +245,10 @@ class FocusOnStarSettings(BaseModel):
     The run picks one isolated GAIA DR3 star near a sky position, acquires it on
     the fibre pixel (the ``spec`` acquisition phase, no guiding), and sweeps the
     focuser measuring HFD only inside a box of ``fov_percent`` of the frame about
-    that pixel.  It refines focus after ``/calibrate/focuser``; it writes no
-    product and never touches ``known_as_good_position``.
+    that pixel.  It refines focus once the unit is near it -- after
+    ``/calibrate/focuser``, or at ``focuser.known_as_good_position`` when there is no
+    focuser calibration product; it writes no product and never touches
+    ``known_as_good_position``.
 
     The fibre pixel stands in for the optical axis until the optical-center
     calibration is trusted.  Design: mast-claude-config plans/focus_on_star_design.md.
