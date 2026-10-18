@@ -13,6 +13,14 @@ def test_defaults_are_the_agreed_ones():
     assert s.steps == 5
     assert s.steps % 2 == 1  # a V-curve point must sit on the seed
     assert s.ticks_per_step == 50
+    assert s.acquisition_tries == 5  # its own limit, not the unit's acquisition.tries
+
+
+def test_a_stored_focus_on_star_block_without_acquisition_tries_still_loads():
+    # Blocks written before the field existed default it rather than fail.
+    settings = CalibrationSettings.model_validate({"focus_on_star": {"steps": 7}})
+    assert settings.focus_on_star.steps == 7
+    assert settings.focus_on_star.acquisition_tries == 5
 
 
 def test_a_stored_block_without_focus_on_star_still_loads():
