@@ -31,6 +31,10 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+#: Seconds a unit gets to go from "acquire" to guiding: a plan's default, and its upper
+#: bound. Also used by MAST_control's new-plan template and its multi-unit acquisition.
+DEFAULT_TIMEOUT_TO_GUIDING: float = 600
+
 
 class Plan(BaseModel, Activities):
     target: Target
@@ -93,9 +97,9 @@ class Plan(BaseModel, Activities):
         },
     )
     timeout_to_guiding: float | None = Field(
-        default=600,
+        default=DEFAULT_TIMEOUT_TO_GUIDING,
         gt=0,
-        le=600,
+        le=DEFAULT_TIMEOUT_TO_GUIDING,
         json_schema_extra={
             "ui": {
                 "label": "Timeout to Guiding",
