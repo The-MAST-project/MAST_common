@@ -337,6 +337,9 @@ class UnitActivities(IntFlag):
     # Raised by Unit.abort(), ended by Unit.ontimer once nothing the abort reaches is still
     # running. Appended, per the rule above. Shutdown waits on it (opmode-design 5.3).
     Aborting = auto()
+    # PUT /unit/focus_on_star: one isolated catalog star on the fibre pixel, then a
+    # narrow-field HFD V-curve around it. Appended, per the rule above.
+    FocusingOnStar = auto()
 
 
 class ImagerActivities(IntFlag):
