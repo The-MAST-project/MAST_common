@@ -2,6 +2,27 @@
 
 ---
 
+## [2026-10-18] Scripts may build on operator endpoints
+
+**Why:** `docs/scripting-the-api.md` told scripts to prefer `contract` and `interface`
+operations and to flag every `operator` call at its call site, describing that tier as liable to
+change without notice. In practice the work scripts are written for lives on operator verbs:
+acquisition and guiding are `PUT /unit/start_acquisition_and_guiding` and
+`/unit/stop_acquisition_and_guiding`, and the only contract route that acquires,
+`execute_assignment`, needs a full `Plan` and is not a usable substitute. The guidance pushed
+scripts toward a surface that cannot do the job, or toward ceremony around one that can.
+
+**What:** `contract`, `interface` and `operator` are all usable public API for a script; only
+`demo` stays off-limits. The tier no longer ranks preference. The guide instead states what the
+tier does change, which is who notices a rename, and leans on the existing checklist step of
+reading the live `/openapi.json` before scripting.
+
+**Implications:** no code changes. The tiers keep their meaning for the producer side
+(`MAST_unit/docs/adding-an-endpoint.md`); only the consumer guidance is relaxed. A rename of an
+operator verb can still break a script silently, which the live-schema step is there to catch.
+
+---
+
 ## [2026-10-13] A move reports its own outcome; the queue no longer judges it by the source
 
 **Refines** the 2026-10-13 entry "`move_ram_to_shared` skips a path that is not on the RAM area",
