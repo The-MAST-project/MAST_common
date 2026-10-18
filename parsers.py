@@ -210,6 +210,29 @@ def sexagesimal_degrees_to_decimal(value: str | float) -> float:
     return parse_angle(value, unit="deg", low=-90.0, high=90.0, high_included=True, kind="Dec")
 
 
+def parse_target(
+    ra_j2000_hours: str | float | None, dec_j2000_degs: str | float | None
+) -> tuple[float | None, float | None]:
+    """Target coordinates as decimal hours and degrees, in whatever form they arrive.
+
+    One call, whatever the form. `float()` is NOT enough and never was: `RA_PATTERN`
+    deliberately accepts space-separated sexagesimal, so `"03 08 10.142"` passes the
+    query validation and then fails conversion -- the same defect MAST_unit's `acquirer.py`
+    records having already fixed once, in the comment above its own parsing block. The
+    parsers take sexagesimal, decimal and surrounding whitespace alike.
+
+    None is passed through rather than defaulted: it means "take it from the mount", and
+    only the unit's acquirer can do that. Note the emptiness test is explicit rather than
+    truthiness, so an RA of exactly 0 hours is a coordinate and not a missing value.
+
+    Moved here from MAST_unit's `flux_metering/session.py` so MAST_control converts the
+    coordinates it validates with `RA_PATTERN` / `DEC_PATTERN` the same way.
+    """
+    ra = None if ra_j2000_hours is None or ra_j2000_hours == "" else sexagesimal_hours_to_decimal(ra_j2000_hours)
+    dec = None if dec_j2000_degs is None or dec_j2000_degs == "" else sexagesimal_degrees_to_decimal(dec_j2000_degs)
+    return ra, dec
+
+
 if __name__ == "__main__":
     # units = parse_units(['w', 'ns:10-12', 'ns:1,3,5', 'ns:south:3-5'])
     # print(units)

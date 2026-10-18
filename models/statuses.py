@@ -768,6 +768,38 @@ class FluxMeteringStatus(BaseModel):
     result: FluxMeteringResult | None = None
 
 
+#: The prefix of every `why_not_operational` reason the unit's imager gives while it cools to
+#: its set point. The unit builds its messages from it and MAST_control matches on it, to
+#: treat a unit kept from `operational` only by cooling as fit to acquire. One definition,
+#: so rewording the message cannot silently break the match.
+COOLING_DOWN_REASON = "imager: cooling down"
+
+
+class AcquisitionState(StrEnum):
+    """Where the unit's latest `start_acquisition_and_guiding` run is."""
+
+    RUNNING = "running"  # accepted: phases, or the guider calibrating, in progress
+    GUIDING = "guiding"  # guiding, locked on a star (PHD2 state exactly "Guiding")
+    ENDED = "ended"  # guiding stopped, after it had locked
+    FAILED = "failed"
+    ABORTED = "aborted"  # cancelled: `Acquiring` cleared, or `unit/abort`
+
+
+class AcquisitionOutcome(BaseModel):
+    """The unit's latest acquisition, as `FullUnitStatus.acquisition` reports it.
+
+    No id: a unit runs one acquisition at a time, and replaces this with a fresh `RUNNING`
+    one before `start_acquisition_and_guiding` answers. So the first status read after a
+    successful PUT already describes that acquisition, never the one before it.
+    Design: mast-claude-config plans/control_acquisition_design.md.
+    """
+
+    state: AcquisitionState
+    errors: list[str] = Field(default_factory=list)
+    started_at: str  # ISO UTC
+    ended_at: str | None = None
+
+
 class FullUnitStatus(ComponentStatus, PowerStatus):
     """Full unit status with all components, returned from the unit itself."""
 
@@ -779,6 +811,9 @@ class FullUnitStatus(ComponentStatus, PowerStatus):
     # unit never claimed -- "not reported" is the honest reading of an old unit.
     opmode: OpMode | None = None
     opstate: OpState | None = None
+    # The latest acquisition. `None` is "not reported" -- an old unit, or none since the unit
+    # started -- for the same reason as `opstate`; never an empty default.
+    acquisition: AcquisitionOutcome | None = None
     # Idleness (mast-claude-config plans/unit_idleness_design.md). `None` means UNKNOWN -- an
     # old unit, control's fabricated BasicUnitStatus, or a unit not STARTED_UP -- and that is
     # load-bearing: `why_busy` must never default to `{}`, which encodes "known and idle", or a
