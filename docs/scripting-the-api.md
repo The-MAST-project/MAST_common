@@ -105,11 +105,15 @@ The unit groups its operations by contract tier, in Swagger and as a machine-rea
 |---|---|---|
 | Orchestration (contract) | `contract` | Yes. This is the programmatic surface for observing |
 | Component interface (contract) | `interface` | Yes. `startup` / `shutdown` / `abort` / `status`, uniform on every component |
-| *Area* (operator) — `Mount (operator)`, `Imager (operator)`, … | `operator` | For driving hardware by hand. Expect it to change without notice |
+| *Area* (operator) — `Mount (operator)`, `Imager (operator)`, … | `operator` | Yes. The day-to-day surface for driving hardware, by hand or from a script |
 | Demonstration (parked) | `demo` | No. Rendered struck through, and non-functional |
 
-An exploratory script that lives on operator verbs is exactly what that tier is for — the
-caution is against building something long-lived on one without knowing that is what you did.
+A script may build on any of the first three tiers; many real tasks, acquisition and guiding
+among them, exist only as operator verbs. What the tier changes is who notices a rename: a
+`contract` name is wire contract with `MAST_control` and the plan client, so renaming one is
+caught in review, while nothing on the unit's side knows which scripts call an `operator` verb.
+That is why step 4 of the checklist below reads the live `/openapi.json` rather than trusting an
+old example.
 
 **Both services publish this.** The spectrograph adopted the same contract module by module
 in September 2026, so its operations carry the same tier groups, the same `x-stability` and the
@@ -403,8 +407,8 @@ A working script comes out of this page if the agent does these, in order:
 4. Fetch `/openapi.json` from that same host and read the **real** parameter names, verbs and
    `x-completion` values for the endpoints the task needs. The examples on this page are
    illustrations, not a substitute for the live schema.
-5. Prefer `contract` and `interface` operations. If the task needs an `operator` verb, use it
-   and note at the call site that it is one. Never call a `demo` operation.
+5. Use `contract`, `interface` and `operator` operations as the task needs them. Never call a
+   `demo` operation.
 6. Copy the boilerplate rather than writing a client from scratch, and keep both of its
    safeguards: the `errors` check and the bounded wait.
 7. Ask the human before the first call that moves hardware, and name the unit it will move.
