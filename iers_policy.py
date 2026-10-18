@@ -396,7 +396,7 @@ def load_into_astropy(directory: str) -> bool:
 def log_lag(directory: str, when: datetime | None = None, every: timedelta = timedelta(days=1)) -> None:
     """Report the cached table's lag: INFO while fresh, WARNING once per `every` while stale.
 
-    Rate-limited on purpose. A warning emitted on every fetch decision -- every 30 minutes
+    Rate-limited on purpose. A warning emitted on every fetch decision -- every hour
     for a month -- trains people to ignore it, which would leave us worse off than the status
     field MAST_common#139 decided not to add. Log-only was chosen there, so this line is the
     whole alarm and it has to stay worth reading.
@@ -435,11 +435,17 @@ FETCH_INTERVAL_FRESH = timedelta(days=1)
 
 #: How often to try while it is stale. Eager on purpose: we are degraded, the machine may only
 #: get a brief window of connectivity, and catching one is worth more than politeness.
-FETCH_INTERVAL_STALE = timedelta(minutes=30)
+#: Hourly, not every 30 minutes, since 2026-10-18: no faster than the refresher wakes.
+FETCH_INTERVAL_STALE = timedelta(hours=1)
 
 #: Never two attempts closer together than this, whatever the lag says. A backstop against a
 #: tight loop if a clock moves or the marker cannot be written.
 MIN_FETCH_INTERVAL = timedelta(minutes=5)
+
+#: How often the refresher wakes to decide (and logs the lag). It was MIN_FETCH_INTERVAL --
+#: every 5 minutes, for a decision that is "no" all but once a day while the table is fresh,
+#: and an INFO lag line each time (2026-10-18).
+POLL_INTERVAL = timedelta(hours=1)
 
 #: Records the last ATTEMPT -- success or failure -- as an ISO-8601 UTC line.
 #:
@@ -602,7 +608,7 @@ def _refresher_loop(directory: str, poll: timedelta) -> None:
         _stop.wait(poll.total_seconds())
 
 
-def start_iers_refresher(directory: str, poll: timedelta = MIN_FETCH_INTERVAL) -> bool:
+def start_iers_refresher(directory: str, poll: timedelta = POLL_INTERVAL) -> bool:
     """Start the per-machine IERS refresher. Returns True if this process started it.
 
     **Call once, from a service's app lifespan** -- beside `Filer.start_product_relocation_sweep`,
