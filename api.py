@@ -4,6 +4,8 @@ import socket
 import ssl
 from datetime import UTC, datetime
 from enum import Enum, auto
+from threading import Lock
+from typing import ClassVar
 
 import httpx
 import humanfriendly
@@ -337,24 +339,37 @@ class BaseApi:
 
 
 class UnitApi(BaseApi):
-    _instance = None
-    _initialized = False
+    """One instance per unit, keyed on the unit's name (or its `ipaddr`).
 
-    def __new__(cls, *args, **kwargs):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-        return cls._instance
+    `UnitApi(hostname="mast03")` is the same object wherever it is built, and a different
+    one from `UnitApi(hostname="mast04")`. This used to be a single process-wide instance,
+    like `SpecApi` and `ControllerApi`, so every call after the first was silently answered
+    by the first unit's API: control's status cache polled one unit for all of them.
 
-    def __init__(
-        self,
-        hostname: str | None = None,
-        ipaddr: str | None = None,
-        device: str | None = None,
-    ):
+    Instances are shared between threads, so read a call's errors from the
+    `CanonicalResponse` it returns, not from `self.errors`, which the next call resets.
+    """
+
+    _instances: ClassVar[dict[str, "UnitApi"]] = {}
+    _instances_lock: ClassVar[Lock] = Lock()
+
+    def __new__(cls, hostname: str | None = None, ipaddr: str | None = None):
+        key = hostname or ipaddr
+        if key is None:
+            raise ValueError("UnitApi needs the unit's name ('hostname') or its 'ipaddr'")
+        with cls._instances_lock:
+            instance = cls._instances.get(key)
+            if instance is None:
+                instance = super().__new__(cls)
+                instance._initialized = False
+                cls._instances[key] = instance
+            return instance
+
+    def __init__(self, hostname: str | None = None, ipaddr: str | None = None):
         if self._initialized:
             return
 
-        super().__init__(hostname=hostname, ipaddr=ipaddr, device=device, domain=ApiDomain.Unit)
+        super().__init__(hostname=hostname, ipaddr=ipaddr, domain=ApiDomain.Unit)
         self._initialized = True
 
 
