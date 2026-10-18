@@ -282,6 +282,10 @@ class FocusOnStarSettings(BaseModel):
     binning: ASI_294MM_SUPPORTED_BINNINGS_LITERAL = 1
     max_saturation_retries: int = 2
     max_tries: int = 1  # 1 = one sweep, exactly as asked; 2 allows one re-centred sweep
+    # Plate-solve tries to put the star on the fibre pixel. Its own limit, not the unit's
+    # acquisition.tries (20 on mast00): at ~20 s a try, a run that cannot solve -- dome
+    # closed, clouds -- took ~7 minutes to give up (mast00, 2026-10-18).
+    acquisition_tries: int = 5
     tolerance_frac: float = 0.025
     #
     # The shape gate, looser than /calibrate/focuser's: a 5 x 50-tick sweep spans
