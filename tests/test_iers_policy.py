@@ -9,6 +9,7 @@ assert "a transform does not raise" on a machine whose table happens to be curre
 test's policy leaks into the next and the suite's results depend on collection order.
 """
 
+import inspect
 import os
 import time
 import uuid
@@ -399,6 +400,22 @@ def test_a_stale_table_is_retried_far_sooner(cache):
     # ...but never tighter than the backstop.
     iers_policy.record_attempt(cache, when - timedelta(minutes=1))
     assert iers_policy.should_fetch(cache, when) is False
+
+
+def test_a_stale_table_is_retried_hourly(cache):
+    when = datetime(2026, 10, 4, 12, 0, tzinfo=UTC)
+    iers_policy.write(cache, CONTENT, 61252.0, when=when)  # 65 days behind
+
+    iers_policy.record_attempt(cache, when - timedelta(minutes=30))
+    assert iers_policy.should_fetch(cache, when) is False, "hourly while stale, not every 30 minutes"
+    iers_policy.record_attempt(cache, when - timedelta(minutes=61))
+    assert iers_policy.should_fetch(cache, when) is True
+
+
+def test_the_refresher_wakes_hourly_by_default():
+    # Not every 5 minutes (MIN_FETCH_INTERVAL): each wake logs the lag at INFO.
+    default = inspect.signature(iers_policy.start_iers_refresher).parameters["poll"].default
+    assert default == iers_policy.POLL_INTERVAL == timedelta(hours=1)
 
 
 def test_a_download_that_is_not_a_table_is_not_stored(cache, monkeypatch, tmp_path):
