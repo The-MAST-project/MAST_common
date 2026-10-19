@@ -401,6 +401,13 @@ class LockNudgeConfig(BaseModel):
         return self
 
 
+class HandoverStyle(StrEnum):
+    """How the fold mirror goes in, for the old-vs-new handover A/B. Temporary: removed after the tests."""
+
+    BRACKETED = "bracketed"  # guide at SKY, settle, nudge, then insert (under a pause unless `pause` is off)
+    LEGACY = "legacy"  # as on main: the acquirer inserts the mirror, then guiding starts
+
+
 class HandoverConfig(BaseModel):
     """Whether starting to guide also inserts the fold mirror.
 
@@ -423,6 +430,8 @@ class HandoverConfig(BaseModel):
     """
 
     auto_insert: bool = True
+    style: HandoverStyle = HandoverStyle.BRACKETED
+    pause: bool = True
 
 
 class PHD2Config(BaseModel):
