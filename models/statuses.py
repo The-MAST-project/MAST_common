@@ -228,6 +228,10 @@ class PointingSample(BaseModel):
     lock_position: tuple[float, float] | None = None
     avg_dist: float | None = None
     lock_validity: str | None = None
+    #: The limit frame the guide frame was cropped to, (x, y, width, height) in sensor
+    #: pixels; None for the full sensor. With a crop the fiber position may lie outside
+    #: the frame, and the offset is then extrapolated from the frame's solution.
+    frame_crop: tuple[int, int, int, int] | None = None
 
 
 class PointingCheckStatus(BaseModel):
