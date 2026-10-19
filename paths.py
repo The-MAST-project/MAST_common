@@ -202,6 +202,23 @@ class PathMaker:
         folder.mkdir(parents=True, exist_ok=True)
         return str(folder)
 
+    def make_fiber_focus_folder(self, root: str | None = None) -> str:
+        """
+        <ram>/<observing-night>/FiberFocus/<NNNN> -- one folder per run of
+        `acquire_and_focus_fiber`.
+
+        The same shape as `make_flux_metering_folder`, and for the same reasons; a folder
+        of its own so these runs are never listed or read as flux-metering runs.
+        """
+        if not root:
+            ram = Filer().ram
+            assert ram
+            root = ram.root
+        folder = Path(self.make_observing_night_folder(root=root)) / "FiberFocus"
+        folder = folder / PathMaker().make_seq(str(folder))
+        folder.mkdir(parents=True, exist_ok=True)
+        return str(folder)
+
     @staticmethod
     def current_utc():
         return datetime.datetime.now(datetime.UTC).strftime("%H-%M-%S_%f")[:-3]
