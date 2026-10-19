@@ -32,6 +32,7 @@ class DliPowerSwitch(Component):
     NUM_OUTLETS: int = 8
     _instantiated: ClassVar[list[str]] = []  # shared registry of instantiated switches
 
+    # How-to: https://github.com/The-MAST-project/MAST/wiki/Running-a-unit
     # 'Outlet power-off recovery state policy': what the PDU does when mains comes back.
     # 0: all outlets off, 1: all on (sequenced), 2: back to the state they were in.
     RECOVERY_MODE_URL: str = "restapi/relay/recovery_mode/"
