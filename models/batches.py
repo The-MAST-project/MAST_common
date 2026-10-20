@@ -8,7 +8,7 @@ from ulid import ULID
 from common.activities import Activities, BatchActivities
 from common.mast_logging import get_logger
 from common.models.calibration import CalibrationSettings
-from common.models.plans import Plan
+from common.models.plans import STATUS_POLL_SECONDS, Plan
 from common.models.spectrographs import SpectrographModel
 
 if TYPE_CHECKING:
@@ -137,7 +137,7 @@ class Batch(BaseModel, Activities):
     async def wait_for_spec_done(self):
         self.start_activity(BatchActivities.WaitingForSpecDone)
         while True:
-            await asyncio.sleep(20)
+            await asyncio.sleep(STATUS_POLL_SECONDS)
             spec_status: ComponentStatus | None = await self.get_spec_status()
             assert spec_status is not None, "spec_status should not be None"
 

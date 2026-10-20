@@ -31,6 +31,8 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+STATUS_POLL_SECONDS = 20
+
 #: Seconds a unit gets to go from "acquire" to guiding: a plan's default, and its upper
 #: bound. Also used by MAST_control's new-plan template and its multi-unit acquisition.
 DEFAULT_TIMEOUT_TO_GUIDING: float = 600
@@ -721,7 +723,7 @@ class Plan(BaseModel, Activities):
         # 0-86399 component, so a backwards clock step normalised to days=-1, seconds=86399
         # and this loop would have run for about a day instead of timing out.
         while time.monotonic() - start < self.timeout_to_guiding:
-            time.sleep(20)
+            await asyncio.sleep(STATUS_POLL_SECONDS)
             responses = await self.fetch_statuses(self.committed_unit_apis)
 
             canonical_responses: list[CanonicalResponse] = [
@@ -755,7 +757,7 @@ class Plan(BaseModel, Activities):
 
         self.start_activity(PlanActivities.WaitingForSpecDone)
         while True:
-            time.sleep(20)
+            await asyncio.sleep(STATUS_POLL_SECONDS)
             spec_status: ComponentStatus | None = await self.get_spec_status()
             assert spec_status is not None, "spec_status should not be None"
 
