@@ -32,6 +32,8 @@ Three things to know before the first call:
 
 ## Reaching a service from outside Neot Smadar
 
+Site access, proxy and remote desktop: [Access and remote work](https://github.com/The-MAST-project/MAST/wiki/Access-and-remote-work).
+
 The site gateway filters the service ports. Measured from the institute network, against
 `mast-ns-control` and `mast-ns-spec`:
 
