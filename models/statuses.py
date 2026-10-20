@@ -886,12 +886,28 @@ class DeepspecStatus(ComponentStatus):
     cameras: dict[str, GreateyesStatus] = {}
 
 
+class CameraTemperatureState(StrEnum):
+    """What a spectrograph camera's cooler reported with its latest temperature reading."""
+
+    STABILIZED = "stabilized"  # at the set point, and held there
+    NOT_STABILIZED = "not_stabilized"  # reached the set point, not yet stable
+    NOT_REACHED = "not_reached"  # still on the way to the set point
+    DRIFT = "drift"  # was stabilized, has since drifted
+    ADJUSTING = "adjusting"  # moving to a new set point (a camera without the states above)
+    OFF = "off"  # the cooler is off
+
+
 class NewtonStatus(ComponentStatus):
     powered: bool = False
     current_set_point: int | None = None
     regular_set_point: int | None = None
     science_set_point: int | None = None
+    # The latest reading, in every cooler state -- not only once stabilized. During an
+    # acquisition the camera is not read, and this is the reading from before it:
+    # `temperature_at` says how old it is.
     temperature: float | None = None
+    temperature_state: CameraTemperatureState | None = None
+    temperature_at: str | None = None  # ISO UTC
     errors: list[str] | None = None
     latest_exposure: Any | None = None
     latest_spec_exposure_settings: SpecExposureSettings | None = None
@@ -899,7 +915,11 @@ class NewtonStatus(ComponentStatus):
 
 class QHY600Status(ComponentStatus):
     powered: bool = False
+    current_set_point: float | None = None
+    # As on `NewtonStatus`: the latest reading, and from before an acquisition while one runs.
     temperature: float | None = None
+    temperature_state: CameraTemperatureState | None = None
+    temperature_at: str | None = None  # ISO UTC
     errors: list[str] | None = None
     latest_exposure: Any | None = None
     latest_spec_exposure_settings: SpecExposureSettings | None = None
