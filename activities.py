@@ -299,6 +299,9 @@ class NewtonActivities(IntFlag):
     # renumbers every member after it and any consumer comparing `activities` numerically
     # silently starts reading a different flag.
     Aborting = auto()
+    # A set point given through `adjust_temperature`, until the camera reports it stabilized.
+    # Not "busy": exposures are allowed meanwhile, so it stays out of `is_working`.
+    AdjustingTemperature = auto()
 
 
 class UnitActivities(IntFlag):
