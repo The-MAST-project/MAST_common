@@ -76,12 +76,12 @@ class Component(ABC, Activities):
     @property
     @abstractmethod
     def name(self) -> str:
-        """The getter method for the abstract name property."""
+        """The component's name.
 
-    @name.setter
-    @abstractmethod
-    def name(self, value: str):
-        """The setter method for the abstract name property."""
+        Read-only here, for the same reason as `operational`: nothing in the fleet assigns a
+        component's name, and the abstract setter failed pyright's override check on every
+        component without one. A component may still define a setter of its own.
+        """
 
     @property
     @abstractmethod
