@@ -76,22 +76,22 @@ class Component(ABC, Activities):
     @property
     @abstractmethod
     def name(self) -> str:
-        """The getter method for the abstract name property."""
+        """The component's name.
 
-    @name.setter
-    @abstractmethod
-    def name(self, value: str):
-        """The setter method for the abstract name property."""
+        Read-only here, for the same reason as `operational`: nothing in the fleet assigns a
+        component's name, and the abstract setter failed pyright's override check on every
+        component without one. A component may still define a setter of its own.
+        """
 
     @property
     @abstractmethod
     def operational(self) -> bool:
-        """The getter method for the abstract name property."""
+        """Whether the component can do its work now; `why_not_operational` says why not.
 
-    @operational.setter
-    @abstractmethod
-    def operational(self, value: str) -> bool:
-        """The setter method for the abstract name property."""
+        Read-only. It used to declare an abstract setter as well (copied from `name`'s, typed
+        `value: str`), which nothing in the fleet calls, so every component with a read-only
+        `operational` -- nearly all of them -- failed pyright's override check for dropping it.
+        """
 
     @property
     @abstractmethod
