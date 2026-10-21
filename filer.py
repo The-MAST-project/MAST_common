@@ -838,13 +838,13 @@ class Filer:
             # comparison in `_is_under`. Keying it posix-style made `_folder_drained`'s
             # queued-move check silently never match on Windows, where the two differ.
             posix_src = str(Path(file).as_posix())
-            if not posix_src.startswith(self.ram.root):
+            dst = self._share_destination(posix_src)
+            if dst is None:
                 # Its destination would be itself, and `_move_ram_file` reads a surviving
                 # source as a failed move: queued, it is never cleared and every `flush`
-                # waits out its timeout (MAST_common#156). `move_to` skips the same case.
+                # waits out its timeout (MAST_common#156).
                 self.info(f"move_ram_to_shared: '{posix_src}' is not on the ram area; nothing to move")
                 continue
-            dst = str(Path(posix_src.replace(self.ram.root, self.shared.root)))
             src = os.path.realpath(posix_src)
 
             # Write ahead: record the intent BEFORE trying to act on it, and clear it only
@@ -855,9 +855,10 @@ class Filer:
             # cover a failure to *start* the mover, which is #52.
             self._enqueue_pending(src, dst)
 
-            if not self.ensure_shared_root():
-                # Don't occupy a worker that would only block on / fail against a dead
-                # share: leave it queued (the file stays safely in ram) for the sweeper.
+            if not self._share_usable():
+                # No share and no fallback for it (Linux; a Filer without one): don't
+                # occupy a worker that would only block on / fail against a dead share --
+                # leave it queued (the file stays in ram) for the sweeper.
                 self.info(f"move_ram_to_shared: shared area '{self.shared.root}' not accessible; deferring '{src}'")
                 self._ensure_sweeper()
                 continue
@@ -991,18 +992,79 @@ class Filer:
                 )
             return Filer._mover_pool
 
-    def _move_ram_file(self, src, dst):
+    def _move_ram_file(self, src, dst=None):
         """Move one queued file. The caller has already recorded it in `_pending`, so this
         only has to clear that record on success; every failure path leaves it for the
-        sweeper by doing nothing."""
+        sweeper by doing nothing.
+
+        The destination is decided here, at the moment of the move (`_destination`), not
+        taken from the queue: the share may have gone, or come back, since it was queued.
+        """
         try:
-            done = self.move(src, dst)
+            dst = self._destination(src)
+            done = dst is not None and self.move(src, dst)
         finally:
             self._unmark_in_flight(str(src))
         if done:
             self._dequeue_pending(str(src))
         else:
             self._ensure_sweeper()
+
+    def _share_destination(self, src) -> str | None:
+        """Where a product on the RAM area -- primary or fallback -- goes on the share now:
+        the share's current root (its fallback while demoted) plus its path relative to the
+        RAM area. None if ``src`` is not on the RAM area."""
+        try:
+            area, relative = self.area_of(src)
+        except ValueError:
+            return None
+        if area is not FilingArea.RAM:
+            return None
+        root = self.current_root(FilingArea.SHARE)
+        if root is None:
+            return None
+        return root + relative if relative else root
+
+    def _share_usable(self) -> bool:
+        """True if a product can be sent towards the share now: the share is reachable, or
+        it is on its fallback. A share found unreachable is demoted on the spot when it has
+        a fallback -- products go to `C:` now rather than wait on the RAM disk, which could
+        fill (plans/filing-areas-design.md 6.1, "spill immediately"). False only when there
+        is neither."""
+        if self.is_demoted(FilingArea.SHARE):
+            return True
+        if self.ensure_shared_root():
+            return True
+        if self.fallback_of(FilingArea.SHARE) is None:
+            return False
+        self._demote(FilingArea.SHARE, "unreachable", f"unreachable: '{self.shared.root}' is not accessible")
+        return True
+
+    def _destination(self, src) -> str | None:
+        """The destination of a RAM product, decided at the moment it moves, with its
+        folder created -- the creation IS the reachability test: it is the real operation,
+        so it cannot disagree with a probe (6.1). A failure that `report_failure` reads as
+        the share's demotes it, and the folder is made under the share fallback instead.
+        None: nowhere to put it yet -- it stays queued."""
+        if not self._share_usable():
+            return None
+        dst = self._share_destination(Path(str(src)).as_posix())
+        if dst is None:
+            return None
+        try:
+            os.makedirs(os.path.dirname(dst.rstrip("/")), exist_ok=True)
+            return dst
+        except OSError as e:
+            if self.is_demoted(FilingArea.SHARE) or self.report_failure(FilingArea.SHARE, dst, e) is None:
+                self.error(f"move: cannot create the destination of '{src}' ('{dst}'): {e}")
+                return None
+        dst = self._share_destination(Path(str(src)).as_posix())
+        try:
+            os.makedirs(os.path.dirname(dst.rstrip("/")), exist_ok=True)  # type: ignore[union-attr]
+        except OSError as e:
+            self.error(f"move: cannot create the destination of '{src}' on the share fallback ('{dst}'): {e}")
+            return None
+        return dst
 
     def _enqueue_pending(self, src, dst):
         with Filer._pending_lock:
@@ -1031,23 +1093,26 @@ class Filer:
         """Attempt every queued move once; drop entries that succeed or whose source is
         gone, and skip (retry next cycle) sources still being written."""
         with Filer._pending_lock:
-            items = [(src, dst) for src, dst in Filer._pending.items() if src not in Filer._in_flight]
-        for src, dst in items:
+            # The queued destination is not used: it is decided again at the move (`_destination`).
+            items = [src for src in Filer._pending if src not in Filer._in_flight]
+        for src in items:
             if not os.path.exists(src):  # already moved/cleaned elsewhere
                 with Filer._pending_lock:
                     Filer._pending.pop(src, None)
                 continue
             if MoveGuardian().is_protected(Path(src)):
                 continue  # producer still writing; leave it for the next sweep
-            if self.move(src, dst):
+            destination = self._destination(src)
+            if destination is not None and self.move(src, destination):
                 with Filer._pending_lock:
                     Filer._pending.pop(src, None)
 
     def _sweep_loop(self):
         while True:
-            # ensure_shared_root() rather than a bare probe: the sweeper is what retries a
-            # backlog, and the backlog's usual cause is precisely a missing per-machine root.
-            if self.ensure_shared_root():
+            # ensure_shared_root() (through _share_usable) rather than a bare probe: the
+            # sweeper is what retries a backlog, and the backlog's usual cause is precisely
+            # a missing per-machine root. With a share fallback it drains there instead.
+            if self._share_usable():
                 self._drain_pending()
             # Exit (freeing the thread) only when nothing is left; re-checked atomically
             # with _ensure_sweeper so a concurrent enqueue can't be stranded.
