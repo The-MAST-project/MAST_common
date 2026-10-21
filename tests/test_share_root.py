@@ -13,12 +13,14 @@ from pathlib import PurePath
 
 import pytest
 
-from common.filer import Filer, is_windows_drive_mapped
+from common.filer import is_windows_drive_mapped
+from common.testing.filer import real_filer
 
 
 @pytest.fixture
 def filer():
-    return Filer()
+    # The real layout: the suite's Filer is pointed at temporary folders (common.testing.filer).
+    return real_filer()
 
 
 class TestShareRoot:

@@ -25,6 +25,7 @@ from unittest.mock import patch
 import pytest
 
 from common.filer import Filer, is_windows_drive_mapped
+from common.testing.filer import real_filer, real_filer_init
 
 
 def _filer_as(system: str, hostname: str) -> Filer:
@@ -38,6 +39,7 @@ def _filer_as(system: str, hostname: str) -> Filer:
     every non-Windows runner. `True` is the state this file means by "on Windows".
     """
     with (
+        real_filer_init(),
         patch("platform.system", return_value=system),
         patch("socket.gethostname", return_value=hostname),
         patch("common.filer.is_windows_drive_mapped", return_value=True),
@@ -111,7 +113,7 @@ class TestWindowsIsUnchanged:
         if not is_windows_drive_mapped("Z:"):
             pytest.skip("Z: is not mapped, so the root falls back to the local disk")
 
-        root = Filer().machine_log_root().replace("\\", "/")
+        root = real_filer().machine_log_root().replace("\\", "/")
 
         assert socket.gethostname().lower() in root.lower()
         assert root.startswith("Z:/MAST/")
@@ -122,7 +124,7 @@ class TestTheFallback:
 
     @pytest.mark.skipif(platform.system() != "Windows", reason="the fallback only exists on Windows")
     def test_it_falls_back_to_the_local_disk_when_the_share_is_gone(self):
-        filer = Filer()
+        filer = real_filer()
         with patch("common.filer.is_accessible", return_value=False):
             assert filer.machine_log_root() == filer.local.root
 
