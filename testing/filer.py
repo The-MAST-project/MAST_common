@@ -55,7 +55,7 @@ def isolate_filer(prefix: str = "mast-tests-") -> None:
     def _location(*parts: str) -> filer_module.Location:
         path = os.path.join(tmp_root, *parts)
         os.makedirs(path, exist_ok=True)
-        return filer_module.Location(None, path)
+        return filer_module.Location(path)
 
     hostname = socket.gethostname().split(".")[0]
     local, ram = _location("local"), _location("ram")

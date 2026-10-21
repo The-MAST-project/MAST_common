@@ -49,10 +49,10 @@ def _filer(tmp_path, monkeypatch, *, share_exists: bool, per_machine: bool = Tru
 
     def fake_init(self, logger=None):
         # Posix-style roots, as in production: `Location("Z:/", "MAST/host/")` joins that way.
-        self.ram = Location(None, f"{ram.as_posix()}/")
-        self.shared = Location(None, f"{shared.as_posix()}/")
-        self.local = Location(None, f"{local.as_posix()}/")
-        self.share_root = Location(None, f"{share.as_posix()}/")
+        self.ram = Location(f"{ram.as_posix()}/")
+        self.shared = Location(f"{shared.as_posix()}/")
+        self.local = Location(f"{local.as_posix()}/")
+        self.share_root = Location(f"{share.as_posix()}/")
         self.tops = {FilerTop.Local: self.local, FilerTop.Shared: self.shared, FilerTop.Ram: self.ram}
         self.logger = logger
 

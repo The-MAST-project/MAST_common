@@ -60,11 +60,133 @@ class FilerTop(Enum):
     Ram = auto()
 
 
+def canonical_root(root: str) -> str:
+    """``root`` forward-slashed, with no doubled slash and exactly one trailing slash.
+
+    String work only, never the file system -- no ``realpath``: it can hang on a dead
+    redirector (and ``common.utils`` builds a ``Filer`` at import), it drops the trailing
+    slash, and its answer for ``Z:`` changes with whether the share is up. A UNC root keeps
+    its leading ``//``. plans/filing-areas-design.md 4.1.
+    """
+    s = root.replace("\\", "/")
+    lead = "//" if s.startswith("//") else "/" if s.startswith("/") else ""
+    rest = "/".join(part for part in s[len(lead) :].split("/") if part)
+    if not rest:
+        if lead == "/":
+            return "/"
+        raise ValueError(f"not a root: {root!r}")
+    return f"{lead}{rest}/"
+
+
+def _root_key(root: str) -> str:
+    """What two roots are compared by: case-folded where the file system ignores case."""
+    return root.casefold() if _CASE_INSENSITIVE else root
+
+
+_CASE_INSENSITIVE = platform.system() == "Windows"
+
+#: How long a readable() / writable() answer is reused. Moves and sweeps ask per file.
+PROBE_CACHE_SECONDS = 5.0
+#: The clock the probe cache reads; tests replace it.
+_probe_clock = time.monotonic
+_probe_lock = Lock()
+#: (root key, "readable" | "writable") -> (when, answer). Module-level, not per Location:
+#: `Filer()` is constructed everywhere and builds new Locations each time.
+_probe_cache: dict[tuple[str, str], tuple[float, bool]] = {}
+#: The probe running for a key, and the dict it will answer in. A probe that hangs is not
+#: started again until it returns, so a dead share cannot pile up a thread per caller.
+_probe_threads: dict[tuple[str, str], tuple[Thread, dict[str, bool]]] = {}
+_probe_sequence = 0
+
+
 class Location:
-    def __init__(self, drive: str | None, prefix: str):
-        self.drive = drive
-        self.prefix = prefix
-        self.root = os.path.join(self.drive, self.prefix) if self.drive else self.prefix
+    """A filing area's root: one canonical, forward-slashed string (``canonical_root``).
+
+    ``Location(root)``. The old ``Location(drive, prefix)`` form is still accepted, the two
+    parts joined, until MAST_unit's tests have moved to the one-argument form.
+    """
+
+    def __init__(self, root: str | None, prefix: str | None = None):
+        if prefix is not None:
+            root = f"{root or ''}{prefix}"
+        if not root:
+            raise ValueError("a Location needs a root")
+        self.root = canonical_root(root)
+
+    def __eq__(self, other) -> bool:
+        return isinstance(other, Location) and _root_key(self.root) == _root_key(other.root)
+
+    def __hash__(self) -> int:
+        return hash(_root_key(self.root))
+
+    def __repr__(self) -> str:
+        return f"Location({self.root!r})"
+
+    def readable(self, timeout: float = 2.0) -> bool:
+        """The root is a directory, within ``timeout`` seconds. Cached PROBE_CACHE_SECONDS."""
+        return self._probe("readable", lambda: os.path.isdir(self.root), timeout)
+
+    def writable(self, timeout: float = 2.0) -> bool:
+        """A folder can be created and removed in the root, within ``timeout`` seconds.
+
+        Not ``os.access``: on Windows it reads only the read-only attribute, not ACLs or
+        share permissions. The probe folder names host and PID, so concurrent processes do
+        not collide. The root itself is never created. Cached PROBE_CACHE_SECONDS.
+        """
+        global _probe_sequence
+        with _probe_lock:
+            _probe_sequence += 1
+            name = f".mast-probe-{socket.gethostname()}-{os.getpid()}-{_probe_sequence}"
+
+        def _create_and_remove() -> bool:
+            probe = os.path.join(self.root, name)
+            os.mkdir(probe)
+            os.rmdir(probe)
+            return True
+
+        return self._probe("writable", _create_and_remove, timeout)
+
+    def _probe(self, kind: str, check: Callable[[], bool], timeout: float) -> bool:
+        """One probe per key at a time; every caller waits on it, up to its own timeout.
+
+        A caller arriving while a probe runs joins that probe rather than answering False:
+        concurrent writers asking at once must all hear the real answer, not a refusal that
+        later steps would read as the root failing. The probe caches its own answer when it
+        finishes, so a late answer still counts. A timeout is cached as False for the
+        window, so a hung share does not make every caller wait out the full timeout.
+        """
+        key = (_root_key(self.root), kind)
+        with _probe_lock:
+            cached = _probe_cache.get(key)
+            if cached is not None and _probe_clock() - cached[0] < PROBE_CACHE_SECONDS:
+                return cached[1]
+            running = _probe_threads.get(key)
+            if running is not None and running[0].is_alive():
+                thread, result = running
+                start = False
+            else:
+                result: dict[str, bool] = {}
+
+                def _run():
+                    try:
+                        ok = bool(check())
+                    except OSError:
+                        ok = False
+                    result["ok"] = ok
+                    with _probe_lock:
+                        _probe_cache[key] = (_probe_clock(), ok)
+
+                thread = Thread(target=_run, name=f"filer-{kind}-probe", daemon=True)
+                _probe_threads[key] = (thread, result)
+                start = True
+        if start:
+            thread.start()
+        thread.join(timeout)
+        with _probe_lock:
+            if "ok" in result:  # under the lock: it may have come back just now
+                return result["ok"]
+            _probe_cache[key] = (_probe_clock(), False)  # timed out: refuse for the window
+        return False
 
 
 class Filer:
@@ -103,13 +225,11 @@ class Filer:
     def __init__(self, logger=None):
         sys = platform.system()
         if sys == "Windows":
-            self.local = Location("C:/", "MAST/")
+            self.local = Location("C:/MAST/")
             self.shared = (
-                Location("Z:/", f"MAST/{socket.gethostname()}/")
-                if is_windows_drive_mapped("Z:")
-                else Location("C:/", "MAST/")
+                Location(f"Z:/MAST/{socket.gethostname()}/") if is_windows_drive_mapped("Z:") else Location("C:/MAST/")
             )
-            self.ram = Location("D:/", "MAST/") if is_windows_drive_mapped("D:") else Location("C:/", "MAST/")
+            self.ram = Location("D:/MAST/") if is_windows_drive_mapped("D:") else Location("C:/MAST/")
             # The share itself, above every machine's product tree. NOT derived as the
             # parent of `shared.root`: that works on Windows only by coincidence, since
             # `shared.root` carries the hostname here and does not on Linux, so the same
@@ -119,12 +239,12 @@ class Filer:
             # asking for the share wants the share; handing back `C:/MAST/` because Z:
             # is unmapped would put shared artifacts on a local disk under a name that
             # says otherwise -- the failure that lost frames on 2026-07-14.
-            self.share_root = Location("Z:/", "MAST/")
+            self.share_root = Location("Z:/MAST/")
             # Already <share>/<hostname> here (or the C:/MAST/ fallback, which is this
             # machine's disk and so is per-machine by construction).
             self.machine = self.shared
         elif sys == "Linux":
-            self.local = Location(None, "/Storage/mast-share/MAST")
+            self.local = Location("/Storage/mast-share/MAST")
             self.shared = self.local
             self.ram = None
             self.share_root = self.local
@@ -132,7 +252,7 @@ class Filer:
             # hostname component -- so anything per-machine derived from it lands at the
             # top of the share, beside every machine's folder instead of inside one.
             # mast-ns-control's logs did exactly that for 89 nights (2025-10-28..2026-08-06).
-            self.machine = Location(None, f"/Storage/mast-share/MAST/{socket.gethostname().split('.')[0]}")
+            self.machine = Location(f"/Storage/mast-share/MAST/{socket.gethostname().split('.')[0]}")
 
         self.tops = {
             FilerTop.Local: self.local,

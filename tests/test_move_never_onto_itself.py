@@ -38,9 +38,9 @@ def make_filer(tmp_path, monkeypatch):
 
         def fake_init(self, logger=None):
             # Posix-style, as production roots are on every platform ("D:/" + "MAST/").
-            self.ram = Location(None, f"{roots[ram].as_posix()}/")
-            self.shared = Location(None, f"{roots[shared].as_posix()}/")
-            self.local = Location(None, f"{roots[local].as_posix()}/")
+            self.ram = Location(f"{roots[ram].as_posix()}/")
+            self.shared = Location(f"{roots[shared].as_posix()}/")
+            self.local = Location(f"{roots[local].as_posix()}/")
             self.share_root = self.shared
             self.machine = self.shared
             self.tops = {FilerTop.Local: self.local, FilerTop.Shared: self.shared, FilerTop.Ram: self.ram}

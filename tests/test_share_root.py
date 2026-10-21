@@ -58,7 +58,7 @@ class TestShareRoot:
 
     @pytest.mark.skipif(platform.system() != "Linux", reason="Linux layout")
     def test_linux_layout(self, filer):
-        assert filer.share_root.root == "/Storage/mast-share/MAST"
+        assert filer.share_root.root == "/Storage/mast-share/MAST/"
 
     def test_the_parent_of_shared_root_is_not_a_substitute(self, filer):
         """The trap this attribute exists to avoid.
