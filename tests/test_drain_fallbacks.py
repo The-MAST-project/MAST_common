@@ -166,3 +166,19 @@ def _join_drain(timeout: float = 5.0) -> None:
     for thread in threading.enumerate():
         if thread.name == "fallback-drain":
             thread.join(timeout)
+
+
+class TestARootSpelledThroughALink:
+    @pytest.mark.skipif(not hasattr(os, "symlink") or os.name == "nt", reason="symlinks")
+    def test_a_fallback_reached_through_a_symlink_still_drains(self, unit, tmp_path):
+        # A realpath need not keep a root's spelling: macOS resolves /var to /private/var,
+        # Windows a mapped Z: to its UNC path. Folders found under a root must keep its.
+        real = tmp_path / "real-share-fallback"
+        real.mkdir()
+        link = tmp_path / "linked-share-fallback"
+        os.symlink(real, link)
+        unit.share_fallback = Location(str(link))
+        _products(unit.share_fallback.root)
+
+        assert unit.drain_fallbacks() == (0, 1)
+        assert os.path.isfile(unit.shared.root + REL + "/a.fits")

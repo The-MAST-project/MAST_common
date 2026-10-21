@@ -3,13 +3,15 @@ import io
 import logging
 import os
 import platform
+import sys
+import threading
 import time
 from enum import StrEnum
 
 from rich.logging import RichHandler
 from rich.text import Text
 
-from common.filer import Filer
+from common.filer import Filer, FilingArea
 
 default_log_level = logging.DEBUG
 
@@ -115,6 +117,13 @@ class UtcRichHandler(RichHandler):
         )
 
 
+def fallback_log_name(leaf: str) -> str:
+    """``mast-unit-log.txt`` -> ``mast-unit-log.fallback.txt``: a log written on the share
+    fallback, which must not collide with the share's own file of the night."""
+    stem, dot, extension = leaf.rpartition(".")
+    return f"{stem}.fallback.{extension}" if dot else f"{leaf}.fallback"
+
+
 class DailyFileHandler(logging.FileHandler):
     """
     A file handler that writes to <base_dir>/<yyyy-mm-dd>/<filename> and follows
@@ -135,6 +144,9 @@ class DailyFileHandler(logging.FileHandler):
     # every record would block the whole service inside SMB timeouts once the
     # shared drive hangs -- the console handler still carries those records.
     REOPEN_RETRY_INTERVAL_SEC = 30.0
+    #: Records emitted from inside an emit (a demotion reported while the file failed), at
+    #: most this many, kept for the file once it is writable again.
+    DEFERRED_MAX = 1000
 
     def __init__(
         self,
@@ -145,12 +157,20 @@ class DailyFileHandler(logging.FileHandler):
         delay=True,
         errors=None,
         program: LogProgram = LogProgram.APP,
+        follow_share: bool = False,
     ):
         self.leaf = filename
         self.program = program
         self.base_dir = base_dir or self.default_base_dir()
+        # Follow this machine's SHARE filing area rather than one directory fixed at start-up
+        # (plans/filing-areas-design.md 10): its fallback while it is demoted, nowhere while
+        # that is full. `init_log` sets it; an explicit `base_dir` alone keeps one directory.
+        self.follow_share = follow_share
+        self._filer: Filer | None = None
         self.current_path: str | None = None
         self._next_open_attempt: float = 0.0
+        self._inside = threading.local()
+        self._deferred: list[str] = []
         if "b" not in mode:
             # UTF-8 rather than io.text_encoding's locale default: on Windows that
             # resolves to cp1252, which cannot encode a degree sign or a double
@@ -168,35 +188,125 @@ class DailyFileHandler(logging.FileHandler):
             return os.path.join(os.path.expandvars("%LOCALAPPDATA%"), "mast")
         return "/var/log/mast"
 
-    def make_file_name(self) -> str:
-        # The directory is an observing night, not a calendar day, so a night's
-        # records stay together (see observing_night). It turns at 12:00 UTC
-        # everywhere, so units at different sites still agree on which file a
-        # record belongs to.
-        return os.path.join(self.base_dir, observing_night(datetime.datetime.now(datetime.UTC)), self.leaf)
+    def _filing(self) -> Filer:
+        # One Filer for the handler's life: the filing-area state is process-wide, and
+        # building a Filer per record would probe the drive letters on every line.
+        if self._filer is None:
+            self._filer = Filer()
+        return self._filer
+
+    def make_file_name(self) -> str | None:
+        """The file a record goes to now; None while there is nowhere to write it.
+
+        The directory is an observing night, not a calendar day, so a night's records stay
+        together (see observing_night). It turns at 12:00 UTC everywhere, so units at
+        different sites still agree on which file a record belongs to.
+        """
+        base, leaf = self.base_dir, self.leaf
+        if self.follow_share:
+            filer = self._filing()
+            root = filer.current_root(FilingArea.SHARE)
+            if root is None:
+                return None  # SHARE on its fallback, and the local disk at its ceiling (6.4)
+            base = root
+            if filer.is_demoted(FilingArea.SHARE):
+                # Its own name: the share has its own file of the night, and the two differ,
+                # so draining them under one name would be a collision on every sweep (10).
+                leaf = fallback_log_name(leaf)
+        return os.path.join(base, observing_night(datetime.datetime.now(datetime.UTC)), leaf)
 
     @property
-    def path(self) -> str:
+    def path(self) -> str | None:
         """The file currently being written to."""
         return self.make_file_name()
 
     def emit(self, record: logging.LogRecord):
+        if getattr(self._inside, "active", False):
+            # Re-entered on this thread: something reported while this handler was failing
+            # -- a demotion, say. Writing it to the file would recurse into the failure.
+            self._to_stderr(record)
+            return
+        self._inside.active = True
         try:
             self._emit(record)
         except Exception:  # noqa: BLE001 -- a logging handler must never raise into its caller
             # A full disk or a revoked permission must not take the service down
             # with it; logging's own error path reports it instead.
             self.handleError(record)
+        finally:
+            self._inside.active = False
 
     def _emit(self, record: logging.LogRecord):
         filename = self.make_file_name()
+        if filename is None:
+            self._close_stream()
+            return  # nowhere to write; the console handler keeps the record
         # `self.stream is None` is not only the delay=True first record: an earlier
         # open may have failed (unreachable share), or close() may have dropped the
         # stream. Without this test such a handler would take the "nothing changed"
         # path forever and write to None on every record.
-        if (self.stream is None or filename != self.current_path) and not self._reopen(filename):
+        if (self.stream is None or filename != self.current_path) and not self._open_following(filename):
             return  # share still unreachable; the console handler keeps the record
-        logging.StreamHandler.emit(self, record=record)
+        self._write(self.format(record))
+
+    def _write(self, line: str) -> None:
+        """Write one line, with whatever was deferred to stderr first. A write that fails
+        and that `Filer` reads as the share's moves the file to the fallback and retries."""
+        try:
+            self._write_now(line)
+        except OSError as e:
+            if not self._demotes_the_share(e):
+                raise
+            filename = self.make_file_name()
+            if filename is None or not self._reopen(filename):
+                raise
+            self._write_now(line)
+
+    def _write_now(self, line: str) -> None:
+        stream = self.stream
+        for deferred in self._deferred:
+            stream.write(deferred + self.terminator)
+        stream.write(line + self.terminator)
+        self.flush()
+        self._deferred.clear()
+
+    def _open_following(self, filename: str) -> bool:
+        try:
+            return self._reopen(filename)
+        except OSError as e:
+            if not self._demotes_the_share(e):
+                raise
+            # On the fallback now: open there at once rather than after the hold-off.
+            fallback = self.make_file_name()
+            if fallback is None or fallback == filename:
+                raise
+            self._next_open_attempt = 0.0
+            return self._reopen(fallback)
+
+    def _demotes_the_share(self, exc: OSError) -> bool:
+        if not self.follow_share:
+            return False
+        return self._filing().report_failure(FilingArea.SHARE, self.current_path or "", exc) is not None
+
+    def _to_stderr(self, record: logging.LogRecord) -> None:
+        try:
+            line = self.format(record)
+        except Exception:  # noqa: BLE001 -- the record is lost, not the caller
+            return
+        print(line, file=sys.stderr)
+        if len(self._deferred) < self.DEFERRED_MAX:
+            self._deferred.append(line)
+
+    def _close_stream(self) -> None:
+        if self.stream is not None:
+            try:
+                self.stream.flush()
+                self.stream.close()
+            except OSError:
+                pass
+            finally:
+                self.stream = None  # type: ignore
+                self.current_path = None
 
     def _reopen(self, filename: str) -> bool:
         """
@@ -396,9 +506,9 @@ def init_log(
     if not daily_handlers:
         handler = DailyFileHandler(
             filename=file_name,
-            base_dir=Filer().machine_log_root(),
             mode="a",
             program=program,
+            follow_share=True,
         )
 
         handler.setLevel(level)
