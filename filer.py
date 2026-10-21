@@ -12,9 +12,11 @@ else:
     import fcntl
 
 import contextlib
+import datetime
 import errno
 import fnmatch
 import os
+import re
 import shutil
 import time
 from collections.abc import Callable
@@ -1073,6 +1075,7 @@ class Filer:
                 if self.move(folder, destination):
                     from_share += 1
             _remove_empty_folders(share_fallback.root)
+            from_share += self._drain_legacy_night_folders()
 
         if from_ram or from_share:
             self.info(
@@ -1080,6 +1083,39 @@ class Filer:
                 f"moved {from_share} from the share fallback to the share"
             )
         return from_ram, from_share
+
+    def _drain_legacy_night_folders(self) -> int:
+        """Move the ``C:/MAST/<night>/`` folders to this machine's folder on the share.
+
+        What the construction-time fallback left whenever a process started with the share
+        unreachable: its logs (and on mast00 one night's products) under ``C:/MAST/``
+        itself (plans/filing-areas-design.md 6.3). Only top-level folders whose name is a
+        night label -- never ``Shared/`` with the RAM-disk image, the caches, ``Kepler/``,
+        ``Campaigns/`` or scripts. Not tonight's: a process that started with the share
+        down may still be writing its log there, and an open file cannot be moved.
+
+        Their logs are renamed ``mast-<role>-log.fallback.txt`` first: the share usually
+        has its own ``mast-<role>-log.txt`` for the night, and the two differ, so moving
+        them under one name would be a collision on every sweep (10).
+        Only on a machine whose local disk is not the share -- never on control.
+        """
+        local, shared = self.local.root, self.root_of(FilingArea.SHARE)
+        if shared is None or _overlaps(local, shared.root) or _overlaps(local, self.share_root.root):
+            return 0
+        from common.mast_logging import observing_night  # mast_logging imports this module
+
+        tonight = observing_night(datetime.datetime.now(datetime.UTC))
+        moved = 0
+        for name in sorted(os.listdir(local)) if os.path.isdir(local) else []:
+            folder = os.path.join(local, name)
+            if name == tonight or not _is_night_label(name) or not os.path.isdir(folder):
+                continue
+            _rename_logs_as_fallback(folder)
+            if self.move(folder, shared.root + name):
+                moved += 1
+        if moved:
+            self.info(f"drain: moved {moved} legacy night folder(s) from '{local}' to '{shared.root}'")
+        return moved
 
     def _share_usable(self) -> bool:
         """True if a product can be sent towards the share now: the share is reachable, or
@@ -1245,6 +1281,32 @@ def _remove_empty_folders(root: str) -> None:
         if os.path.realpath(dirpath) != real_root:
             with contextlib.suppress(OSError):
                 os.rmdir(dirpath)
+
+
+_NIGHT_LABEL = re.compile(r"\d{4}-\d{2}-\d{2}")
+#: A log file's name: mast-<role>-log.txt, or mast-<role>-<program>-log.txt.
+_LOG_NAME = re.compile(r"mast-.+-log\.txt")
+
+
+def _is_night_label(name: str) -> bool:
+    """``yyyy-mm-dd`` and a real date -- what `observing_night` names a night's folder."""
+    if not _NIGHT_LABEL.fullmatch(name):
+        return False
+    try:
+        datetime.date.fromisoformat(name)
+    except ValueError:
+        return False
+    return True
+
+
+def _rename_logs_as_fallback(folder: str) -> None:
+    """``mast-<role>-log.txt`` -> ``mast-<role>-log.fallback.txt`` directly in ``folder``."""
+    for name in os.listdir(folder):
+        if _LOG_NAME.fullmatch(name):
+            target = os.path.join(folder, name[: -len("-log.txt")] + "-log.fallback.txt")
+            if not os.path.exists(target):
+                with contextlib.suppress(OSError):  # an open log stays; the next drain retries
+                    os.rename(os.path.join(folder, name), target)
 
 
 def _canonical(path) -> str:
