@@ -21,6 +21,19 @@ CALIBRATION_PHASE_FOLDERS = {
 }
 
 
+def as_posix(path: str | os.PathLike) -> str:
+    """``path`` with forward slashes, the spelling every path PathMaker and Filer hand out has.
+
+    Windows accepts either separator, but string work on paths does not: a backslashed
+    folder never starts with a forward-slashed root ("D:/MAST/"), so a prefix test or a
+    ``.replace`` between the two silently does nothing -- which is how acquisition plots were
+    pointed at the RAM disk (plans/filing-areas-design.md 1.4). ``str(Path(...))`` is the
+    native spelling, backslashed on Windows; this is the one used for anything returned.
+    A UNC path keeps its leading ``//``.
+    """
+    return Path(path).as_posix()
+
+
 class PathMaker:
     @staticmethod
     def make_seq(folder: str, start_with: int | None = None, dont_bump: bool = False) -> str:
@@ -65,12 +78,12 @@ class PathMaker:
             root = ram.root
         d = Path(root) / observing_night(datetime.datetime.now(datetime.UTC))
         d.mkdir(parents=True, exist_ok=True)
-        return str(d)
+        return as_posix(d)
 
     def make_exposures_folder(self, root: str | None = None) -> str:
         folder = Path(self.make_observing_night_folder(root=root)) / "Exposures"
         folder.mkdir(parents=True, exist_ok=True)
-        return str(folder)
+        return as_posix(folder)
 
     def make_autofocus_folder(self, root: str | None = None, subfolder: str | None = None) -> str:
         """
@@ -96,7 +109,7 @@ class PathMaker:
         autofocus_folder = (night / subfolder if subfolder else night) / "Autofocus"
         folder = autofocus_folder / self.make_seq(str(autofocus_folder))
         folder.mkdir(parents=True, exist_ok=True)
-        return str(folder)
+        return as_posix(folder)
 
     def make_calibration_folder(self, phase: str, root: str | None = None) -> str:
         """``<daily>/Calibration/<Phase>/<NNNN>`` -- one fresh folder per run.
@@ -133,7 +146,7 @@ class PathMaker:
         base = base / phase_folder
         folder = base / self.make_seq(str(base))
         folder.mkdir(parents=True, exist_ok=True)
-        return str(folder)
+        return as_posix(folder)
 
     def make_acquisition_folder(self, phase: str | None = None, tags: dict | None = None) -> str:
         acquisitions_folder = Path(self.make_observing_night_folder()) / "Acquisitions"
@@ -144,13 +157,13 @@ class PathMaker:
         ]
         if tags:
             for k, v in tags.items():
-                parts.append(f"{k}={v}" if v else "{k}")
+                parts.append(f"{k}={v}" if v else f"{k}")
 
         folder = acquisitions_folder / ",".join(parts)
         if phase:
             folder = folder / phase
             folder.mkdir(parents=True, exist_ok=True)
-        return str(folder)
+        return as_posix(folder)
 
     def make_guidings_folder(self, root: str | None = None, base_folder: str | None = None) -> str:
         if base_folder is not None:
@@ -163,7 +176,7 @@ class PathMaker:
             guiding_folder = Path(self.make_observing_night_folder(root=root)) / "Guidings"
 
         guiding_folder.mkdir(parents=True, exist_ok=True)
-        return str(guiding_folder)
+        return as_posix(guiding_folder)
 
     def make_spirals_folder(self, root: str | None = None, base_folder: str | None = None) -> str:
         if base_folder is not None:
@@ -177,7 +190,7 @@ class PathMaker:
 
         spirals_folder = spirals_folder / PathMaker().make_seq(str(spirals_folder))
         spirals_folder.mkdir(parents=True, exist_ok=True)
-        return str(spirals_folder)
+        return as_posix(spirals_folder)
 
     def make_flux_metering_folder(self, root: str | None = None) -> str:
         """
@@ -200,7 +213,7 @@ class PathMaker:
         folder = Path(self.make_observing_night_folder(root=root)) / "FluxMetering"
         folder = folder / PathMaker().make_seq(str(folder))
         folder.mkdir(parents=True, exist_ok=True)
-        return str(folder)
+        return as_posix(folder)
 
     @staticmethod
     def current_utc():
@@ -227,16 +240,16 @@ class PathMaker:
 
     @staticmethod
     def make_plans_folder() -> str:
-        return str(Path(Filer().shared.root) / "plans")
+        return as_posix(Path(Filer().shared.root) / "plans")
 
     @staticmethod
     def make_plans_files_folder() -> str:
-        return str(Path(PathMaker.make_plans_folder()) / "files")
+        return as_posix(Path(PathMaker.make_plans_folder()) / "files")
 
     @staticmethod
     def make_run_folder():
         nightly_run_folder = PathMaker().make_observing_night_folder(root=os.path.join(Filer().shared.root, "runs"))
-        return os.path.join(nightly_run_folder, "run-" + PathMaker().make_seq(folder=nightly_run_folder))
+        return as_posix(os.path.join(nightly_run_folder, "run-" + PathMaker().make_seq(folder=nightly_run_folder)))
 
     @staticmethod
     def make_spec_acquisitions_folder(spec_name: Literal["highspec", "deepspec"]):
@@ -248,7 +261,7 @@ class PathMaker:
         folder = os.path.join(folder, spec_name)
         folder = os.path.join(folder, "acquisition-" + PathMaker().make_seq(folder, None))
         os.makedirs(folder, exist_ok=True)
-        return folder
+        return as_posix(folder)
 
     @staticmethod
     def make_spec_exposures_folder(spec_name: Literal["highspec", "deepspec"], band: str | None = None):
@@ -263,7 +276,7 @@ class PathMaker:
         if band:
             folder = os.path.join(folder, band)
         os.makedirs(folder, exist_ok=True)
-        return folder
+        return as_posix(folder)
 
 
 if __name__ == "__main__":
