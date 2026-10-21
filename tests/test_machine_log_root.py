@@ -78,7 +78,7 @@ class TestTheLinuxRegression:
         filer = _filer_as("Linux", "mast-ns-control")
 
         assert filer.machine.root != filer.share_root.root
-        assert filer.machine.root == "/Storage/mast-share/MAST/mast-ns-control"
+        assert filer.machine.root == "/Storage/mast-share/MAST/mast-ns-control/"
 
     def test_accessible_shared_root_is_still_not_a_substitute_on_linux(self):
         """Why the new accessor had to exist. If these ever agree, the asymmetry has been
@@ -95,7 +95,7 @@ class TestTheLinuxRegression:
         short-named folder every other tool uses."""
         filer = _filer_as("Linux", "mast-ns-control.weizmann.ac.il")
 
-        assert filer.machine.root == "/Storage/mast-share/MAST/mast-ns-control"
+        assert filer.machine.root == "/Storage/mast-share/MAST/mast-ns-control/"
 
 
 class TestWindowsIsUnchanged:
@@ -142,5 +142,5 @@ class TestTheFallback:
         with patch("common.filer.is_accessible", _probe):
             root = filer.machine_log_root()
 
-        assert root == "/Storage/mast-share/MAST/brand-new-host"
+        assert root == "/Storage/mast-share/MAST/brand-new-host/"
         assert seen == [filer.share_root.root], f"the probe must target the share, not the target path: {seen}"
