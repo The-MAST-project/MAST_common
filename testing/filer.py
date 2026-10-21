@@ -70,7 +70,6 @@ def isolate_filer(prefix: str = "mast-tests-") -> None:
         self.shared = shared
         self.ram = ram
         self.share_root = share_root
-        self.machine = shared
         self.ram_fallback = ram_fallback
         self.share_fallback = share_fallback
         self.logger = logger

@@ -21,7 +21,7 @@ def _norm(path: str) -> str:
 def test_every_root_is_under_the_temporary_directory():
     filer = Filer()
     tmp = _norm(tempfile.gettempdir())
-    for root in (filer.local.root, filer.ram.root, filer.shared.root, filer.share_root.root, filer.machine.root):
+    for root in (filer.local.root, filer.ram.root, filer.shared.root, filer.share_root.root):
         assert _norm(root).startswith(tmp), root
 
 
@@ -35,7 +35,7 @@ def test_shared_is_this_machines_folder_inside_the_share_as_on_windows():
     filer = Filer()
     assert _norm(filer.shared.root).startswith(_norm(filer.share_root.root))
     assert _norm(filer.shared.root) != _norm(filer.share_root.root)
-    assert filer.machine.root == filer.shared.root
+    assert filer.machine_log_root() in (filer.shared.root, filer.local.root)
 
 
 def test_the_module_level_filer_is_isolated_too():

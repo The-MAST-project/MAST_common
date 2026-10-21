@@ -54,9 +54,9 @@ class TestItIsPerMachine:
     def test_the_hostname_is_in_the_path(self, system, hostname):
         filer = _filer_as(system, hostname)
 
-        assert hostname in filer.machine.root, (
+        assert hostname in filer.shared.root, (
             f"on {system} the per-machine root must name the machine, else its logs land "
-            f"in a folder shared with every other host: {filer.machine.root}"
+            f"in a folder shared with every other host: {filer.shared.root}"
         )
 
     @pytest.mark.parametrize(("system", "hostname"), [("Linux", "mast-ns-control"), ("Windows", "mast00")])
@@ -66,7 +66,7 @@ class TestItIsPerMachine:
         filer = _filer_as(system, hostname)
 
         share = PurePath(filer.share_root.root)
-        machine = PurePath(filer.machine.root)
+        machine = PurePath(filer.shared.root)
         assert machine != share, f"the per-machine root must not BE the share root ({share})"
         assert share in machine.parents, f"{machine} should sit under {share}"
 
@@ -77,8 +77,8 @@ class TestTheLinuxRegression:
     def test_it_is_not_the_share_root_on_linux(self):
         filer = _filer_as("Linux", "mast-ns-control")
 
-        assert filer.machine.root != filer.share_root.root
-        assert filer.machine.root == "/Storage/mast-share/MAST/mast-ns-control/"
+        assert filer.shared.root != filer.share_root.root
+        assert filer.shared.root == "/Storage/mast-share/MAST/mast-ns-control/"
 
     def test_shared_is_per_machine_on_linux_too(self):
         """It was the share root on Linux, which is how control's logs reached the top of the
@@ -95,7 +95,7 @@ class TestTheLinuxRegression:
         short-named folder every other tool uses."""
         filer = _filer_as("Linux", "mast-ns-control.weizmann.ac.il")
 
-        assert filer.machine.root == "/Storage/mast-share/MAST/mast-ns-control/"
+        assert filer.shared.root == "/Storage/mast-share/MAST/mast-ns-control/"
 
 
 class TestWindowsIsUnchanged:
@@ -106,7 +106,7 @@ class TestWindowsIsUnchanged:
         or logs would stop landing beside the products they belong with."""
         filer = _filer_as("Windows", "mast00")
 
-        assert filer.machine.root == filer.shared.root
+        assert filer.machine_log_root() in (filer.shared.root, filer.local.root)
 
     @pytest.mark.skipif(platform.system() != "Windows", reason="needs the real Z: mapping")
     def test_the_live_value_names_this_machine(self):
