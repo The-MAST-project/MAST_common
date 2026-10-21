@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from common.filer import Filer, FilerTop, is_bookkeeping
+from common.filer import Filer, is_bookkeeping
 
 
 @pytest.fixture
@@ -38,7 +38,6 @@ def filer(tmp_path):
     f.shared = location()
     f.shared.root = shared.as_posix() + "/"
     f.local = f.shared
-    f.tops = {FilerTop.Local: f.local, FilerTop.Shared: f.shared, FilerTop.Ram: f.ram}
     f.ram_path, f.shared_path = ram, shared
     return f
 

@@ -54,14 +54,6 @@ def is_accessible(path: str, timeout: float = 2.0) -> bool:
     return result.get("ok", False)
 
 
-class FilerTop(Enum):
-    """Legacy: superseded by `FilingArea`. Kept until MAST_unit's flux metering moves to `to_top`."""
-
-    Local = auto()
-    Shared = auto()
-    Ram = auto()
-
-
 class FilingArea(Enum):
     """The three places a machine files things (plans/filing-areas-design.md 3).
 
@@ -276,11 +268,6 @@ class Filer:
             # mast-ns-control's logs did exactly that for 89 nights (2025-10-28..2026-08-06).
             self.machine = Location(f"/Storage/mast-share/MAST/{socket.gethostname().split('.')[0]}")
 
-        self.tops = {
-            FilerTop.Local: self.local,
-            FilerTop.Shared: self.shared,
-            FilerTop.Ram: self.ram,
-        }
         self.logger = logger
 
     def accessible_shared_root(self) -> str:
@@ -502,13 +489,6 @@ class Filer:
             f"leaving the source in place rather than overwriting it, and retrying quietly"
         )
 
-    def change_top_to(self, top: FilerTop, path: str):
-        """Legacy: use `to_top`. Needs a forward-slashed path, replaces every occurrence of the
-        root, and returns None when nothing matches. Kept until MAST_unit stops calling it."""
-        for t in self.tops:
-            if path.startswith(self.tops[t].root):
-                return path.replace(self.tops[t].root, self.tops[top].root)
-
     def root_of(self, area: FilingArea) -> Location | None:
         """The root of ``area`` on this machine; ``None`` for ``RAM`` on Linux."""
         return {FilingArea.RAM: self.ram, FilingArea.SHARE: self.shared, FilingArea.LOCAL: self.local}[area]
@@ -539,7 +519,7 @@ class Filer:
     def to_top(self, area: FilingArea, path) -> str:
         """``path``, which lies under one filing area, re-rooted under ``area``'s root.
 
-        Replaces `change_top_to`: separator-agnostic, the leading root only, Linux-safe, and
+        Replaced `change_top_to` (removed): separator-agnostic, the leading root only, Linux-safe, and
         it raises -- ValueError -- when ``path`` is under no filing area, or ``area`` does not
         exist on this machine, instead of returning None. The result is forward-slashed. It
         converts; it never chooses: which area a product should go to is the mover's

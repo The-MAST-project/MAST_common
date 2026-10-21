@@ -22,7 +22,7 @@ import os
 import pytest
 
 pytest.importorskip("common.filer", reason="filer import chain unavailable")
-from common.filer import Filer, FilerTop, Location
+from common.filer import Filer, Location
 
 
 class RecordingPool:
@@ -53,7 +53,6 @@ def _filer(tmp_path, monkeypatch, *, share_exists: bool, per_machine: bool = Tru
         self.shared = Location(f"{shared.as_posix()}/")
         self.local = Location(f"{local.as_posix()}/")
         self.share_root = Location(f"{share.as_posix()}/")
-        self.tops = {FilerTop.Local: self.local, FilerTop.Shared: self.shared, FilerTop.Ram: self.ram}
         self.logger = logger
 
     monkeypatch.setattr(Filer, "__init__", fake_init)

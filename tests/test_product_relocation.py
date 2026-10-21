@@ -18,7 +18,7 @@ import os
 import pytest
 
 pytest.importorskip("common.filer", reason="filer import chain unavailable")
-from common.filer import Filer, FilerTop, Location, MoveGuardian, _folder_lock_path
+from common.filer import Filer, Location, MoveGuardian, _folder_lock_path
 
 
 @pytest.fixture
@@ -33,7 +33,6 @@ def filer(tmp_path, monkeypatch):
         self.ram = Location(f"{ram.as_posix()}/")
         self.shared = Location(f"{shared.as_posix()}/")
         self.local = self.shared
-        self.tops = {FilerTop.Local: self.local, FilerTop.Shared: self.shared, FilerTop.Ram: self.ram}
         self.logger = logger
 
     monkeypatch.setattr(Filer, "__init__", fake_init)
