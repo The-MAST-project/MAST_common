@@ -1,7 +1,6 @@
 """Test bootstrap: make the repo importable as the ``common`` package.
 
-Two shims, both no-ops on the platforms the code actually deploys to
-(Windows units, Linux control hosts):
+Two shims:
 
 1. The repo root *is* the ``common`` package (root ``__init__.py``), but the
    clone directory is usually named ``MAST_common`` (or ``src/common`` inside a
@@ -9,22 +8,21 @@ Two shims, both no-ops on the platforms the code actually deploys to
    Install an explicit module alias for the repo root, so the tests run in any
    clone with no environment setup.
 
-2. ``Filer.__init__`` supports Windows and Linux only; on macOS it raises at
-   import time (``common.utils`` builds a module-level ``Filer``) and its
-   Linux paths (``/Storage/...``) are unwritable anyway. On Darwin only, point
-   every ``Filer`` location at a per-session temp directory so the import
-   chain (and ``init_log``'s file handler) works on developer Macs. Remove
-   once MAST_common gains real Darwin support.
+2. Every ``Filer`` points at temporary folders, one per role, **on every platform**
+   (``common.testing.filer``). This used to be done on macOS only, and with one folder
+   for all three roles: on the Windows runner a bare ``Filer()`` was ``C:/MAST/`` for
+   both ``ram`` and ``shared`` -- the layout that deletes products by moving them onto
+   themselves -- and on a unit or the control host the suite reached the real RAM disk
+   and share. Tests of the real layout build it through ``real_filer_init`` /
+   ``real_filer`` (plans/filing-areas-design.md, 13).
 """
 
 from __future__ import annotations
 
 import importlib.util
 import os
-import platform
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -44,30 +42,11 @@ def _install_common_alias() -> None:
     spec.loader.exec_module(module)
 
 
-def _shim_filer_for_darwin() -> None:
-    if platform.system() != "Darwin":
-        return
-    import common.filer as filer_module
-
-    tmp_root = tempfile.mkdtemp(prefix="mast-common-tests-")
-    location = filer_module.Location(None, tmp_root)
-
-    def _darwin_init(self, logger=None):
-        self.local = location
-        self.shared = location
-        self.ram = location
-        self.tops = {
-            filer_module.FilerTop.Local: self.local,
-            filer_module.FilerTop.Shared: self.shared,
-            filer_module.FilerTop.Ram: self.ram,
-        }
-        self.logger = logger
-
-    filer_module.Filer.__init__ = _darwin_init
-
-
 _install_common_alias()
-_shim_filer_for_darwin()
+
+from common.testing import filer as _filer_testing  # noqa: E402 -- needs the alias above
+
+_filer_testing.isolate_filer(prefix="mast-common-tests-")
 
 
 # Programs a test may legitimately start. Keep this list short and justified: it is the
