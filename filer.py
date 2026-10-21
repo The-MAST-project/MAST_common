@@ -233,6 +233,21 @@ class Filer:
         if not isinstance(dst, Path):
             dst = Path(dst)
 
+        # Never onto itself, nor into or out of its own subtree. With neither D: nor Z:
+        # mapped, `ram` and `shared` are both C:/MAST/, so moving a ram product to the
+        # shared area is moving it onto itself: `_merge_into` then compared every file with
+        # itself, found it "identical" and unlinked it -- verified on mast00 on 2026-10-13
+        # (plans/filing-areas-design.md 1.2). True, not False: no retry can change it, and
+        # False would requeue it for the sweeper every 30 s for the life of the process. The
+        # files stay where they are, and the folder reaper, which waits for a product to be
+        # gone from its source, keeps their folder.
+        if _overlaps(src, dst):
+            self.error(
+                f"{op}: refusing to move '{src.as_posix()}' to '{dst.as_posix()}': "
+                "they are the same path, or one is inside the other; leaving it in place"
+            )
+            return True
+
         guardian = MoveGuardian()
         if guardian.is_protected(src):
             self.info(f"{op}: waiting for protected source(s) under '{src.as_posix()}'")
@@ -448,6 +463,19 @@ class Filer:
         """
         if self.ram is None or not os.path.isdir(self.ram.root):
             return False
+        # With D: unmapped, `ram` falls back to `local`, C:/MAST/, and every folder there
+        # holding files reads as a leftover product -- the RAM-disk image under Shared/, the
+        # IERS and config-DB caches, Kepler/, Campaigns/, scripts. With the share mapped they
+        # are carried onto it, the image needed to bring D: back included; with it unmapped
+        # too, each is a move onto itself (plans/filing-areas-design.md 1.5). Nothing on the
+        # local disk is a ram leftover, so there is nothing to sweep.
+        for other in (self.local, self.shared):
+            if other is not None and _canonical(self.ram.root) == _canonical(other.root):
+                self.warning(
+                    f"product_relocation_sweeper: the ram area '{self.ram.root}' is the same folder as "
+                    f"'{other.root}' (the RAM disk is not mapped); not sweeping"
+                )
+                return False
         if not self._take_sweep_guard():
             self.info("product_relocation_sweeper: another process is sweeping; skipping")
             return False
@@ -641,6 +669,17 @@ class Filer:
 def _is_under(path: str, folder: str) -> bool:
     """True if ``path`` is ``folder`` itself or lies beneath it (both already realpaths)."""
     return path == folder or path.startswith(folder + os.sep)
+
+
+def _canonical(path) -> str:
+    """``realpath``, case-folded where the file system ignores case. The path need not exist."""
+    return os.path.normcase(os.path.realpath(path))
+
+
+def _overlaps(a, b) -> bool:
+    """True if ``a`` and ``b`` are the same path, or one lies inside the other."""
+    ca, cb = _canonical(a), _canonical(b)
+    return _is_under(ca, cb) or _is_under(cb, ca)
 
 
 def _collision_key(entry: Path, target: Path) -> tuple:
