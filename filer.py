@@ -260,6 +260,11 @@ class Filer:
     _ramdisk_restart_thread: ClassVar[Thread | None] = None
     #: Held by the one drain of the fallbacks that may run at a time.
     _drain_lock = Lock()
+    # The local disk's ceiling: at or above it, nothing more is written to the fallbacks.
+    LOCAL_DISK_CEILING: ClassVar[float] = 0.90
+    LOCAL_DISK_CACHE_SECONDS: ClassVar[float] = 5.0
+    _local_usage: ClassVar[tuple[float, float] | None] = None  # (when, fraction used)
+    _local_full: ClassVar[bool] = False
     RAMDISK_RESTART_POLL_SECONDS: ClassVar[float] = 10.0
     RAMDISK_RESTART_DEADLINE_SECONDS: ClassVar[float] = 600.0
     #: Builds the supervisor client; tests replace it. None is `common.api.SupervisorApi`.
@@ -628,7 +633,50 @@ class Filer:
         with Filer._state_lock:
             demoted = area in Filer._demoted
         fallback = self.fallback_of(area)
-        return fallback.root if demoted and fallback is not None else primary.root
+        if not demoted or fallback is None:
+            return primary.root
+        # The fallback is on the local disk, and a full system disk is worse than lost
+        # data: Windows itself degrades (6.4). None: nowhere to write until it frees.
+        return None if self.local_disk_full() else fallback.root
+
+    def local_disk_full(self) -> bool:
+        """True while the local disk is at or above LOCAL_DISK_CEILING used.
+
+        Then writes to either fallback are refused (plans/filing-areas-design.md 6.4):
+        products stay where they are -- on the RAM disk, while it lives -- and are lost
+        only if it fills or dies before the share returns. Draining is never refused: it
+        frees the disk. One ERROR when the ceiling is first reached, one INFO when usage
+        drops below it. The reading is cached LOCAL_DISK_CACHE_SECONDS; one that fails
+        counts as not full, and is logged.
+        """
+        now = _probe_clock()
+        with Filer._state_lock:
+            cached = Filer._local_usage
+        if cached is not None and now - cached[0] < Filer.LOCAL_DISK_CACHE_SECONDS:
+            fraction = cached[1]
+        else:
+            try:
+                usage = _disk_usage(self.local.root)
+                fraction = usage.used / usage.total if usage.total else 0.0
+            except OSError as e:
+                self.error(
+                    f"filing areas: cannot read the local disk's usage at '{self.local.root}' ({e}); taking it as not full"
+                )
+                fraction = 0.0
+            with Filer._state_lock:
+                Filer._local_usage = (now, fraction)
+        full = fraction >= Filer.LOCAL_DISK_CEILING
+        with Filer._state_lock:
+            changed = full != Filer._local_full
+            Filer._local_full = full
+        if changed and full:
+            self.error(
+                f"filing areas: the local disk '{self.local.root}' is {fraction:.0%} used, at or above its "
+                f"{Filer.LOCAL_DISK_CEILING:.0%} ceiling; refusing writes to the fallbacks until it frees"
+            )
+        elif changed:
+            self.info(f"filing areas: the local disk '{self.local.root}' is {fraction:.0%} used, below its ceiling again")
+        return full
 
     def is_demoted(self, area: FilingArea) -> bool:
         with Filer._state_lock:
@@ -854,14 +902,16 @@ class Filer:
             # comparison in `_is_under`. Keying it posix-style made `_folder_drained`'s
             # queued-move check silently never match on Windows, where the two differ.
             posix_src = str(Path(file).as_posix())
-            dst = self._share_destination(posix_src)
-            if dst is None:
+            if not self._on_ram_area(posix_src):
                 # Its destination would be itself, and `_move_ram_file` reads a surviving
                 # source as a failed move: queued, it is never cleared and every `flush`
                 # waits out its timeout (MAST_common#156).
                 self.info(f"move_ram_to_shared: '{posix_src}' is not on the ram area; nothing to move")
                 continue
             src = os.path.realpath(posix_src)
+            # Informational: the destination is decided again when the move happens. Empty
+            # while there is none yet (the share fallback refusing, C: at its ceiling).
+            dst = self._share_destination(posix_src) or ""
 
             # Write ahead: record the intent BEFORE trying to act on it, and clear it only
             # once the source is gone. Every way this can fail -- the share being down, the
@@ -1014,10 +1064,18 @@ class Filer:
         else:
             self._ensure_sweeper()
 
+    def _on_ram_area(self, path) -> bool:
+        """``path`` is under the RAM disk or the RAM fallback."""
+        try:
+            return self.area_of(path)[0] is FilingArea.RAM
+        except ValueError:
+            return False
+
     def _share_destination(self, src) -> str | None:
         """Where a product on the RAM area -- primary or fallback -- goes on the share now:
         the share's current root (its fallback while demoted) plus its path relative to the
-        RAM area. None if ``src`` is not on the RAM area."""
+        RAM area. None if ``src`` is not on the RAM area, or the share has nowhere to take
+        it now (demoted, with C: at its ceiling)."""
         try:
             area, relative = self.area_of(src)
         except ValueError:
@@ -1142,7 +1200,7 @@ class Filer:
             return None
         dst = self._share_destination(Path(str(src)).as_posix())
         if dst is None:
-            return None
+            return None  # not a RAM product, or the share fallback refused (C: at its ceiling)
         try:
             os.makedirs(os.path.dirname(dst.rstrip("/")), exist_ok=True)
             return dst
@@ -1151,8 +1209,10 @@ class Filer:
                 self.error(f"move: cannot create the destination of '{src}' ('{dst}'): {e}")
                 return None
         dst = self._share_destination(Path(str(src)).as_posix())
+        if dst is None:
+            return None  # the share fallback refused: C: at its ceiling
         try:
-            os.makedirs(os.path.dirname(dst.rstrip("/")), exist_ok=True)  # type: ignore[union-attr]
+            os.makedirs(os.path.dirname(dst.rstrip("/")), exist_ok=True)
         except OSError as e:
             self.error(f"move: cannot create the destination of '{src}' on the share fallback ('{dst}'): {e}")
             return None
@@ -1424,6 +1484,8 @@ _CROSS_DEVICE_ERRNOS = {errno.EXDEV}
 _CROSS_DEVICE_WINERRORS = {17}  # ERROR_NOT_SAME_DEVICE
 #: The rename `_move_file` uses; tests make it refuse, as a rename across volumes does.
 _replace = os.replace
+#: How the local disk's usage is read; tests replace it.
+_disk_usage = shutil.disk_usage
 
 
 def _move_file(src: Path, dst: Path) -> None:
