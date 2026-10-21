@@ -29,9 +29,19 @@ import socket
 import tempfile
 from collections.abc import Iterator
 from contextlib import contextmanager
+from typing import NamedTuple
 from unittest.mock import patch
 
 import common.filer as filer_module
+
+
+class DiskUsage(NamedTuple):
+    """What `shutil.disk_usage` returns, for tests that set the local disk's usage."""
+
+    total: int
+    used: int
+    free: int
+
 
 #: Captured at import, before `isolate_filer` replaces it.
 _REAL_INIT = filer_module.Filer.__init__
@@ -76,6 +86,11 @@ def isolate_filer(prefix: str = "mast-tests-") -> None:
 
     filer_module.Filer.__init__ = _isolated_init
 
+    # The local disk reads as 10% used. Whether a test's fallback accepts a write must not
+    # depend on how full the machine running the suite is; the ceiling's own tests set
+    # their own reading (plans/filing-areas-design.md 6.4).
+    filer_module._disk_usage = lambda path: DiskUsage(total=100, used=10, free=90)
+
 
 @contextmanager
 def real_filer_init() -> Iterator[None]:
@@ -108,6 +123,8 @@ def reset_filing_areas(join_timeout: float = 5.0) -> None:
     with filer_class._state_lock:
         filer_class._demoted.clear()
         filer_class._promotion_hooks.clear()
+        filer_class._local_usage = None
+        filer_class._local_full = False
         thread = filer_class._monitor_thread
     if thread is not None and thread.is_alive():
         filer_class.wake_monitor()
