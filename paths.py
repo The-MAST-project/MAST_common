@@ -1,9 +1,10 @@
 import datetime
+import errno
 import os
 from pathlib import Path
 from typing import Literal
 
-from common.filer import Filer
+from common.filer import Filer, FilingArea
 from common.mast_logging import observing_night
 
 #: Calibration phase key -> folder name.
@@ -32,6 +33,22 @@ def as_posix(path: str | os.PathLike) -> str:
     A UNC path keeps its leading ``//``.
     """
     return Path(path).as_posix()
+
+
+def _current_ram_root() -> str:
+    """The RAM area's root to create under now: the RAM disk, or its fallback while the disk is
+    gone (plans/filing-areas-design.md 7.1). Asked for each folder, never held -- a folder
+    made under the root chosen at start-up would keep failing after the disk died.
+
+    Raises OSError (ENOSPC) when there is nowhere to write -- RAM on its fallback with the local
+    disk at its ceiling (6.4) -- so a producer fails as it would on a full disk.
+    """
+    filer = Filer()
+    assert filer.ram is not None, "no RAM area on this machine"
+    root = filer.current_root(FilingArea.RAM)
+    if root is None:
+        raise OSError(errno.ENOSPC, "no RAM filing area to write to: the RAM disk is gone and the local disk is full")
+    return root
 
 
 class PathMaker:
@@ -73,9 +90,7 @@ class PathMaker:
         it), so they are unaffected by which convention a folder follows.
         """
         if not root:
-            ram = Filer().ram
-            assert ram
-            root = ram.root
+            root = _current_ram_root()
         d = Path(root) / observing_night(datetime.datetime.now(datetime.UTC))
         d.mkdir(parents=True, exist_ok=True)
         return as_posix(d)
@@ -105,7 +120,7 @@ class PathMaker:
         against two under <date>/highspec/Autofocus.
         """
         # Path(self.make_daily_folder_name(root=root or Filer().shared.root))
-        night = Path(self.make_observing_night_folder(root=root or Filer().ram.root))  # type: ignore
+        night = Path(self.make_observing_night_folder(root=root or _current_ram_root()))
         autofocus_folder = (night / subfolder if subfolder else night) / "Autofocus"
         folder = autofocus_folder / self.make_seq(str(autofocus_folder))
         folder.mkdir(parents=True, exist_ok=True)
@@ -142,7 +157,7 @@ class PathMaker:
             raise ValueError(
                 f"unknown calibration phase {phase!r}; expected one of {sorted(CALIBRATION_PHASE_FOLDERS)}"
             ) from None
-        base = Path(self.make_observing_night_folder(root=root or Filer().ram.root)) / "Calibration"  # type: ignore
+        base = Path(self.make_observing_night_folder(root=root or _current_ram_root())) / "Calibration"
         base = base / phase_folder
         folder = base / self.make_seq(str(base))
         folder.mkdir(parents=True, exist_ok=True)
@@ -170,9 +185,7 @@ class PathMaker:
             guiding_folder = Path(base_folder) / "Guidings"
         else:
             if not root:
-                ram = Filer().ram
-                assert ram
-                root = ram.root
+                root = _current_ram_root()
             guiding_folder = Path(self.make_observing_night_folder(root=root)) / "Guidings"
 
         guiding_folder.mkdir(parents=True, exist_ok=True)
@@ -183,9 +196,7 @@ class PathMaker:
             spirals_folder = Path(base_folder) / "Spirals"
         else:
             if not root:
-                ram = Filer().ram
-                assert ram
-                root = ram.root
+                root = _current_ram_root()
             spirals_folder = Path(self.make_observing_night_folder(root=root)) / "Spirals"
 
         spirals_folder = spirals_folder / PathMaker().make_seq(str(spirals_folder))
@@ -207,9 +218,7 @@ class PathMaker:
         across two folders whose names give no hint they belong together.
         """
         if not root:
-            ram = Filer().ram
-            assert ram
-            root = ram.root
+            root = _current_ram_root()
         folder = Path(self.make_observing_night_folder(root=root)) / "FluxMetering"
         folder = folder / PathMaker().make_seq(str(folder))
         folder.mkdir(parents=True, exist_ok=True)
@@ -256,9 +265,7 @@ class PathMaker:
     def make_spec_acquisitions_folder(spec_name: Literal["highspec", "deepspec"]):
         if spec_name not in ["highspec", "deepspec"]:
             raise Exception(f"bad {spec_name=}, should be one of ['highspec', 'deepspec']")
-        location = Filer().ram
-        assert location is not None
-        folder = PathMaker().make_observing_night_folder(os.path.join(location.root))
+        folder = PathMaker().make_observing_night_folder(_current_ram_root())
         folder = os.path.join(folder, spec_name)
         folder = os.path.join(folder, "acquisition-" + PathMaker().make_seq(folder, None))
         os.makedirs(folder, exist_ok=True)
@@ -269,9 +276,7 @@ class PathMaker:
         if spec_name not in ["highspec", "deepspec"]:
             raise Exception(f"bad {spec_name=}, should be one of ['highspec', 'deepspec']")
 
-        location = Filer().ram
-        assert location is not None
-        folder = PathMaker().make_observing_night_folder(os.path.join(location.root))
+        folder = PathMaker().make_observing_night_folder(_current_ram_root())
         folder = os.path.join(folder, spec_name, "Exposures")
         folder = os.path.join(folder, "seq=" + PathMaker().make_seq(folder, None))
         if band:
