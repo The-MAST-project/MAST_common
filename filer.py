@@ -267,6 +267,8 @@ class Filer:
     _local_full: ClassVar[bool] = False
     #: time.time() of the RAM area's last switch between disk and fallback; 0 if never.
     _ram_switched: ClassVar[float] = 0.0
+    #: Products already reported lost with the RAM disk, so each is reported once.
+    _reported_lost: ClassVar[set[str]] = set()
     RAMDISK_RESTART_POLL_SECONDS: ClassVar[float] = 10.0
     RAMDISK_RESTART_DEADLINE_SECONDS: ClassVar[float] = 600.0
     #: Builds the supervisor client; tests replace it. None is `common.api.SupervisorApi`.
@@ -680,6 +682,37 @@ class Filer:
             self.info(f"filing areas: the local disk '{self.local.root}' is {fraction:.0%} used, below its ceiling again")
         return full
 
+    def report_lost(self, paths) -> list[str]:
+        """Report the products in ``paths`` that went with the RAM disk; returns them.
+
+        A product is lost only while RAM is demoted as GONE, when it is no longer where it
+        was written and `locate` finds it nowhere -- not on the share, its fallback, or the
+        RAM fallback. A product that simply moved is not lost, and neither is one protected
+        but never written (an aborted frame) while the disk is fine. One ERROR for the lot,
+        each product once (7.1): today these vanished from the queue, and from the folder
+        reaper's count, without a word.
+        """
+        with Filer._state_lock:
+            if Filer._demoted.get(FilingArea.RAM) != "gone":
+                return []
+        lost = []
+        for path in paths:
+            if os.path.exists(path):
+                continue
+            try:
+                if self.locate(path) is not None:
+                    continue
+            except ValueError:
+                continue  # not under any filing area: not ours to call lost
+            with Filer._state_lock:
+                if path in Filer._reported_lost:
+                    continue
+                Filer._reported_lost.add(path)
+            lost.append(path)
+        if lost:
+            self.error(f"filing area RAM: {len(lost)} product(s) lost with the RAM disk: {sorted(lost)}")
+        return lost
+
     def is_demoted(self, area: FilingArea) -> bool:
         with Filer._state_lock:
             return area in Filer._demoted
@@ -698,6 +731,9 @@ class Filer:
         if kind is not None:
             self._demote(area, kind, f"{kind}: {path}: {exc}")
             if area is FilingArea.RAM and kind == "gone":
+                # Their lock files went with the disk; the handles this process holds are
+                # stale, and releasing them one by one would only fail (7.1).
+                MoveGuardian().drop_claims_under(self.ram.root)  # type: ignore[union-attr]
                 # Only for gone. A FULL disk is cured by moving products off, and a restart
                 # wipes D: -- so it would destroy exactly the unmoved products a long share
                 # outage leaves there. Path-level errors never get this far.
@@ -1261,10 +1297,12 @@ class Filer:
         with Filer._pending_lock:
             # The queued destination is not used: it is decided again at the move (`_destination`).
             items = [src for src in Filer._pending if src not in Filer._in_flight]
+        vanished = []
         for src in items:
-            if not os.path.exists(src):  # already moved/cleaned elsewhere
+            if not os.path.exists(src):  # already moved/cleaned elsewhere -- or lost with D:
                 with Filer._pending_lock:
                     Filer._pending.pop(src, None)
+                vanished.append(src)
                 continue
             if MoveGuardian().is_protected(Path(src)):
                 continue  # producer still writing; leave it for the next sweep
@@ -1272,6 +1310,8 @@ class Filer:
             if destination is not None and self.move(src, destination):
                 with Filer._pending_lock:
                     Filer._pending.pop(src, None)
+        if vanished:
+            self.report_lost(vanished)
 
     def _sweep_loop(self):
         while True:
@@ -1707,6 +1747,19 @@ class MoveGuardian:
         with contextlib.suppress(OSError):
             os.remove(_folder_lock_path(real_folder))
 
+    def drop_claims_under(self, root: str) -> int:
+        """Forget every claim this process holds under ``root``, closing the handles and
+        leaving the lock files alone -- for a root that is gone, with its lock files.
+        Returns how many were dropped."""
+        real_root = os.path.realpath(root.rstrip("/\\") or root)
+        with MoveGuardian._claim_lock:
+            dead = [real for real in MoveGuardian._folder_claims if _is_under(real, real_root)]
+            handles = [MoveGuardian._folder_claims.pop(real) for real in dead]
+        for handle in handles:
+            with contextlib.suppress(Exception):
+                _close_claim(handle)
+        return len(dead)
+
     def moving(self, *paths) -> "_Claim":
         """Context manager claiming the given path(s) while ``Filer.move`` moves them.
 
@@ -1774,6 +1827,13 @@ class MoveGuardian:
                 # Never sleep past the deadline: with a long poll and a short timeout the
                 # wait would otherwise be rounded up to a whole poll interval.
                 time.sleep(min(self._RELEASE_POLL_SEC, remaining))
+
+            # A product recorded here and gone from here either reached the share or went
+            # with the RAM disk; the reaper used to count both as moved. Ask, before the
+            # records are forgotten.
+            with self._condition:
+                recorded = self._products_under(real_folder)
+            Filer().report_lost(recorded)
 
             if not os.path.isdir(real_folder):
                 self.forget_products_under(real_folder)

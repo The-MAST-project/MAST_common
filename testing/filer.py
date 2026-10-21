@@ -126,6 +126,7 @@ def reset_filing_areas(join_timeout: float = 5.0) -> None:
         filer_class._local_usage = None
         filer_class._local_full = False
         filer_class._ram_switched = 0.0
+        filer_class._reported_lost.clear()
         thread = filer_class._monitor_thread
     if thread is not None and thread.is_alive():
         filer_class.wake_monitor()
