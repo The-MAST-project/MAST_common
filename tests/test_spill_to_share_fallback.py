@@ -16,6 +16,7 @@ import pytest
 
 import common.filer as filer_module
 from common.filer import Filer, FilingArea, Location, MoveGuardian
+from common.testing.filer import reset_filing_areas
 
 
 @pytest.fixture(autouse=True)
@@ -28,15 +29,13 @@ def clean_state(monkeypatch):
     with Filer._pending_lock:
         Filer._pending.clear()
         Filer._in_flight.clear()
-    with Filer._state_lock:
-        Filer._demoted.clear()
+    reset_filing_areas()
     with MoveGuardian._condition:
         MoveGuardian._protected.clear()
         MoveGuardian._moving.clear()
         MoveGuardian._products.clear()
     yield
-    with Filer._state_lock:
-        Filer._demoted.clear()
+    reset_filing_areas()
 
 
 @pytest.fixture

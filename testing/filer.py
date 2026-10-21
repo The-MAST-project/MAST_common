@@ -96,3 +96,19 @@ def real_filer() -> filer_module.Filer:
         pytest.skip("Filer has no macOS layout")
     with real_filer_init():
         return filer_module.Filer()
+
+
+def reset_filing_areas(join_timeout: float = 5.0) -> None:
+    """Every filing area back on its primary, no hooks, and the monitor thread gone.
+
+    For a test's setup and teardown. A monitor left from an earlier test -- waiting out an
+    interval that test made long -- would otherwise be taken for this one's, and never run.
+    """
+    filer_class = filer_module.Filer
+    with filer_class._state_lock:
+        filer_class._demoted.clear()
+        filer_class._promotion_hooks.clear()
+        thread = filer_class._monitor_thread
+    if thread is not None and thread.is_alive():
+        filer_class.wake_monitor()
+        thread.join(join_timeout)

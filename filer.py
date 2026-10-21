@@ -21,7 +21,7 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from enum import Enum, auto
 from pathlib import Path
-from threading import Condition, Lock, Thread
+from threading import Condition, Event, Lock, Thread
 from typing import ClassVar
 
 
@@ -247,6 +247,8 @@ class Filer:
     _demoted: ClassVar[dict[FilingArea, str]] = {}
     _state_lock = Lock()
     _monitor_thread: ClassVar[Thread | None] = None
+    #: Wakes the monitor early -- `wake_monitor`. It otherwise waits out its interval.
+    _monitor_wake = Event()
     #: How often a demoted area's primary is probed. Tests shorten it.
     MONITOR_INTERVAL_SECONDS: ClassVar[float] = 60.0
     #: Called with the area after it returns to its primary -- item 6's drain registers here.
@@ -254,6 +256,8 @@ class Filer:
     # Asking the supervisor to revive a RAM disk found gone (plans/filing-areas-design.md
     # 8.1). One request at a time; it re-asks while the answer is "in progress".
     _ramdisk_restart_thread: ClassVar[Thread | None] = None
+    #: Held by the one drain of the fallbacks that may run at a time.
+    _drain_lock = Lock()
     RAMDISK_RESTART_POLL_SECONDS: ClassVar[float] = 10.0
     RAMDISK_RESTART_DEADLINE_SECONDS: ClassVar[float] = 600.0
     #: Builds the supervisor client; tests replace it. None is `common.api.SupervisorApi`.
@@ -731,6 +735,9 @@ class Filer:
                 hook(area)
             except Exception as e:  # noqa: BLE001 -- one hook must not stop the others, or the monitor
                 self.error(f"filing area {area.name}: promotion hook {hook!r} failed: {e!r}")
+        # What piled up on the fallbacks goes back at once, not at the next sweep (6.3). On
+        # its own thread: the monitor must not wait on a drain of a night's products.
+        Thread(name="fallback-drain", target=self.drain_fallbacks, daemon=True).start()
 
     def _ensure_monitor(self) -> None:
         with Filer._state_lock:
@@ -744,7 +751,8 @@ class Filer:
         """Every MONITOR_INTERVAL_SECONDS, probe each demoted area's primary; promote those
         that pass. Exits when nothing is demoted, so a healthy process runs no thread."""
         while True:
-            time.sleep(Filer.MONITOR_INTERVAL_SECONDS)
+            Filer._monitor_wake.wait(Filer.MONITOR_INTERVAL_SECONDS)
+            Filer._monitor_wake.clear()
             with Filer._state_lock:
                 demoted = list(Filer._demoted)
                 if not demoted:
@@ -808,6 +816,12 @@ class Filer:
                 )
                 return
             time.sleep(Filer.RAMDISK_RESTART_POLL_SECONDS)
+
+    @classmethod
+    def wake_monitor(cls) -> None:
+        """Run the monitor's next pass now rather than at the end of its interval. With
+        nothing demoted, that pass is the one where it exits."""
+        cls._monitor_wake.set()
 
     @classmethod
     def on_promotion(cls, hook: Callable[[FilingArea], None]) -> None:
@@ -935,23 +949,9 @@ class Filer:
 
     def _relocate_products(self, logger=None) -> None:
         """Move every unclaimed folder holding files off the ram area, deepest first."""
-        ram_root = os.path.realpath(self.ram.root)
         guardian = MoveGuardian()
-        candidates = []
-        for dirpath, _dirnames, filenames in os.walk(ram_root):
-            real = os.path.realpath(dirpath)
-            if real == ram_root:
-                continue
-            # A folder is a unit of relocation only if it directly holds files. Parents of
-            # such folders are left alone, so a claimed leaf cannot be carried off inside
-            # an unclaimed ancestor. Bookkeeping does not count: a folder holding nothing
-            # but its own sequence counter has no product to relocate, and treating it as a
-            # candidate is what made every sweep retry, and fail, forever.
-            if any(not is_bookkeeping(f) for f in filenames):
-                candidates.append(real)
-
         moved = skipped = 0
-        for folder in sorted(candidates, key=len, reverse=True):
+        for folder in _product_folders(self.ram.root):
             if not os.path.isdir(folder):
                 continue  # already carried off inside something else
             if guardian.folder_is_claimed(folder):
@@ -962,6 +962,8 @@ class Filer:
 
         message = f"product_relocation_sweeper: relocated {moved} leftover folder(s), skipped {skipped} in use"
         (logger.info if logger else self.info)(message)
+        # Whatever a previous run left on the fallbacks goes too (6.3).
+        self.drain_fallbacks()
 
     def flush(self, timeout: float = 30.0) -> bool:
         """Wait for outstanding ram->shared moves. Call from the app lifespan's shutdown.
@@ -1024,6 +1026,60 @@ class Filer:
         if root is None:
             return None
         return root + relative if relative else root
+
+    def drain_fallbacks(self) -> tuple[int, int]:
+        """Send what the fallbacks hold towards the share. Returns (from RAM, from share).
+
+        * The RAM fallback goes the way any RAM product goes -- `move_ram_to_shared`, so to
+          the share, or to its fallback while the share is down. Folders a producer has
+          claimed are left for the next drain.
+        * The share fallback goes to the share itself, and only while SHARE is on its
+          primary and the share is reachable.
+
+        One drain at a time: a request while one runs is skipped, since the running one
+        will see the same folders. Empty folders it leaves behind in a fallback are removed.
+        Runs on promotion, on each sweeper pass, and at start-up (6.3).
+        """
+        if not Filer._drain_lock.acquire(blocking=False):
+            return 0, 0
+        try:
+            return self._drain_fallbacks()
+        finally:
+            Filer._drain_lock.release()
+
+    def _drain_fallbacks(self) -> tuple[int, int]:
+        guardian = MoveGuardian()
+        from_ram = from_share = 0
+
+        ram_fallback = self.fallback_of(FilingArea.RAM)
+        if ram_fallback is not None and os.path.isdir(ram_fallback.root):
+            for folder in _product_folders(ram_fallback.root):
+                if os.path.isdir(folder) and not guardian.folder_is_claimed(folder):
+                    self.move_ram_to_shared(folder)
+                    from_ram += 1
+
+        share_fallback = self.fallback_of(FilingArea.SHARE)
+        if (
+            share_fallback is not None
+            and os.path.isdir(share_fallback.root)
+            and not self.is_demoted(FilingArea.SHARE)
+            and self.ensure_shared_root()
+        ):
+            for folder in _product_folders(share_fallback.root):
+                if not os.path.isdir(folder):
+                    continue
+                destination = self.to_top(FilingArea.SHARE, folder)
+                os.makedirs(os.path.dirname(destination.rstrip("/")), exist_ok=True)
+                if self.move(folder, destination):
+                    from_share += 1
+            _remove_empty_folders(share_fallback.root)
+
+        if from_ram or from_share:
+            self.info(
+                f"drain: sent {from_ram} folder(s) from the RAM fallback towards the share, "
+                f"moved {from_share} from the share fallback to the share"
+            )
+        return from_ram, from_share
 
     def _share_usable(self) -> bool:
         """True if a product can be sent towards the share now: the share is reachable, or
@@ -1114,6 +1170,7 @@ class Filer:
             # a missing per-machine root. With a share fallback it drains there instead.
             if self._share_usable():
                 self._drain_pending()
+                self.drain_fallbacks()
             # Exit (freeing the thread) only when nothing is left; re-checked atomically
             # with _ensure_sweeper so a concurrent enqueue can't be stranded.
             with Filer._sweeper_lock, Filer._pending_lock:
@@ -1160,6 +1217,34 @@ class Filer:
 def _is_under(path: str, folder: str) -> bool:
     """True if ``path`` is ``folder`` itself or lies beneath it (both already realpaths)."""
     return path == folder or path.startswith(folder + os.sep)
+
+
+def _product_folders(root: str) -> list[str]:
+    """Folders under ``root`` (not ``root`` itself) that directly hold a file that is not
+    bookkeeping, deepest first, as realpaths.
+
+    A folder is a unit of relocation only if it directly holds files. Parents of such
+    folders are left alone, so a claimed leaf cannot be carried off inside an unclaimed
+    ancestor. Bookkeeping does not count: a folder holding nothing but its own sequence
+    counter has no product to relocate, and treating it as a candidate is what made every
+    sweep retry, and fail, forever.
+    """
+    real_root = os.path.realpath(root)
+    found = []
+    for dirpath, _dirnames, filenames in os.walk(real_root):
+        real = os.path.realpath(dirpath)
+        if real != real_root and any(not is_bookkeeping(f) for f in filenames):
+            found.append(real)
+    return sorted(found, key=len, reverse=True)
+
+
+def _remove_empty_folders(root: str) -> None:
+    """Remove every empty folder under ``root``, deepest first; never ``root`` itself."""
+    real_root = os.path.realpath(root)
+    for dirpath, _dirnames, _filenames in os.walk(real_root, topdown=False):
+        if os.path.realpath(dirpath) != real_root:
+            with contextlib.suppress(OSError):
+                os.rmdir(dirpath)
 
 
 def _canonical(path) -> str:
