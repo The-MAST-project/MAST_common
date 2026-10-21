@@ -149,10 +149,17 @@ A second long-lived program on a machine passes `program=` to `configure_logging
 2026-10-11 `DECISIONS.md` entry). Asking for a different program than the daily file
 already attached raises.
 
-**`<base>` is `Filer().machine_log_root()`** — this machine's folder on the operational
-share (`Z:/MAST/<hostname>/` on Windows, `/Storage/mast-share/MAST/<hostname>` on Linux),
-falling back to `local.root` (`C:/MAST/`) when the share is unreachable. So a unit's log
-lands beside its products on the share, **not** on the machine that produced it.
+**`<base>` follows this machine's `SHARE` filing area** (`init_log` builds the handler with
+`follow_share=True`): its folder on the operational share (`Z:/MAST/<hostname>/` on Windows,
+`/Storage/mast-share/MAST/<hostname>` on Linux), asked for on **every record** — not fixed at
+start-up. So a unit's log lands beside its products on the share, **not** on the machine
+that produced it. While the share is demoted (unreachable) the file is
+`C:/MAST/share-fallback/<night>/mast-<role>-log.fallback.txt` — its own name, so it never
+collides with the share's file of the night when it is drained back — and while the local
+disk is at its 90% ceiling there is no file at all, the console keeping every record. A
+failed open or write demotes the share itself (`Filer.report_failure`). A record logged from
+inside the handler's own emit goes to stderr and is written to the file next time.
+(plans/filing-areas-design.md 10.)
 
 `Filer().shared` is this machine's folder on the share **on every platform**, and
 `Filer().share_root` is the share itself; whatever belongs to the share as a whole (plans,

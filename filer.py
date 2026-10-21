@@ -1371,7 +1371,12 @@ def _is_under(path: str, folder: str) -> bool:
 
 def _product_folders(root: str) -> list[str]:
     """Folders under ``root`` (not ``root`` itself) that directly hold a file that is not
-    bookkeeping, deepest first, as realpaths.
+    bookkeeping, deepest first -- spelled as ``root`` is spelled.
+
+    Not realpaths: the callers re-root these with `Filer.area_of` / `to_top`, which compare
+    against the roots' own spelling, and a realpath need not keep it -- macOS resolves
+    /var to /private/var, and Windows resolves a mapped Z: to its UNC path (plans/
+    filing-areas-design.md 2). Claims are checked by realpath where they are kept.
 
     A folder is a unit of relocation only if it directly holds files. Parents of such
     folders are left alone, so a claimed leaf cannot be carried off inside an unclaimed
@@ -1379,12 +1384,11 @@ def _product_folders(root: str) -> list[str]:
     counter has no product to relocate, and treating it as a candidate is what made every
     sweep retry, and fail, forever.
     """
-    real_root = os.path.realpath(root)
+    top = os.path.normpath(root)
     found = []
-    for dirpath, _dirnames, filenames in os.walk(real_root):
-        real = os.path.realpath(dirpath)
-        if real != real_root and any(not is_bookkeeping(f) for f in filenames):
-            found.append(real)
+    for dirpath, _dirnames, filenames in os.walk(top):
+        if os.path.normpath(dirpath) != top and any(not is_bookkeeping(f) for f in filenames):
+            found.append(dirpath)
     return sorted(found, key=len, reverse=True)
 
 
