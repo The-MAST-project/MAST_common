@@ -42,7 +42,6 @@ def make_filer(tmp_path, monkeypatch):
             self.shared = Location(f"{roots[shared].as_posix()}/")
             self.local = Location(f"{roots[local].as_posix()}/")
             self.share_root = self.shared
-            self.machine = self.shared
             self.logger = logger
 
         monkeypatch.setattr(Filer, "__init__", fake_init)

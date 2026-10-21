@@ -52,7 +52,6 @@ def unit(tmp_path):
     filer.share_fallback = Location(str(folders["local/share-fallback"]))
     filer.share_root = Location(str(folders["share"]))
     filer.shared = Location(str(folders["share/mast00"]))
-    filer.machine = filer.shared
     filer.logger = logging.getLogger("test.filing-area-state")
     filer.paths = folders  # type: ignore[attr-defined]
     return filer

@@ -270,9 +270,6 @@ class Filer:
             # is unmapped would put shared artifacts on a local disk under a name that
             # says otherwise -- the failure that lost frames on 2026-07-14.
             self.share_root = Location("Z:/MAST/")
-            # Legacy alias of `shared`, which is per-machine on every platform now: kept until
-            # MAST_unit's flux metering stops reading it.
-            self.machine = self.shared
             # Where RAM and SHARE go while their primary has failed. Two folders, never one
             # and never C:/MAST/ itself: a RAM product moved to the share fallback would
             # otherwise be moved onto itself (plans/filing-areas-design.md 1.2, 3).
@@ -291,7 +288,6 @@ class Filer:
             # `share_root` (plans/filing-areas-design.md 3.1).
             self.shared = Location(f"/Storage/mast-share/MAST/{socket.gethostname().split('.')[0]}")
             self.ram = None
-            self.machine = self.shared
             # Control serves the share from its own disk: nothing to fall back to.
             self.ram_fallback = None
             self.share_fallback = None
