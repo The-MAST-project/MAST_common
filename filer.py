@@ -12,6 +12,7 @@ else:
     import fcntl
 
 import contextlib
+import errno
 import fnmatch
 import os
 import shutil
@@ -136,16 +137,18 @@ class Location:
     def __repr__(self) -> str:
         return f"Location({self.root!r})"
 
-    def readable(self, timeout: float = 2.0) -> bool:
-        """The root is a directory, within ``timeout`` seconds. Cached PROBE_CACHE_SECONDS."""
-        return self._probe("readable", lambda: os.path.isdir(self.root), timeout)
+    def readable(self, timeout: float = 2.0, fresh: bool = False) -> bool:
+        """The root is a directory, within ``timeout`` seconds. Cached PROBE_CACHE_SECONDS,
+        unless ``fresh``."""
+        return self._probe("readable", lambda: os.path.isdir(self.root), timeout, fresh)
 
-    def writable(self, timeout: float = 2.0) -> bool:
+    def writable(self, timeout: float = 2.0, fresh: bool = False) -> bool:
         """A folder can be created and removed in the root, within ``timeout`` seconds.
 
         Not ``os.access``: on Windows it reads only the read-only attribute, not ACLs or
         share permissions. The probe folder names host and PID, so concurrent processes do
-        not collide. The root itself is never created. Cached PROBE_CACHE_SECONDS.
+        not collide. The root itself is never created. Cached PROBE_CACHE_SECONDS, unless
+        ``fresh`` -- what a recovery check asks for.
         """
         global _probe_sequence
         with _probe_lock:
@@ -158,9 +161,9 @@ class Location:
             os.rmdir(probe)
             return True
 
-        return self._probe("writable", _create_and_remove, timeout)
+        return self._probe("writable", _create_and_remove, timeout, fresh)
 
-    def _probe(self, kind: str, check: Callable[[], bool], timeout: float) -> bool:
+    def _probe(self, kind: str, check: Callable[[], bool], timeout: float, fresh: bool = False) -> bool:
         """One probe per key at a time; every caller waits on it, up to its own timeout.
 
         A caller arriving while a probe runs joins that probe rather than answering False:
@@ -172,7 +175,7 @@ class Location:
         key = (_root_key(self.root), kind)
         with _probe_lock:
             cached = _probe_cache.get(key)
-            if cached is not None and _probe_clock() - cached[0] < PROBE_CACHE_SECONDS:
+            if not fresh and cached is not None and _probe_clock() - cached[0] < PROBE_CACHE_SECONDS:
                 return cached[1]
             running = _probe_threads.get(key)
             if running is not None and running[0].is_alive():
@@ -236,6 +239,19 @@ class Filer:
     _reported_collisions: ClassVar[set[tuple]] = set()
     _reported_collisions_lock = Lock()
 
+    # Filing-area state (plans/filing-areas-design.md 5). Class-level, like `_pending`:
+    # `Filer()` is constructed everywhere, and a demotion has to stick for every one of them.
+    # An area absent from `_demoted` is on its primary; present, it is on its fallback, and
+    # the value is why. Only RAM and SHARE are ever demoted, and only where they have a
+    # fallback -- never on Linux.
+    _demoted: ClassVar[dict[FilingArea, str]] = {}
+    _state_lock = Lock()
+    _monitor_thread: ClassVar[Thread | None] = None
+    #: How often a demoted area's primary is probed. Tests shorten it.
+    MONITOR_INTERVAL_SECONDS: ClassVar[float] = 60.0
+    #: Called with the area after it returns to its primary -- item 6's drain registers here.
+    _promotion_hooks: ClassVar[list[Callable[[FilingArea], None]]] = []
+
     def __init__(self, logger=None):
         sys = platform.system()
         if sys == "Windows":
@@ -257,6 +273,11 @@ class Filer:
             # Already <share>/<hostname> here (or the C:/MAST/ fallback, which is this
             # machine's disk and so is per-machine by construction).
             self.machine = self.shared
+            # Where RAM and SHARE go while their primary has failed. Two folders, never one
+            # and never C:/MAST/ itself: a RAM product moved to the share fallback would
+            # otherwise be moved onto itself (plans/filing-areas-design.md 1.2, 3).
+            self.ram_fallback = Location("C:/MAST/ram-fallback/")
+            self.share_fallback = Location("C:/MAST/share-fallback/")
         elif sys == "Linux":
             self.local = Location("/Storage/mast-share/MAST")
             self.shared = self.local
@@ -267,6 +288,9 @@ class Filer:
             # top of the share, beside every machine's folder instead of inside one.
             # mast-ns-control's logs did exactly that for 89 nights (2025-10-28..2026-08-06).
             self.machine = Location(f"/Storage/mast-share/MAST/{socket.gethostname().split('.')[0]}")
+            # Control serves the share from its own disk: nothing to fall back to.
+            self.ram_fallback = None
+            self.share_fallback = None
 
         self.logger = logger
 
@@ -503,10 +527,7 @@ class Filer:
         """
         spelled = _spelled(path)
         best: tuple[FilingArea, Location] | None = None
-        for area in FilingArea:
-            location = self.root_of(area)
-            if location is None:
-                continue
+        for area, location in self._every_root():
             if _root_key(spelled + "/").startswith(_root_key(location.root)) and (
                 best is None or len(location.root) > len(best[1].root)
             ):
@@ -535,17 +556,191 @@ class Filer:
         """Where the product at ``path`` is now: on the share, else on the RAM disk; None if on
         neither. Its own area is not assumed -- a product moves after its path was handed out.
 
-        The fallbacks of the filing-areas plan join this search when they exist.
+        Searched in the order of plans/filing-areas-design.md (item 3): the share, its
+        fallback, the RAM disk, its fallback.
         """
         _, relative = self.area_of(path)
-        for area in (FilingArea.SHARE, FilingArea.RAM):
-            location = self.root_of(area)
+        for location in (
+            self.root_of(FilingArea.SHARE),
+            self.fallback_of(FilingArea.SHARE),
+            self.root_of(FilingArea.RAM),
+            self.fallback_of(FilingArea.RAM),
+        ):
             if location is None:
                 continue
             candidate = location.root + relative if relative else location.root
             if os.path.exists(candidate):
                 return candidate
         return None
+
+    def fallback_of(self, area: FilingArea) -> Location | None:
+        """Where ``area`` goes while its primary has failed; None for LOCAL, and on Linux.
+
+        `getattr`, not the attribute: Filers built by tests in other repos may predate it.
+        """
+        if area is FilingArea.RAM:
+            return getattr(self, "ram_fallback", None)
+        if area is FilingArea.SHARE:
+            return getattr(self, "share_fallback", None)
+        return None
+
+    def _every_root(self):
+        """(area, Location) for each primary and each fallback that exists here."""
+        for area in FilingArea:
+            for location in (self.root_of(area), self.fallback_of(area)):
+                if location is not None:
+                    yield area, location
+
+    # --- filing-area state (plans/filing-areas-design.md 5, 5.1) ----------------------
+
+    def current_root(self, area: FilingArea) -> str | None:
+        """The root to create under for ``area`` right now: the fallback while demoted.
+
+        Asked each time, never held: that is what makes a demotion stick. Cheap.
+        """
+        primary = self.root_of(area)
+        if primary is None:
+            return None
+        with Filer._state_lock:
+            demoted = area in Filer._demoted
+        fallback = self.fallback_of(area)
+        return fallback.root if demoted and fallback is not None else primary.root
+
+    def is_demoted(self, area: FilingArea) -> bool:
+        with Filer._state_lock:
+            return area in Filer._demoted
+
+    def report_failure(self, area: FilingArea, path, exc: BaseException) -> str | None:
+        """A client's write under ``area`` failed. A report, not a command: ``Filer`` decides.
+
+        Returns the kind of failure that demoted the area -- ``"full"``, ``"gone"`` or
+        ``"unreachable"`` -- or None when it was about the one path (access denied, a
+        missing subfolder, a name in the way), which must not send every product elsewhere.
+        An area with no fallback (LOCAL; anything on Linux) is never demoted.
+        """
+        if self.fallback_of(area) is None:
+            return None
+        kind = self._area_level_failure(area, exc)
+        if kind is not None:
+            self._demote(area, kind, f"{kind}: {path}: {exc}")
+        return kind
+
+    def check_now(self, area: FilingArea) -> bool:
+        """Probe ``area``'s primary at once rather than at the next minute; promote if it
+        passes. True if ``area`` is on its primary afterwards."""
+        if not self.is_demoted(area):
+            return True
+        if self._primary_writable(area, fresh=True):
+            self._promote(area)
+            return True
+        return False
+
+    def _primary_probe(self, area: FilingArea) -> Location | None:
+        """What says an area's primary is back. For SHARE that is the share, not this
+        machine's folder in it, which a new machine has not created yet (4.3)."""
+        if area is FilingArea.SHARE:
+            return getattr(self, "share_root", None) or self.root_of(area)
+        return self.root_of(area)
+
+    def _primary_writable(self, area: FilingArea, fresh: bool = False) -> bool:
+        probe = self._primary_probe(area)
+        return probe is not None and probe.writable(fresh=fresh)
+
+    #: OSError.winerror values that mean the network path or device is gone.
+    _AREA_LEVEL_WINERRORS: ClassVar[dict[int, str]] = {
+        15: "gone",  # ERROR_INVALID_DRIVE
+        21: "gone",  # ERROR_NOT_READY
+        53: "unreachable",  # ERROR_BAD_NETPATH
+        59: "unreachable",  # ERROR_UNEXP_NET_ERR
+        64: "unreachable",  # ERROR_NETNAME_DELETED
+        67: "unreachable",  # ERROR_BAD_NET_NAME
+        1231: "unreachable",  # ERROR_NETWORK_UNREACHABLE
+    }
+    _AREA_LEVEL_ERRNOS: ClassVar[dict[int, str]] = {
+        errno.ENOSPC: "full",
+        errno.ENODEV: "gone",
+        errno.ENXIO: "gone",
+        errno.ETIMEDOUT: "unreachable",
+        errno.EHOSTUNREACH: "unreachable",
+        errno.ENETUNREACH: "unreachable",
+        errno.ENETDOWN: "unreachable",
+        errno.ESTALE: "unreachable",
+    }
+
+    def _area_level_failure(self, area: FilingArea, exc: BaseException) -> str | None:
+        """``"full"`` / ``"gone"`` / ``"unreachable"`` for a failure of the area itself; None
+        for one about the path. A "not found" is the area's only when its root is gone."""
+        if not isinstance(exc, OSError):
+            return None
+        winerror = getattr(exc, "winerror", None)
+        if winerror in Filer._AREA_LEVEL_WINERRORS:
+            return Filer._AREA_LEVEL_WINERRORS[winerror]
+        if exc.errno in Filer._AREA_LEVEL_ERRNOS:
+            return Filer._AREA_LEVEL_ERRNOS[exc.errno]
+        if isinstance(exc, TimeoutError):
+            return "unreachable"
+        if exc.errno == errno.ENOENT or winerror == 3:  # ERROR_PATH_NOT_FOUND
+            probe = self._primary_probe(area)
+            if probe is not None and not probe.readable(fresh=True):
+                return "gone" if area is FilingArea.RAM else "unreachable"
+        return None
+
+    def _demote(self, area: FilingArea, kind: str, cause: str) -> None:
+        with Filer._state_lock:
+            if area in Filer._demoted:
+                return
+            Filer._demoted[area] = kind
+        fallback = self.fallback_of(area)
+        self.warning(
+            f"filing area {area.name}: primary '{self.root_of(area).root}' failed ({cause}); "  # type: ignore[union-attr]
+            f"now on the fallback '{fallback.root if fallback else None}' until it is writable again"
+        )
+        self._ensure_monitor()
+
+    def _promote(self, area: FilingArea) -> None:
+        with Filer._state_lock:
+            if Filer._demoted.pop(area, None) is None:
+                return
+            hooks = list(Filer._promotion_hooks)
+        self.info(f"filing area {area.name}: primary '{self.root_of(area).root}' is writable again; back on it")  # type: ignore[union-attr]
+        for hook in hooks:
+            try:
+                hook(area)
+            except Exception as e:  # noqa: BLE001 -- one hook must not stop the others, or the monitor
+                self.error(f"filing area {area.name}: promotion hook {hook!r} failed: {e!r}")
+
+    def _ensure_monitor(self) -> None:
+        with Filer._state_lock:
+            if Filer._monitor_thread is not None and Filer._monitor_thread.is_alive():
+                return
+            Filer._monitor_thread = Thread(name="filing-area-monitor", target=Filer._monitor_loop, daemon=True)
+            Filer._monitor_thread.start()
+
+    @staticmethod
+    def _monitor_loop() -> None:
+        """Every MONITOR_INTERVAL_SECONDS, probe each demoted area's primary; promote those
+        that pass. Exits when nothing is demoted, so a healthy process runs no thread."""
+        while True:
+            time.sleep(Filer.MONITOR_INTERVAL_SECONDS)
+            with Filer._state_lock:
+                demoted = list(Filer._demoted)
+                if not demoted:
+                    Filer._monitor_thread = None
+                    return
+            filer = Filer()
+            for area in demoted:
+                try:
+                    if filer._primary_writable(area, fresh=True):
+                        filer._promote(area)
+                except Exception as e:  # noqa: BLE001 -- the monitor must survive any one probe
+                    filer.error(f"filing-area monitor: probing {area.name}: {e!r}")
+
+    @classmethod
+    def on_promotion(cls, hook: Callable[[FilingArea], None]) -> None:
+        """Register ``hook(area)``, called after ``area`` returns to its primary."""
+        with cls._state_lock:
+            if hook not in cls._promotion_hooks:
+                cls._promotion_hooks.append(hook)
 
     def move_ram_to_shared(self, paths: str | list[str]):
         """

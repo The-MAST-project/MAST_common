@@ -60,6 +60,8 @@ def isolate_filer(prefix: str = "mast-tests-") -> None:
     hostname = socket.gethostname().split(".")[0]
     local, ram = _location("local"), _location("ram")
     share_root, shared = _location("share"), _location("share", hostname)
+    # Inside `local`, as C:/MAST/ram-fallback/ and C:/MAST/share-fallback/ are on a unit.
+    ram_fallback, share_fallback = _location("local", "ram-fallback"), _location("local", "share-fallback")
 
     def _isolated_init(self, logger=None):
         # Every attribute the real __init__ binds, or the first `init_log` -- which asks for
@@ -69,6 +71,8 @@ def isolate_filer(prefix: str = "mast-tests-") -> None:
         self.ram = ram
         self.share_root = share_root
         self.machine = shared
+        self.ram_fallback = ram_fallback
+        self.share_fallback = share_fallback
         self.logger = logger
 
     filer_module.Filer.__init__ = _isolated_init
