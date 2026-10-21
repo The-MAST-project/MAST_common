@@ -80,14 +80,14 @@ class TestTheLinuxRegression:
         assert filer.machine.root != filer.share_root.root
         assert filer.machine.root == "/Storage/mast-share/MAST/mast-ns-control/"
 
-    def test_accessible_shared_root_is_still_not_a_substitute_on_linux(self):
-        """Why the new accessor had to exist. If these ever agree, the asymmetry has been
-        fixed at the source and this whole module can be reconsidered."""
+    def test_shared_is_per_machine_on_linux_too(self):
+        """It was the share root on Linux, which is how control's logs reached the top of the
+        share. Per-machine on every platform now (plans/filing-areas-design.md 3.1)."""
         filer = _filer_as("Linux", "mast-ns-control")
 
-        assert filer.shared.root != filer.machine.root, (
-            "`shared` is the share root on Linux; using it for logs is what put 89 date folders at the top of the share"
-        )
+        assert filer.shared.root == "/Storage/mast-share/MAST/mast-ns-control/"
+        assert filer.shared.root != filer.share_root.root
+        assert filer.machine_log_root() in (filer.shared.root, filer.local.root)
 
     def test_an_fqdn_does_not_leak_into_the_path(self):
         """`socket.gethostname()` may return an FQDN. `get_unit` already splits on '.';

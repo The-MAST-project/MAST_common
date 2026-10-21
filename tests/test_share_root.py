@@ -60,20 +60,14 @@ class TestShareRoot:
     def test_linux_layout(self, filer):
         assert filer.share_root.root == "/Storage/mast-share/MAST/"
 
-    def test_the_parent_of_shared_root_is_not_a_substitute(self, filer):
-        """The trap this attribute exists to avoid.
-
-        On Windows, parent-of-shared.root happens to equal share_root. On Linux it is
-        one level ABOVE the share, because shared.root has no hostname to strip. Code
-        written against the Windows behaviour would silently site files outside the
-        share on the control and gui hosts.
-        """
-        parent = PurePath(filer.shared.root).parent
-        if platform.system() == "Linux":
-            assert str(parent) != filer.share_root.root, (
-                "if these ever agree on Linux the asymmetry has been fixed and this test "
-                "should be revisited -- but until then they must not be used interchangeably"
-            )
+    def test_the_parent_of_shared_root_is_the_share_on_every_platform(self, filer):
+        """It was the trap this attribute existed to avoid: on Linux `shared.root` had no
+        hostname, so its parent was one level ABOVE the share. With `shared` per-machine
+        everywhere (plans/filing-areas-design.md 3.1) they agree -- when the share is up.
+        Without it, `shared` falls back to the local disk on Windows and nothing follows."""
+        if platform.system() == "Windows" and not is_windows_drive_mapped("Z:"):
+            pytest.skip("Z: is not mapped, so shared is the local disk")
+        assert PurePath(filer.shared.root).parent == PurePath(filer.share_root.root)
 
 
 class TestNoSilentFallback:
@@ -85,3 +79,24 @@ class TestNoSilentFallback:
         if platform.system() != "Windows":
             pytest.skip("the fallback only exists on Windows")
         assert filer.share_root.root.replace("\\", "/") != filer.local.root.replace("\\", "/")
+
+
+class TestWholeShareFolders:
+    """Plans and runs belong to the share as a whole -- control's -- not to one machine."""
+
+    def test_plans_are_under_the_share_root_not_this_machines_folder(self):
+        from common.filer import Filer
+        from common.paths import PathMaker
+
+        filer = Filer()  # the suite's layout: shared is a folder inside share_root
+        plans = PurePath(PathMaker.make_plans_folder())
+        assert plans.parent == PurePath(filer.share_root.root)
+
+    def test_runs_are_under_the_share_root_not_this_machines_folder(self):
+        from common.filer import Filer
+        from common.paths import PathMaker
+
+        filer = Filer()
+        run = PurePath(PathMaker.make_run_folder())
+        assert PurePath(filer.share_root.root) / "runs" in run.parents
+        assert PurePath(filer.shared.root) not in run.parents
