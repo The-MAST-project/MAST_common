@@ -251,6 +251,13 @@ class Filer:
     MONITOR_INTERVAL_SECONDS: ClassVar[float] = 60.0
     #: Called with the area after it returns to its primary -- item 6's drain registers here.
     _promotion_hooks: ClassVar[list[Callable[[FilingArea], None]]] = []
+    # Asking the supervisor to revive a RAM disk found gone (plans/filing-areas-design.md
+    # 8.1). One request at a time; it re-asks while the answer is "in progress".
+    _ramdisk_restart_thread: ClassVar[Thread | None] = None
+    RAMDISK_RESTART_POLL_SECONDS: ClassVar[float] = 10.0
+    RAMDISK_RESTART_DEADLINE_SECONDS: ClassVar[float] = 600.0
+    #: Builds the supervisor client; tests replace it. None is `common.api.SupervisorApi`.
+    _supervisor_factory: ClassVar[Callable[[], object] | None] = None
 
     def __init__(self, logger=None):
         sys = platform.system()
@@ -623,6 +630,11 @@ class Filer:
         kind = self._area_level_failure(area, exc)
         if kind is not None:
             self._demote(area, kind, f"{kind}: {path}: {exc}")
+            if area is FilingArea.RAM and kind == "gone":
+                # Only for gone. A FULL disk is cured by moving products off, and a restart
+                # wipes D: -- so it would destroy exactly the unmoved products a long share
+                # outage leaves there. Path-level errors never get this far.
+                self._request_ramdisk_restart()
         return kind
 
     def check_now(self, area: FilingArea) -> bool:
@@ -734,6 +746,57 @@ class Filer:
                         filer._promote(area)
                 except Exception as e:  # noqa: BLE001 -- the monitor must survive any one probe
                     filer.error(f"filing-area monitor: probing {area.name}: {e!r}")
+
+    def _request_ramdisk_restart(self) -> None:
+        """Ask the supervisor to revive the RAM disk, from a background thread -- never from
+        the failing write, which is already being retried on the fallback. A request already
+        running is not duplicated."""
+        with Filer._state_lock:
+            running = Filer._ramdisk_restart_thread
+            if running is not None and running.is_alive():
+                return
+            thread = Thread(name="ramdisk-restart-request", target=self._ramdisk_restart_loop, daemon=True)
+            Filer._ramdisk_restart_thread = thread
+        thread.start()
+
+    def _ramdisk_restart_loop(self) -> None:
+        """Ask, and act on the answer. RESTORED or HEALTHY: probe at once (`check_now`) --
+        acting on this call's own answer, which is not the supervisor nudging the unit
+        (5.1). GIVING_UP or no supervisor: say so once and stay on the fallback; the
+        one-minute check finds the disk whenever it does come back. IN_PROGRESS: ask again,
+        joining the restart that is running, up to RAMDISK_RESTART_DEADLINE_SECONDS."""
+        from common.api import RamdiskRestartAnswer, SupervisorApi
+
+        supervisor = (Filer._supervisor_factory or SupervisorApi)()
+        deadline = time.monotonic() + Filer.RAMDISK_RESTART_DEADLINE_SECONDS
+        self.info("filing area RAM: the RAM disk is gone; asking the supervisor to revive it")
+        while True:
+            try:
+                answer, detail = supervisor.restart_ramdisk()  # type: ignore[attr-defined]
+            except Exception as e:  # noqa: BLE001 -- a client bug must not kill this thread silently
+                answer, detail = RamdiskRestartAnswer.NO_ANSWER, repr(e)
+            if answer in (RamdiskRestartAnswer.RESTORED, RamdiskRestartAnswer.HEALTHY):
+                self.info(f"filing area RAM: supervisor answered {answer.name} ({detail}); probing D: now")
+                self.check_now(FilingArea.RAM)
+                return
+            if answer is RamdiskRestartAnswer.GIVING_UP:
+                self.error(
+                    f"filing area RAM: the supervisor has given up reviving the RAM disk ({detail}); staying on the fallback"
+                )
+                return
+            if answer is RamdiskRestartAnswer.NO_ANSWER:
+                self.warning(
+                    f"filing area RAM: no answer to the RAM-disk restart request ({detail}); staying on the "
+                    "fallback until the one-minute check finds the disk"
+                )
+                return
+            if time.monotonic() >= deadline:
+                self.warning(
+                    f"filing area RAM: the RAM-disk restart is still in progress after "
+                    f"{Filer.RAMDISK_RESTART_DEADLINE_SECONDS:.0f} s; leaving it to the one-minute check"
+                )
+                return
+            time.sleep(Filer.RAMDISK_RESTART_POLL_SECONDS)
 
     @classmethod
     def on_promotion(cls, hook: Callable[[FilingArea], None]) -> None:
