@@ -55,9 +55,31 @@ def is_accessible(path: str, timeout: float = 2.0) -> bool:
 
 
 class FilerTop(Enum):
+    """Legacy: superseded by `FilingArea`. Kept until MAST_unit's flux metering moves to `to_top`."""
+
     Local = auto()
     Shared = auto()
     Ram = auto()
+
+
+class FilingArea(Enum):
+    """The three places a machine files things (plans/filing-areas-design.md 3).
+
+    ``RAM`` is the RAM disk (``None`` on Linux); ``SHARE`` is THIS machine's folder on the
+    share; ``LOCAL`` is the local disk.
+    """
+
+    RAM = auto()
+    SHARE = auto()
+    LOCAL = auto()
+
+
+def _spelled(path) -> str:
+    """``path`` forward-slashed, doubled slashes collapsed, no trailing slash; a UNC path keeps
+    its leading ``//``. String work, as `canonical_root` is, so the two compare."""
+    s = str(path).replace("\\", "/")
+    lead = "//" if s.startswith("//") else "/" if s.startswith("/") else ""
+    return lead + "/".join(part for part in s[len(lead) :].split("/") if part)
 
 
 def canonical_root(root: str) -> str:
@@ -481,34 +503,69 @@ class Filer:
         )
 
     def change_top_to(self, top: FilerTop, path: str):
+        """Legacy: use `to_top`. Needs a forward-slashed path, replaces every occurrence of the
+        root, and returns None when nothing matches. Kept until MAST_unit stops calling it."""
         for t in self.tops:
             if path.startswith(self.tops[t].root):
                 return path.replace(self.tops[t].root, self.tops[top].root)
 
-    def move_to(self, dst_top: FilerTop, src_paths: str | list[str]):
-        """
-        Moves one or more source paths (files or folders) to a destination top,
-         unless the source path already resides on the destination root.
+    def root_of(self, area: FilingArea) -> Location | None:
+        """The root of ``area`` on this machine; ``None`` for ``RAM`` on Linux."""
+        return {FilingArea.RAM: self.ram, FilingArea.SHARE: self.shared, FilingArea.LOCAL: self.local}[area]
 
-        :param dst_top: The ID of the destination top
-        :param src_paths: One or more names of files or folders
-        :return:
-        """
-        if isinstance(src_paths, str):
-            src_paths = [src_paths]
+    def area_of(self, path) -> tuple[FilingArea, str]:
+        """The filing area ``path`` lies under, and its path relative to that area's root.
 
-        dst_root = self.tops[dst_top].root
-        for src_path in src_paths:
-            src_root = None
-            if src_path.startswith(dst_root):
-                continue  # it's already on the destination root
-            for top in self.tops:
-                if src_path.startswith(self.tops[top].root):
-                    src_root = self.tops[top].root
-                    break
-            if not src_root:
+        Pure string work: either separator, doubled slashes, any case on Windows. Only the
+        LEADING root counts. When roots overlap -- collapsed onto one folder, or a fallback
+        nested in the local disk -- the longest matching root wins. Raises ValueError when
+        ``path`` is under none of them.
+        """
+        spelled = _spelled(path)
+        best: tuple[FilingArea, Location] | None = None
+        for area in FilingArea:
+            location = self.root_of(area)
+            if location is None:
                 continue
-            self.move(src_path, src_path.replace(src_root, dst_root))
+            if _root_key(spelled + "/").startswith(_root_key(location.root)) and (
+                best is None or len(location.root) > len(best[1].root)
+            ):
+                best = (area, location)
+        if best is None:
+            raise ValueError(f"'{path}' is under none of this machine's filing areas")
+        area, location = best
+        return area, (spelled + "/")[len(location.root) :].rstrip("/")
+
+    def to_top(self, area: FilingArea, path) -> str:
+        """``path``, which lies under one filing area, re-rooted under ``area``'s root.
+
+        Replaces `change_top_to`: separator-agnostic, the leading root only, Linux-safe, and
+        it raises -- ValueError -- when ``path`` is under no filing area, or ``area`` does not
+        exist on this machine, instead of returning None. The result is forward-slashed. It
+        converts; it never chooses: which area a product should go to is the mover's
+        business (plans/filing-areas-design.md 3, item 3).
+        """
+        target = self.root_of(area)
+        if target is None:
+            raise ValueError(f"there is no {area.name} filing area on this machine")
+        _, relative = self.area_of(path)
+        return target.root + relative if relative else target.root
+
+    def locate(self, path) -> str | None:
+        """Where the product at ``path`` is now: on the share, else on the RAM disk; None if on
+        neither. Its own area is not assumed -- a product moves after its path was handed out.
+
+        The fallbacks of the filing-areas plan join this search when they exist.
+        """
+        _, relative = self.area_of(path)
+        for area in (FilingArea.SHARE, FilingArea.RAM):
+            location = self.root_of(area)
+            if location is None:
+                continue
+            candidate = location.root + relative if relative else location.root
+            if os.path.exists(candidate):
+                return candidate
+        return None
 
     def move_ram_to_shared(self, paths: str | list[str]):
         """
