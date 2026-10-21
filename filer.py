@@ -436,7 +436,11 @@ class Filer:
                     # sequence counter and lock claims included, which is exactly what must
                     # stay behind.
                     return not self._merge_into(src, dst, op)
-                elif src.is_file() or src.is_dir() or src.is_symlink():
+                elif src.is_file() and not src.is_symlink():
+                    dst.parent.mkdir(parents=True, exist_ok=True)
+                    _move_file(src, dst)
+                    return True
+                elif src.is_dir() or src.is_symlink():
                     dst.parent.mkdir(parents=True, exist_ok=True)
                     shutil.move(src, dst)
                     return True
@@ -480,7 +484,10 @@ class Filer:
                 continue
             target = dst / entry.name
             entry_is_dir = entry.is_dir() and not entry.is_symlink()
-            if entry_is_dir and target.is_dir():
+            if entry_is_dir:
+                # Into it, existing or not: file by file, so each file arrives whole (see
+                # `_move_file`) and a nested folder's bookkeeping stays behind like the top
+                # level's. `shutil.move` of a folder copied it under its final names.
                 kept_collision |= self._merge_into(entry, target, op)
             elif target.exists():
                 key = _collision_key(entry, target)
@@ -494,10 +501,14 @@ class Filer:
                 else:
                     self._report_collision(key, entry, target, op)
                     kept_collision = True
+            elif entry.is_file() and not entry.is_symlink():
+                _move_file(entry, target)
             else:
                 shutil.move(entry, target)
 
-        if kept_bookkeeping or kept_collision:
+        # A subfolder still here kept bookkeeping or a reported collision of its own.
+        kept_below = any(child.is_dir() and not child.is_symlink() for child in src.iterdir())
+        if kept_bookkeeping or kept_collision or kept_below:
             # Expected, not a failure. Bookkeeping stays by design, and a collision has been
             # reported already; reporting the folder as well would fire on every sweep.
             return kept_collision
@@ -1168,10 +1179,12 @@ SEQUENCE_FILE_NAME = "seq.txt"
 def is_bookkeeping(name: str) -> bool:
     """True for files that are the mechanism rather than the product.
 
-    Two kinds, both of which must stay where they are:
+    Three kinds, all of which must stay where they are:
 
     * `seq.txt` -- the sequence counter (see `SEQUENCE_FILE_NAME`).
     * `.<name>.lock` -- a MoveGuardian claim. Ram-local by design, and possibly still held.
+    * `.<name>.partial` -- a copy in progress, or one a failed copy left (see `_move_file`).
+      Never a product: the next attempt overwrites it.
 
     Without this the sweeper treated a folder containing only a counter as a relocation
     candidate, tried to merge it every pass, and reported two errors each time: the counter
@@ -1183,7 +1196,50 @@ def is_bookkeeping(name: str) -> bool:
     numbering restarts at 0 -- straight into the folders already on the share. The durable
     copy that exists to prevent exactly that was the stale one.
     """
-    return name == SEQUENCE_FILE_NAME or (name.startswith(".") and name.endswith(".lock"))
+    return name == SEQUENCE_FILE_NAME or (name.startswith(".") and name.endswith((".lock", PARTIAL_SUFFIX)))
+
+
+PARTIAL_SUFFIX = ".partial"
+
+
+def _partial_path(dst: Path) -> Path:
+    """Where ``dst`` is copied before it is renamed into place: ``<dir>/.<name>.partial``."""
+    return dst.with_name(f".{dst.name}{PARTIAL_SUFFIX}")
+
+
+#: OSError values for a rename across volumes -- RAM disk to share, or to another drive.
+_CROSS_DEVICE_ERRNOS = {errno.EXDEV}
+_CROSS_DEVICE_WINERRORS = {17}  # ERROR_NOT_SAME_DEVICE
+#: The rename `_move_file` uses; tests make it refuse, as a rename across volumes does.
+_replace = os.replace
+
+
+def _move_file(src: Path, dst: Path) -> None:
+    """Move one file so that ``dst`` appears whole or not at all.
+
+    On one volume it is a rename, which is atomic. Across volumes it is copied to
+    ``.<name>.partial`` beside ``dst``, renamed onto ``dst``, and only then removed from
+    ``src``. A cross-volume `shutil.move` copied under the final name, so a share dropping
+    mid-copy left a truncated file there -- which the next attempt read as a collision,
+    reporting it and keeping the source, with the junk left behind
+    (plans/filing-areas-design.md 6.2). A failed copy removes its partial and leaves the
+    source untouched; raises what the copy raised.
+    """
+    try:
+        _replace(src, dst)
+        return
+    except OSError as e:
+        if e.errno not in _CROSS_DEVICE_ERRNOS and getattr(e, "winerror", None) not in _CROSS_DEVICE_WINERRORS:
+            raise
+    partial = _partial_path(dst)
+    try:
+        shutil.copy2(src, partial)
+        _replace(partial, dst)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            partial.unlink()
+        raise
+    src.unlink()
 
 
 def _folder_lock_path(real_folder: str) -> str:
