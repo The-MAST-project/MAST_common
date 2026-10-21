@@ -265,6 +265,8 @@ class Filer:
     LOCAL_DISK_CACHE_SECONDS: ClassVar[float] = 5.0
     _local_usage: ClassVar[tuple[float, float] | None] = None  # (when, fraction used)
     _local_full: ClassVar[bool] = False
+    #: time.time() of the RAM area's last switch between disk and fallback; 0 if never.
+    _ram_switched: ClassVar[float] = 0.0
     RAMDISK_RESTART_POLL_SECONDS: ClassVar[float] = 10.0
     RAMDISK_RESTART_DEADLINE_SECONDS: ClassVar[float] = 600.0
     #: Builds the supervisor client; tests replace it. None is `common.api.SupervisorApi`.
@@ -767,6 +769,8 @@ class Filer:
             if area in Filer._demoted:
                 return
             Filer._demoted[area] = kind
+            if area is FilingArea.RAM:
+                Filer._ram_switched = time.time()
         fallback = self.fallback_of(area)
         self.warning(
             f"filing area {area.name}: primary '{self.root_of(area).root}' failed ({cause}); "  # type: ignore[union-attr]
@@ -779,6 +783,8 @@ class Filer:
             if Filer._demoted.pop(area, None) is None:
                 return
             hooks = list(Filer._promotion_hooks)
+            if area is FilingArea.RAM:
+                Filer._ram_switched = time.time()
         self.info(f"filing area {area.name}: primary '{self.root_of(area).root}' is writable again; back on it")  # type: ignore[union-attr]
         for hook in hooks:
             try:
@@ -866,6 +872,14 @@ class Filer:
                 )
                 return
             time.sleep(Filer.RAMDISK_RESTART_POLL_SECONDS)
+
+    @classmethod
+    def ram_switched_at(cls) -> float:
+        """When the RAM area last switched between its disk and its fallback (time.time()),
+        or 0. A sequence counter older than this missed numbers given out on the other side
+        (`PathMaker.make_seq`)."""
+        with cls._state_lock:
+            return cls._ram_switched
 
     @classmethod
     def wake_monitor(cls) -> None:
