@@ -13,6 +13,11 @@ class Const:
     # config database, which is exactly when a DB-derived port would not be known.
     BASE_SUPERVISOR_PATH: str = "/mast/api/v1/supervisor"
     SUPERVISOR_PORT: int = 8004
+    # The supervisor's ACTION listener, bound to 127.0.0.1 only: a route that changes the
+    # machine (PUT /ramdisk/restart wipes D:) must never be reachable from off it, so it has
+    # a listener of its own beside the 0.0.0.0 status server. Proposed here with the client;
+    # MAST_supervision#18 confirms it (plans/filing-areas-design.md 8.1).
+    SUPERVISOR_ACTIONS_PORT: int = 8005
 
     PLATE_SOLVING_SHM_NAME: str = "PlateSolving_Image"
 

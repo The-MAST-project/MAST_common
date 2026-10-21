@@ -563,3 +563,43 @@ def test_safety_sensors():
 
 if __name__ == "__main__":
     test_safety_sensors()
+
+
+class RamdiskRestartAnswer(Enum):
+    """What the supervisor said to ``PUT /ramdisk/restart`` (plans/filing-areas-design.md 8.1)."""
+
+    RESTORED = 200  # D: is writable again, indexes present
+    IN_PROGRESS = 202  # a restart is running; ask again for its outcome
+    HEALTHY = 409  # D: was writable: nothing was done
+    GIVING_UP = 503  # too many failed revivals within the hour
+    NO_ANSWER = 0  # no supervisor listening, a timeout, or an answer this client does not know
+
+
+class SupervisorApi:
+    """The local supervisor's action routes -- ``127.0.0.1`` only, plain HTTP.
+
+    Not a `BaseApi`: those address a remote host by name over TLS and fold the HTTP status
+    into a `CanonicalResponse`, while here the status IS the answer (restored / in progress /
+    healthy / giving up), and the listener is this machine's loopback by design.
+    Synchronous: its callers are `Filer`'s background threads, never the event loop.
+    """
+
+    TIMEOUT: float = 10.0
+
+    def __init__(self, port: int = Const.SUPERVISOR_ACTIONS_PORT, timeout: float = TIMEOUT):
+        self.base_url = f"http://127.0.0.1:{port}{Const.BASE_SUPERVISOR_PATH}"
+        self.timeout = timeout
+
+    def restart_ramdisk(self) -> tuple[RamdiskRestartAnswer, str]:
+        """Ask for the RAM disk to be revived. The supervisor checks for itself before
+        acting: a request is a hint, and a healthy D: is answered HEALTHY and left alone."""
+        try:
+            with httpx.Client(trust_env=False, timeout=self.timeout) as client:
+                response = client.put(f"{self.base_url}/ramdisk/restart")
+        except httpx.HTTPError as e:
+            return RamdiskRestartAnswer.NO_ANSWER, f"no answer from the supervisor: {e!r}"
+        try:
+            answer = RamdiskRestartAnswer(response.status_code)
+        except ValueError:
+            return RamdiskRestartAnswer.NO_ANSWER, f"unexpected HTTP {response.status_code}: {response.text[:200]}"
+        return answer, response.text[:200]
