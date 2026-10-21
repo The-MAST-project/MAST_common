@@ -199,7 +199,7 @@ class PathMaker:
 
         The same shape as `make_spirals_folder`, so the mover lands it at
         `<share>/<hostname>/<observing-night>/FluxMetering/<NNNN>`. The hostname is NOT
-        joined here: `Filer().shared.root` already carries it on Windows, so a caller
+        joined here: `Filer().shared.root` already carries it, so a caller
         adding `socket.gethostname()` would produce `Z:/MAST/mast02/mast02/...`.
 
         An observing night, not a calendar date. A run takes 20-40 minutes and a session
@@ -240,7 +240,8 @@ class PathMaker:
 
     @staticmethod
     def make_plans_folder() -> str:
-        return as_posix(Path(Filer().shared.root) / "plans")
+        # Control's, and the share's as a whole: `share_root`, not this machine's folder.
+        return as_posix(Path(Filer().share_root.root) / "plans")
 
     @staticmethod
     def make_plans_files_folder() -> str:
@@ -248,7 +249,7 @@ class PathMaker:
 
     @staticmethod
     def make_run_folder():
-        nightly_run_folder = PathMaker().make_observing_night_folder(root=os.path.join(Filer().shared.root, "runs"))
+        nightly_run_folder = PathMaker().make_observing_night_folder(root=os.path.join(Filer().share_root.root, "runs"))
         return as_posix(os.path.join(nightly_run_folder, "run-" + PathMaker().make_seq(folder=nightly_run_folder)))
 
     @staticmethod
