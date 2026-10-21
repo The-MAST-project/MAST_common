@@ -69,11 +69,6 @@ def isolate_filer(prefix: str = "mast-tests-") -> None:
         self.ram = ram
         self.share_root = share_root
         self.machine = shared
-        self.tops = {
-            filer_module.FilerTop.Local: self.local,
-            filer_module.FilerTop.Shared: self.shared,
-            filer_module.FilerTop.Ram: self.ram,
-        }
         self.logger = logger
 
     filer_module.Filer.__init__ = _isolated_init

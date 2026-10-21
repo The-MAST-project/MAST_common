@@ -14,7 +14,7 @@ import platform
 
 import pytest
 
-from common.filer import Filer, FilerTop, Location, MoveGuardian
+from common.filer import Filer, Location, MoveGuardian
 
 
 @pytest.fixture
@@ -43,7 +43,6 @@ def make_filer(tmp_path, monkeypatch):
             self.local = Location(f"{roots[local].as_posix()}/")
             self.share_root = self.shared
             self.machine = self.shared
-            self.tops = {FilerTop.Local: self.local, FilerTop.Shared: self.shared, FilerTop.Ram: self.ram}
             self.logger = logger
 
         monkeypatch.setattr(Filer, "__init__", fake_init)

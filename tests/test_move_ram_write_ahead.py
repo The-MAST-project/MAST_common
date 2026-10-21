@@ -22,7 +22,7 @@ import pytest
 
 pytest.importorskip("common.filer", reason="filer import chain unavailable")
 import common.filer as filer_module
-from common.filer import Filer, FilerTop, Location, MoveGuardian
+from common.filer import Filer, Location, MoveGuardian
 
 
 class RefusingPool:
@@ -58,7 +58,6 @@ def filer(tmp_path, monkeypatch):
         # per-machine component, so ensure_shared_root() declines to create anything and
         # these tests keep testing what they always did. See test_ensure_shared_root.py.
         self.share_root = Location(f"{tmp_path.as_posix()}/")
-        self.tops = {FilerTop.Local: self.local, FilerTop.Shared: self.shared, FilerTop.Ram: self.ram}
         self.logger = logger
 
     monkeypatch.setattr(Filer, "__init__", fake_init)

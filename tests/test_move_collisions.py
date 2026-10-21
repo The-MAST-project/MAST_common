@@ -23,7 +23,7 @@ import pytest
 from test_move_merges_folders import write
 
 from common import filer as filer_module
-from common.filer import Filer, FilerTop
+from common.filer import Filer
 
 SWEEPS = 3
 
@@ -41,7 +41,6 @@ def filer(tmp_path, monkeypatch):
     f.shared = location()
     f.shared.root = shared.as_posix() + "/"
     f.local = f.shared
-    f.tops = {FilerTop.Local: f.local, FilerTop.Shared: f.shared, FilerTop.Ram: f.ram}
     f.ram_path, f.shared_path = ram, shared
     monkeypatch.setattr(Filer, "_reported_collisions", set())
     return f
