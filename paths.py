@@ -1,6 +1,7 @@
 import datetime
 import errno
 import os
+import re
 from pathlib import Path
 from typing import Literal
 
@@ -51,6 +52,54 @@ def _current_ram_root() -> str:
     return root
 
 
+#: The number in a sequenced name, as PathMaker spells them: 0007, seq=0007,time=...,
+#: run-0007, acquisition-0007, step-0007.fits, single_exposure_0007.fits.
+_SEQUENCED = re.compile(r"(?:[A-Za-z][A-Za-z_]*[-=_])?(\d{4,})(?!\d)")
+_NIGHT_LABEL = re.compile(r"\d{4}-\d{2}-\d{2}")
+
+
+def _sequence_of(name: str) -> int | None:
+    """The sequence number a folder or file name carries, or None. Night labels are not."""
+    if _NIGHT_LABEL.fullmatch(name):
+        return None
+    match = _SEQUENCED.match(name)
+    return int(match.group(1)) if match else None
+
+
+def _highest_sequence_elsewhere(folder: str) -> int:
+    """The highest sequence number in ``folder``'s counterpart on every root: the RAM disk,
+    its fallback, the share, the share's fallback. 0 when ``folder`` is in neither the RAM
+    nor the SHARE area, or nothing is numbered. The share is listed only if its cached probe
+    says it is readable, so a hung share cannot stop numbering."""
+    filer = Filer()
+    try:
+        area, relative = filer.area_of(folder)
+    except ValueError:
+        return 0
+    if area not in (FilingArea.RAM, FilingArea.SHARE):
+        return 0
+    highest = 0
+    for location in (
+        filer.root_of(FilingArea.RAM),
+        filer.fallback_of(FilingArea.RAM),
+        filer.root_of(FilingArea.SHARE),
+        filer.fallback_of(FilingArea.SHARE),
+    ):
+        if location is None:
+            continue
+        if location == filer.root_of(FilingArea.SHARE):
+            probe = getattr(filer, "share_root", None) or location
+            if not probe.readable():
+                continue
+        try:
+            names = os.listdir(location.root + relative if relative else location.root)
+        except OSError:
+            continue
+        numbers = [n for n in (_sequence_of(name) for name in names) if n is not None]
+        highest = max([highest, *numbers])
+    return highest
+
+
 class PathMaker:
     @staticmethod
     def make_seq(folder: str, start_with: int | None = None, dont_bump: bool = False) -> str:
@@ -64,7 +113,15 @@ class PathMaker:
         seq_file = Path(folder) / "seq.txt"
         seq_file.parent.mkdir(parents=True, exist_ok=True)
 
-        seq = int(seq_file.read_text()) if seq_file.exists() else start_with if start_with is not None else 0
+        stored = int(seq_file.read_text()) if seq_file.exists() else None
+        seq = stored if stored is not None else start_with if start_with is not None else 0
+        # A counter that is missing -- a revived, empty RAM disk; a fresh folder on the RAM
+        # fallback -- or older than the RAM area's last switch between disk and fallback
+        # does not know what was numbered meanwhile, and would restart into folders already
+        # on the share. It is seeded from the highest number present in the same folder on
+        # every root (plans/filing-areas-design.md 7.2). Otherwise this stays a file read.
+        if stored is None or seq_file.stat().st_mtime < Filer.ram_switched_at():
+            seq = max(seq, _highest_sequence_elsewhere(folder))
         if not dont_bump:
             seq += 1
             seq_file.write_text(str(seq))
