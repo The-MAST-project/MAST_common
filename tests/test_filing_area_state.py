@@ -17,6 +17,7 @@ import pytest
 
 import common.filer as filer_module
 from common.filer import Filer, FilingArea, Location
+from common.testing.filer import reset_filing_areas
 
 
 @pytest.fixture(autouse=True)
@@ -24,16 +25,9 @@ def clean_state(monkeypatch):
     monkeypatch.setattr(filer_module, "_probe_cache", {})
     monkeypatch.setattr(filer_module, "_probe_threads", {})
     monkeypatch.setattr(Filer, "MONITOR_INTERVAL_SECONDS", 0.02)
-    with Filer._state_lock:
-        Filer._demoted.clear()
-        Filer._promotion_hooks.clear()
+    reset_filing_areas()
     yield
-    with Filer._state_lock:
-        Filer._demoted.clear()
-        Filer._promotion_hooks.clear()
-        thread = Filer._monitor_thread
-    if thread is not None:
-        thread.join(2)
+    reset_filing_areas()
 
 
 @pytest.fixture

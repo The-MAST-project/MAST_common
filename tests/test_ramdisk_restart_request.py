@@ -19,6 +19,7 @@ import common.api as api_module
 import common.filer as filer_module
 from common.api import RamdiskRestartAnswer, SupervisorApi
 from common.filer import Filer, FilingArea, Location
+from common.testing.filer import reset_filing_areas
 
 
 class FakeSupervisor:
@@ -41,15 +42,11 @@ def clean_state(monkeypatch):
     monkeypatch.setattr(filer_module, "_probe_threads", {})
     monkeypatch.setattr(Filer, "MONITOR_INTERVAL_SECONDS", 30.0)  # the request, not the monitor, promotes here
     monkeypatch.setattr(Filer, "RAMDISK_RESTART_POLL_SECONDS", 0.01)
-    with Filer._state_lock:
-        Filer._demoted.clear()
-        Filer._promotion_hooks.clear()
-        Filer._ramdisk_restart_thread = None
+    reset_filing_areas()
+    Filer._ramdisk_restart_thread = None
     yield
     _wait_for_request()
-    with Filer._state_lock:
-        Filer._demoted.clear()
-        Filer._promotion_hooks.clear()
+    reset_filing_areas()
     monkeypatch.setattr(Filer, "_supervisor_factory", None)
 
 
