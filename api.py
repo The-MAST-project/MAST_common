@@ -571,6 +571,7 @@ class RamdiskRestartAnswer(Enum):
     RESTORED = 200  # D: is writable again, indexes present
     IN_PROGRESS = 202  # a restart is running; ask again for its outcome
     HEALTHY = 409  # D: was writable: nothing was done
+    FAILED = 502  # this revival did not bring D: back; the supervisor keeps reviving on its own probe
     GIVING_UP = 503  # too many failed revivals within the hour
     NO_ANSWER = 0  # no supervisor listening, a timeout, or an answer this client does not know
 
@@ -590,12 +591,13 @@ class SupervisorApi:
         self.base_url = f"http://127.0.0.1:{port}{Const.BASE_SUPERVISOR_PATH}"
         self.timeout = timeout
 
-    def restart_ramdisk(self) -> tuple[RamdiskRestartAnswer, str]:
+    def restart_ramdisk(self, requested_by: str) -> tuple[RamdiskRestartAnswer, str]:
         """Ask for the RAM disk to be revived. The supervisor checks for itself before
-        acting: a request is a hint, and a healthy D: is answered HEALTHY and left alone."""
+        acting: a request is a hint, and a healthy D: is answered HEALTHY and left alone.
+        ``requested_by`` is what the supervisor's status reports as having asked."""
         try:
             with httpx.Client(trust_env=False, timeout=self.timeout) as client:
-                response = client.put(f"{self.base_url}/ramdisk/restart")
+                response = client.put(f"{self.base_url}/ramdisk/restart", params={"requested_by": requested_by})
         except httpx.HTTPError as e:
             return RamdiskRestartAnswer.NO_ANSWER, f"no answer from the supervisor: {e!r}"
         try:

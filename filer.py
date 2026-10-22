@@ -104,6 +104,8 @@ _CASE_INSENSITIVE = platform.system() == "Windows"
 
 #: How long a readable() / writable() answer is reused. Moves and sweeps ask per file.
 PROBE_CACHE_SECONDS = 5.0
+#: How a RAM-disk restart request names its asker in the supervisor's status.
+RAMDISK_RESTART_REQUESTER = "filer"
 #: The clock the probe cache reads; tests replace it.
 _probe_clock = time.monotonic
 _probe_lock = Lock()
@@ -873,8 +875,10 @@ class Filer:
     def _ramdisk_restart_loop(self) -> None:
         """Ask, and act on the answer. RESTORED or HEALTHY: probe at once (`check_now`) --
         acting on this call's own answer, which is not the supervisor nudging the unit
-        (5.1). GIVING_UP or no supervisor: say so once and stay on the fallback; the
-        one-minute check finds the disk whenever it does come back. IN_PROGRESS: ask again,
+        (5.1). FAILED, GIVING_UP or no supervisor: say so once and stay on the fallback; the
+        one-minute check finds the disk whenever it does come back. FAILED is one revival
+        that did not work, and the supervisor keeps trying on its own probe, so it is a
+        warning; GIVING_UP is the supervisor's limit, an error. IN_PROGRESS: ask again,
         joining the restart that is running, up to RAMDISK_RESTART_DEADLINE_SECONDS."""
         from common.api import RamdiskRestartAnswer, SupervisorApi
 
@@ -883,12 +887,18 @@ class Filer:
         self.info("filing area RAM: the RAM disk is gone; asking the supervisor to revive it")
         while True:
             try:
-                answer, detail = supervisor.restart_ramdisk()  # type: ignore[attr-defined]
+                answer, detail = supervisor.restart_ramdisk(RAMDISK_RESTART_REQUESTER)  # type: ignore[attr-defined]
             except Exception as e:  # noqa: BLE001 -- a client bug must not kill this thread silently
                 answer, detail = RamdiskRestartAnswer.NO_ANSWER, repr(e)
             if answer in (RamdiskRestartAnswer.RESTORED, RamdiskRestartAnswer.HEALTHY):
                 self.info(f"filing area RAM: supervisor answered {answer.name} ({detail}); probing D: now")
                 self.check_now(FilingArea.RAM)
+                return
+            if answer is RamdiskRestartAnswer.FAILED:
+                self.warning(
+                    f"filing area RAM: the supervisor's revival of the RAM disk failed ({detail}); staying on the "
+                    "fallback while the supervisor keeps trying"
+                )
                 return
             if answer is RamdiskRestartAnswer.GIVING_UP:
                 self.error(
