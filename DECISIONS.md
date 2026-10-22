@@ -11,6 +11,24 @@
 **Implications:** the status code stays the whole answer; the body is still only the logged detail. A supervisor older than this branch still sends `503` for a single failure, which reads as giving up, as before. This client against such a supervisor, or that supervisor against an older client, mis-names one case and changes nothing else.
 
 ---
+## [2026-10-22] `phd2.handover.style` selects the fold-mirror handover; legacy is the default
+
+**Why:** MAST_unit makes the legacy handover (fold mirror in before guiding, ready once guiding
+has settled) the default and keeps the bracketed one (insert after settle, under a pause)
+selectable. The bracketed handover lost its guide star at insertion on 3 of 13 arms in the
+2026-10-20/21 mast01 A/B; see MAST_unit's DECISIONS entry of the same date.
+
+**What:** `HandoverStyle` (`legacy` | `bracketed`) and `HandoverConfig.style`, defaulting to
+`legacy`. `auto_insert` keeps its meaning: off hands the insertion to the caller and runs no
+handover. `LockNudgeConfig`'s docstring now says when the nudge runs on each style, and why it
+stays off until a unit's insertion has been measured to leave the image in place.
+
+**Implications:** A unit document with no `handover` section, or one written before `style`,
+gets the legacy handover. Units on a MAST_unit without this change ignore the key. Known gap:
+`Plan.wait_for_guiding` (`models/plans.py`) still counts a unit as guiding on `Guiding` alone,
+which now goes up before PHD2 has a star. It is dormant -- no unit route reaches the assignment
+path that waits on it, and that path is being retired with `execute_assignment` -- so it is left
+to that work.
 
 ## [2026-10-18] Scripts may build on operator endpoints
 
