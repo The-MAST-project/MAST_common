@@ -2,6 +2,16 @@
 
 ---
 
+## [2026-10-22] A single failed RAM-disk revival is `FAILED` (502), not giving up
+
+**Why:** the supervisor answered `503` both for one revival that did not bring `D:` back and for reaching its give-up limit, and `SupervisorApi` maps the status to the answer, so `Filer` logged an ERROR "the supervisor has given up" after one failure. The supervisor keeps reviving on its own probe until its limit, so that was false.
+
+**What:** `RamdiskRestartAnswer.FAILED = 502`, which the supervisor now sends for a single failed revival (MAST_supervision, branch `eli/ramdisk-restart-failed`); `503` stays `GIVING_UP`. `Filer` logs `FAILED` as a WARNING and stays on the fallback, as for no answer. `restart_ramdisk(requested_by)` sends `?requested_by=`, and `Filer` passes `RAMDISK_RESTART_REQUESTER = "filer"`, so the supervisor's status says who asked instead of `client`.
+
+**Implications:** the status code stays the whole answer; the body is still only the logged detail. A supervisor older than this branch still sends `503` for a single failure, which reads as giving up, as before. This client against such a supervisor, or that supervisor against an older client, mis-names one case and changes nothing else.
+
+---
+
 ## [2026-10-18] Scripts may build on operator endpoints
 
 **Why:** `docs/scripting-the-api.md` told scripts to prefer `contract` and `interface`

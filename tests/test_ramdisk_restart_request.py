@@ -18,7 +18,7 @@ import pytest
 import common.api as api_module
 import common.filer as filer_module
 from common.api import RamdiskRestartAnswer, SupervisorApi
-from common.filer import Filer, FilingArea, Location
+from common.filer import RAMDISK_RESTART_REQUESTER, Filer, FilingArea, Location
 from common.testing.filer import reset_filing_areas
 
 
@@ -27,9 +27,11 @@ class FakeSupervisor:
         self.answers = list(answers)
         self.calls = 0
         self.on_call = on_call
+        self.requested_by: list[str] = []
 
-    def restart_ramdisk(self):
+    def restart_ramdisk(self, requested_by):
         self.calls += 1
+        self.requested_by.append(requested_by)
         if self.on_call:
             self.on_call(self.calls)
         answer = self.answers.pop(0) if len(self.answers) > 1 else self.answers[0]
@@ -152,6 +154,29 @@ class TestTheAnswers:
         assert unit.is_demoted(FilingArea.RAM)
         assert any("RAM" in r.getMessage() and r.levelno >= logging.WARNING for r in caplog.records)
 
+    def test_one_failed_revival_is_a_warning_not_giving_up(self, unit, monkeypatch, caplog):
+        caplog.set_level(logging.WARNING)
+        supervisor = FakeSupervisor([RamdiskRestartAnswer.FAILED])
+        _use(monkeypatch, supervisor)
+
+        _ram_gone(unit)
+        _wait_for_request()
+
+        assert supervisor.calls == 1
+        assert unit.is_demoted(FilingArea.RAM)
+        ram = [r for r in caplog.records if "RAM" in r.getMessage() and r.levelno >= logging.WARNING]
+        assert ram and all(r.levelno == logging.WARNING for r in ram)
+        assert not any("given up" in r.getMessage() for r in ram)
+
+    def test_the_filer_says_it_is_the_one_asking(self, unit, monkeypatch):
+        supervisor = FakeSupervisor([RamdiskRestartAnswer.RESTORED])
+        _use(monkeypatch, supervisor)
+
+        _ram_gone(unit)
+        _wait_for_request()
+
+        assert supervisor.requested_by == [RAMDISK_RESTART_REQUESTER]
+
     def test_a_restart_that_never_finishes_is_left_after_the_deadline(self, unit, monkeypatch):
         monkeypatch.setattr(Filer, "RAMDISK_RESTART_DEADLINE_SECONDS", 0.05)
         supervisor = FakeSupervisor([RamdiskRestartAnswer.IN_PROGRESS])
@@ -165,7 +190,7 @@ class TestTheAnswers:
 
     def test_a_client_that_raises_is_no_answer(self, unit, monkeypatch):
         class Broken:
-            def restart_ramdisk(self):
+            def restart_ramdisk(self, requested_by):
                 raise RuntimeError("bug")
 
         _use(monkeypatch, Broken())
@@ -199,6 +224,7 @@ class TestSupervisorApi:
             (200, RamdiskRestartAnswer.RESTORED),
             (202, RamdiskRestartAnswer.IN_PROGRESS),
             (409, RamdiskRestartAnswer.HEALTHY),
+            (502, RamdiskRestartAnswer.FAILED),
             (503, RamdiskRestartAnswer.GIVING_UP),
             (500, RamdiskRestartAnswer.NO_ANSWER),
         ],
@@ -217,11 +243,11 @@ class TestSupervisorApi:
             lambda **kw: real_client(transport=httpx.MockTransport(handler), **kw),
         )
 
-        got, _ = SupervisorApi().restart_ramdisk()
+        got, _ = SupervisorApi().restart_ramdisk("filer")
 
         assert got is answer
         assert seen[0].method == "PUT"
-        assert str(seen[0].url) == "http://127.0.0.1:8005/mast/api/v1/supervisor/ramdisk/restart"
+        assert str(seen[0].url) == "http://127.0.0.1:8005/mast/api/v1/supervisor/ramdisk/restart?requested_by=filer"
 
     def test_nothing_listening_is_no_answer(self, monkeypatch):
         def refuse(request):
@@ -232,4 +258,4 @@ class TestSupervisorApi:
             api_module.httpx, "Client", lambda **kw: real_client(transport=httpx.MockTransport(refuse), **kw)
         )
 
-        assert SupervisorApi().restart_ramdisk()[0] is RamdiskRestartAnswer.NO_ANSWER
+        assert SupervisorApi().restart_ramdisk("filer")[0] is RamdiskRestartAnswer.NO_ANSWER
