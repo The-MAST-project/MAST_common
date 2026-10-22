@@ -365,24 +365,25 @@ class LockNudgeConfig(BaseModel):
     put it. The nudge measures that drift against the target and corrects the
     lock position for it.
 
-    It runs only in the window between settle and the fold-mirror insertion,
-    because that is the last moment the target is observable at all -- once the
-    mirror is at SPEC the target is being delivered into the fiber. Nothing is
-    nudged after the mirror moves: a mirror-induced change in the guide star's
-    apparent position is indistinguishable from a real pointing change without
-    an independent measurement, and if the shift is optical then correcting it
-    with the mount drives the target off the fiber.
+    It runs once per acquisition handover, after settle: on the legacy handover
+    with the fold mirror already in, on the bracketed one before the mirror
+    moves. A manually started guide session is never nudged -- the operator has
+    tuned the pointing by other means.
 
-    Off by default, like :class:`ExcludeRegionConfig`: with no DB entry the
-    handover behaves exactly as it does today.
+    Off by default. With the mirror in, the solve measures the target against the
+    fiber through the mirror, and a mirror-induced shift of the image cannot be
+    told from a real pointing error; correcting an optical shift with the mount
+    drives the target off the fiber. Enable it on a unit only once the insertion
+    has been measured to leave the image in place.
     """
 
     enabled: bool = False
 
-    #: Refuse a nudge larger than this and leave the lock alone. Half of PHD2's
-    #: 15 px search region: a residual that big is not a pointing error to trim
-    #: but a sign that something upstream is wrong, and re-acquiring is the
-    #: honest response. Measured residuals at handover are 0.3-1.0 px.
+    #: Refuse to move the lock further than this and leave it alone. The move is
+    #: the guide error in the solved frame plus the pointing correction; half of
+    #: PHD2's 15 px search region is not a pointing error to trim but a sign that
+    #: something upstream is wrong, and re-acquiring is the honest response.
+    #: Measured at handover: residuals 0.3-1.0 px, guide error 0.7-3.2 px.
     max_offset_px: float = 7.0
 
     #: Guide frames that must come in under `confirm_px` before the handover
@@ -401,27 +402,37 @@ class LockNudgeConfig(BaseModel):
         return self
 
 
+class HandoverStyle(StrEnum):
+    """When an FCU v2 unit inserts its fold mirror, relative to guiding."""
+
+    #: The acquirer inserts the mirror before guiding starts; PHD2 then picks its star
+    #: on the field it will guide on for the whole exposure.
+    LEGACY = "legacy"
+    #: Guide at SKY, settle, then insert the mirror under a full pause and resume.
+    BRACKETED = "bracketed"
+
+
 class HandoverConfig(BaseModel):
-    """Whether starting to guide also inserts the fold mirror.
+    """How starting to guide gets an FCU v2 unit to ready-for-exposure.
 
-    On an FCU v2 unit `StartGuiding` fires `do_fcu_v2_spec_handover` on its own:
-    settle, full pause, stage to SPEC, resume. That is right for observing, and it
-    is the only behavior there has ever been -- so `auto_insert` defaults to true
-    and a unit with no entry is unchanged.
+    Both styles hold ``PreGuiding`` from the start of guiding until the handover
+    is done; ready-for-exposure is ``Guiding`` without ``PreGuiding``.
 
-    It is wrong for measuring the handover. An instrument that wants to time the
-    insertion, or to run a control that does *not* insert, cannot start guiding
-    without the unit inserting first: the harness then has to move the stage back
-    to SKY under a pause before it can begin, so a null control costs two stage
-    traverses to demonstrate none. Turning this off hands the insertion to the
-    caller, and the control becomes guiding started and the mirror simply left
-    where it is.
+    - ``legacy`` (the default): the acquirer leaves the stage at SPEC, and the
+      handover waits for settle and applies the lock nudge.
+    - ``bracketed``: the stage stays at SKY; the handover waits for settle,
+      nudges, pauses, moves the stage to SPEC and resumes. On 2026-10-20 it lost
+      its guide star at insertion on 3 of 13 arms, where the star was picked on
+      area the mirror then vignetted.
 
-    Off is a measurement mode, not an operating one: with it off nothing inserts
-    the mirror unless something asks, so a unit left this way acquires and guides
-    and never reaches SPEC.
+    ``auto_insert`` off hands the insertion to the caller and runs no handover:
+    nothing moves the stage to SPEC unless something asks. It is a measurement
+    mode -- an instrument timing the insertion, or a control that does not
+    insert, needs guiding started with the mirror left where it is -- not an
+    operating one.
     """
 
+    style: HandoverStyle = HandoverStyle.LEGACY
     auto_insert: bool = True
 
 
