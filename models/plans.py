@@ -6,6 +6,7 @@ import os
 import shutil
 import socket
 import time
+from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
 
@@ -34,6 +35,56 @@ logger = get_logger(__name__)
 #: Seconds a unit gets to go from "acquire" to guiding: a plan's default, and its upper
 #: bound. Also used by MAST_control's new-plan template and its multi-unit acquisition.
 DEFAULT_TIMEOUT_TO_GUIDING: float = 600
+
+
+class PlanStage(StrEnum):
+    """The stages whose products an execution links into its products folder, by name
+    (plans/control_acquisition_design.md 5.10)."""
+
+    Autofocus = "Autofocus"  # focus_on_star
+    Acquisition = "Acquisition"  # start_acquisition_and_guiding, its plate solves included
+    Spec = "Spec"  # the spectrograph's exposures
+
+
+#: The files a producer driven by a plan, or by a batch, writes into each products folder it
+#: makes, holding that plan's or batch's ULID: the folder says what it belongs to wherever it
+#: is found, without control's links (plans/control_acquisition_design.md 5.10).
+PLAN_ID_FILE = "plan_id"
+BATCH_ID_FILE = "batch_id"
+
+
+def write_plan_id_file(folder: str | os.PathLike | None, plan_ulid: object | None) -> str | None:
+    """Write `PLAN_ID_FILE` into ``folder`` and send it on to the share; its path, or None."""
+    return _write_id_file(folder, PLAN_ID_FILE, plan_ulid)
+
+
+def write_batch_id_file(folder: str | os.PathLike | None, batch_ulid: object | None) -> str | None:
+    """Write `BATCH_ID_FILE` into ``folder`` and send it on to the share; its path, or None."""
+    return _write_id_file(folder, BATCH_ID_FILE, batch_ulid)
+
+
+def _write_id_file(folder: str | os.PathLike | None, name: str, ulid: object | None) -> str | None:
+    """Written under `protect`, so it is a product -- it travels to the share with the rest
+    and is never discarded with the folder as scratch -- and handed to the mover. Nothing
+    without a folder (an imager with no files) or a ULID (an operator's call). Never raises:
+    the file must not fail the operation it labels. ``ulid`` as a string or a `ULID` -- a
+    `Batch` carries the latter.
+    """
+    text = "" if ulid is None else str(ulid)
+    if folder is None or not text:
+        return None
+    from common.filer import Filer, MoveGuardian
+
+    path = os.path.join(os.fspath(folder), name)
+    try:
+        os.makedirs(os.fspath(folder), exist_ok=True)
+        with MoveGuardian().protect(path), open(path, "w", encoding="utf-8") as f:
+            f.write(f"{text}\n")
+        Filer().move_ram_to_shared(path)
+    except OSError as e:
+        logger.warning(f"{name} {text}: could not write '{path}': {e}")
+        return None
+    return path
 
 
 class Plan(BaseModel, Activities):

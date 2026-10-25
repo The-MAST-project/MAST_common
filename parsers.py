@@ -233,6 +233,56 @@ def parse_target(
     return ra, dec
 
 
+def _usable_pair(ra_j2000_hours, dec_j2000_degs) -> tuple[float, float] | None:
+    """Both coordinates, both converting; else None."""
+    try:
+        ra, dec = parse_target(ra_j2000_hours, dec_j2000_degs)
+    except ValueError:
+        return None
+    return (ra, dec) if ra is not None and dec is not None else None
+
+
+def target_coordinates(
+    ra_j2000_hours: str | float | None,
+    dec_j2000_degs: str | float | None,
+    object_name: str | None = None,
+    resolve_timeout: float | None = None,
+):
+    """Where a target is, by the one precedence rule (plans/control_acquisition_design.md 3.8):
+
+    1. **Both coordinates, both valid**: used as given, and the name is not resolved at
+       all -- it is a label. Returns ``(ra, dec, None)``.
+    2. **Otherwise the name, if there is one**, by `resolve_object_name`. "Otherwise" covers
+       missing AND unusable: a coordinate that will not convert is not a coordinate.
+       Returns ``(ra, dec, resolved)``; a name that does not resolve raises `ObjectNameError`
+       and never falls through.
+    3. **Otherwise**: nothing at all was given -> ``(None, None, None)``, for the caller to
+       decide (the unit takes the mount's position; a plan is invalid). Coordinates given
+       but unusable, or only one of them -> `ValueError`, saying so.
+
+    Beside `parse_target`, not in place of it: that one converts whatever it is given and
+    its callers unpack two values.
+    """
+    from common.object_resolver import TOTAL_TIMEOUT_SECONDS, resolve_object_name
+
+    pair = _usable_pair(ra_j2000_hours, dec_j2000_degs)
+    if pair is not None:
+        return pair[0], pair[1], None
+
+    if object_name:
+        timeout = TOTAL_TIMEOUT_SECONDS if resolve_timeout is None else resolve_timeout
+        resolved = resolve_object_name(object_name, total_timeout=timeout)
+        return resolved.ra_j2000_hours, resolved.dec_j2000_degs, resolved
+
+    given = [v for v in (ra_j2000_hours, dec_j2000_degs) if v is not None and v != ""]
+    if not given:
+        return None, None, None
+    raise ValueError(
+        f"coordinates were supplied but unusable (ra={ra_j2000_hours!r}, dec={dec_j2000_degs!r}); "
+        "supply both as valid J2000, or an object name instead"
+    )
+
+
 if __name__ == "__main__":
     # units = parse_units(['w', 'ns:10-12', 'ns:1,3,5', 'ns:south:3-5'])
     # print(units)

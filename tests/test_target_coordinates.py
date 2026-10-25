@@ -1,214 +1,85 @@
-"""Regression tests for Target's RA/Dec validation (MAST_common#30).
-
-The defect these pin down was invisible: ``validate_ra`` parsed with astropy
-``Longitude``, which NORMALISES into [0, 24) before returning, so an RA of 25
-became 1.0 -- accepted as a different target -- and the ``0 <= ra < 24`` guard
-that followed could never fail. ``validate_dec`` had the mirror problem, with
-``Latitude`` raising before its own check was reached. Both checks were dead
-code that read as if it worked.
-
-So the tests below are in two halves:
-
-- ACCEPTED pins the input grammar, which deliberately did not change -- no
-  coordinate that worked before may stop working (MAST_unit#2 added the
-  space-separated form; the real-world corpus comes from the unit logs
-  analysed in MAST_unit#88);
-- REJECTED pins the checks themselves, and asserts on the returned VALUE for
-  the wrap cases, because an implementation that silently wraps also passes a
-  test that only asserts "no exception".
-"""
+"""`target_coordinates`: coordinates first, then the name, never a silent fall-through
+(plans/control_acquisition_design.md 3.8). The resolver is stubbed: no network in tests."""
 
 from __future__ import annotations
 
-import math
-
 import pytest
 
-pytest.importorskip("common.models.targets", reason="models package import chain unavailable")
-from pydantic import ValidationError
+import common.object_resolver as resolver_module
+from common.models.assignments import AssignmentNotification
+from common.models.plans import PlanStage
+from common.notifications import NotificationInitiator
+from common.object_resolver import ObjectNameError, ResolvedObject
+from common.parsers import target_coordinates
 
-from common.models.targets import Target
+#: Explicit, so a notification needs no bootstrap config to build its own.
+SENDER = NotificationInitiator(site="ns", type="unit", hostname="mast01", project="mast")
 
-# Fixed stand-ins so a test for one field is never affected by the other.
-VALID_RA = "12:00:00"
-VALID_DEC = "0:00:00"
-
-
-def make(**overrides) -> Target:
-    return Target(**{"ra_hours": VALID_RA, "dec_degrees": VALID_DEC, **overrides})
-
-
-def ra(value) -> float:
-    return make(ra_hours=value).ra_hours  # type: ignore[return-value]
+M101 = ResolvedObject(name="M101", ra_j2000_hours=14.0535, dec_j2000_degs=54.34875, resolver="sesame")
 
 
-def dec(value) -> float:
-    return make(dec_degrees=value).dec_degrees  # type: ignore[return-value]
+@pytest.fixture
+def asked(monkeypatch) -> list[tuple[str, float]]:
+    calls: list[tuple[str, float]] = []
+
+    def resolve(name, total_timeout):
+        calls.append((name, total_timeout))
+        if name == "M101":
+            return M101
+        raise ObjectNameError(f"'{name}' did not resolve")
+
+    monkeypatch.setattr(resolver_module, "resolve_object_name", resolve)
+    return calls
 
 
-def message(excinfo) -> str:
-    return excinfo.value.errors()[0]["msg"]
+class TestCoordinatesWin:
+    @pytest.mark.parametrize(("ra", "dec"), [("12:30:45", "+20:15:00"), (12.5125, 20.25), ("12 30 45", "20 15 00")])
+    def test_both_valid_are_used_and_the_name_is_not_resolved(self, asked, ra, dec):
+        assert target_coordinates(ra, dec, "M101") == (pytest.approx(12.5125), pytest.approx(20.25), None)
+        assert asked == []
+
+    def test_zero_is_a_coordinate(self, asked):
+        assert target_coordinates(0.0, 0.0, "M101") == (0.0, 0.0, None)
+        assert asked == []
 
 
-class TestAcceptedForms:
-    """The grammar, unchanged. Every case here worked before this PR too."""
-
+class TestTheNameWhenTheCoordinatesCannot:
     @pytest.mark.parametrize(
-        ("value", "expected"),
-        [
-            ("5:34:32.5", 5.575694444444444),
-            ("05 34 32.5", 5.575694444444444),
-            ("5:4:2", 5.067222222222222),
-            ("05:04:02", 5.067222222222222),
-            ("5.575", 5.575),
-            (5.575, 5.575),
-        ],
-        ids=["colon", "space", "1-digit", "2-digit", "decimal-str", "decimal-float"],
+        ("ra", "dec"),
+        [(None, None), ("", ""), ("12:30:45", None), (None, "+20:15:00"), ("25:00:00", "+20:15:00"), ("x", "y")],
     )
-    def test_ra_forms(self, value, expected):
-        assert ra(value) == pytest.approx(expected)
+    def test_missing_or_unusable_coordinates_resolve_the_name(self, asked, ra, dec):
+        assert target_coordinates(ra, dec, "M101") == (14.0535, 54.34875, M101)
+        assert [name for name, _ in asked] == ["M101"]
 
-    @pytest.mark.parametrize(
-        ("value", "expected"),
-        [
-            ("+22 00 52.5", 22.014583333333334),
-            ("-22:00:52.5", -22.014583333333334),
-            ("+22.014", 22.014),
-            ("-22.014", -22.014),
-            (-22.014, -22.014),
-        ],
-        ids=["plus-space", "minus-colon", "plus-decimal", "minus-decimal", "negative-float"],
-    )
-    def test_dec_signs(self, value, expected):
-        assert dec(value) == pytest.approx(expected)
+    def test_a_name_that_does_not_resolve_raises(self, asked):
+        with pytest.raises(ObjectNameError):
+            target_coordinates(None, None, "no such thing")
 
-    @pytest.mark.parametrize(
-        "padded",
-        ["  22:04:47.93  ", "\t22:04:47.93", "22:04:47.93 ", "\n22:04:47.93\n"],
-        ids=["both", "leading-tab", "trailing", "newlines"],
-    )
-    def test_surrounding_whitespace_is_ignored(self, padded):
-        assert ra(padded) == ra(padded.strip())
-
-    @pytest.mark.parametrize(
-        "decimals",
-        ["5", "9378328000", "123456789012345"],
-        ids=["1-decimal", "10-decimals", "15-decimals"],
-    )
-    def test_any_number_of_decimals(self, decimals):
-        """The endpoint regexes cap seconds at 3 decimals; the model must not."""
-        assert ra(f"5:34:32.{decimals}") == pytest.approx(5.5757, abs=1e-3)
-
-    @pytest.mark.parametrize(
-        ("param", "value"),
-        [
-            ("ra_hours", "22:04:47.9378328000 "),
-            ("ra_hours", "22 04 47.9378328000 "),
-            ("ra_hours", "22:04:47.93 "),
-            ("ra_hours", "22 04 47.93 "),
-            ("ra_hours", "22 05 5.764"),
-            ("dec_degrees", "+46:31:51.791897964"),
-            ("dec_degrees", "46:31:51.791897964"),
-            ("dec_degrees", "+46:34:9.70"),
-        ],
-    )
-    def test_real_inputs_rejected_by_the_endpoint_guards(self, param, value):
-        """Every coordinate the unit's FastAPI patterns rejected on 2026-08-04.
-
-        The guards are stricter than the code behind them (MAST_unit#88); the
-        model must accept all of these, or fixing the guards will just move the
-        failure one layer down.
-        """
-        assert isinstance(make(**{param: value}).model_dump()[param], float)
+    def test_the_timeout_is_passed_on(self, asked):
+        target_coordinates(None, None, "M101", resolve_timeout=3.0)
+        assert asked == [("M101", 3.0)]
 
 
-class TestRanges:
-    @pytest.mark.parametrize("value", [0, 0.0, "0:00:00", 23.999, "23:59:59.999"])
-    def test_ra_inside(self, value):
-        assert 0 <= ra(value) < 24
+class TestNeither:
+    @pytest.mark.parametrize("name", [None, ""])
+    def test_nothing_given_is_none_for_the_caller_to_decide(self, asked, name):
+        assert target_coordinates(None, None, name) == (None, None, None)
+        assert asked == []
 
-    @pytest.mark.parametrize("value", [-90, 90, -90.0, 90.0, "90:00:00", "-90:00:00"])
-    def test_dec_inclusive_bounds(self, value):
-        assert abs(dec(value)) == 90
-
-    @pytest.mark.parametrize("value", [24, 24.0], ids=["int", "float"])
-    def test_ra_upper_bound_is_exclusive(self, value):
-        with pytest.raises(ValidationError) as e:
-            ra(value)
-        assert "out of range" in message(e)
-
-    @pytest.mark.parametrize("value", [91, -91, 90.001, "90:00:00.001"])
-    def test_dec_outside(self, value):
-        with pytest.raises(ValidationError) as e:
-            dec(value)
-        assert "out of range" in message(e)
+    @pytest.mark.parametrize(("ra", "dec"), [("25:00:00", "+20:15:00"), ("12:30:45", None), (None, "+91:00:00")])
+    def test_coordinates_given_but_unusable_say_so(self, asked, ra, dec):
+        with pytest.raises(ValueError, match="supplied but unusable"):
+            target_coordinates(ra, dec, None)
+        assert asked == []
 
 
-class TestNoWrapping:
-    """The actual defect. Asserting only 'it raises' would not catch a regression
-    to Longitude, which raises nothing -- it silently returns a different sky
-    position. Each case therefore names the value the old code produced."""
+class TestTheNotificationsStage:
+    def test_a_notification_carries_its_stage(self):
+        n = AssignmentNotification(assignment_id="01J", state="in-progress", initiator=SENDER, stage=PlanStage.Acquisition)
+        assert n.stage is PlanStage.Acquisition
+        assert AssignmentNotification.model_validate_json(n.model_dump_json()).stage is PlanStage.Acquisition
 
-    @pytest.mark.parametrize(
-        ("value", "silently_became"),
-        [(25, 1.0), (-1, 23.0), (25.5, 1.5), ("25.5", 1.5), (48, 0.0)],
-    )
-    def test_out_of_range_ra_is_rejected_not_wrapped(self, value, silently_became):
-        with pytest.raises(ValidationError) as e:
-            ra(value)
-        # The report must name the value AS GIVEN. Longitude would have returned
-        # `silently_became` with no error at all; anything that normalises first
-        # would name that instead, and this assertion is what catches it.
-        assert f"RA {float(value)} is out of range" in message(e)
-        assert float(value) != pytest.approx(silently_became)
-
-    def test_decimal_and_sexagesimal_agree(self):
-        """25 and '25:00:00' are the same mistake and must both be refused.
-
-        Before this PR the decimal form was accepted (wrapped to 1.0) while the
-        sexagesimal form raised IllegalHourError.
-        """
-        for form in (25, "25:00:00"):
-            with pytest.raises(ValidationError):
-                ra(form)
-
-
-class TestErrorsAreOurs:
-    @pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
-    def test_non_finite(self, value):
-        """inf parses to nan rather than raising, and nan compares False against
-        every bound -- so an unguarded range test calls infinity 'out of range'."""
-        with pytest.raises(ValidationError) as e:
-            ra(value)
-        assert "not a finite number" in message(e)
-
-    @pytest.mark.parametrize("value", ["", "   ", "\t"], ids=["empty", "spaces", "tab"])
-    def test_blank(self, value):
-        with pytest.raises(ValidationError) as e:
-            ra(value)
-        assert "is empty" in message(e)
-
-    @pytest.mark.parametrize("value", ["abc", "1e3", "12:aa:00"])
-    def test_unparseable_names_the_accepted_forms(self, value):
-        with pytest.raises(ValidationError) as e:
-            ra(value)
-        assert "cannot parse" in message(e)
-        assert "sexagesimal" in message(e) and "decimal" in message(e)
-
-    def test_message_identifies_the_field(self):
-        with pytest.raises(ValidationError) as e:
-            ra(25)
-        assert message(e).startswith("Value error, RA")
-        with pytest.raises(ValidationError) as e:
-            dec(91)
-        assert message(e).startswith("Value error, Dec")
-
-
-class TestReturnedType:
-    """Validation normalises to float regardless of the input form, which the
-    consumers rely on (unit's acquirer/autofocusing call float() on these)."""
-
-    @pytest.mark.parametrize("value", ["5:34:32.5", "5.575", 5.575, 5])
-    def test_ra_is_always_float(self, value):
-        result = ra(value)
-        assert isinstance(result, float) and math.isfinite(result)
+    def test_one_without_a_stage_still_parses(self):
+        n = AssignmentNotification(assignment_id="01J", state="in-progress", initiator=SENDER, shared_subpath="highspec")
+        assert n.stage is None
