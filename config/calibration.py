@@ -228,10 +228,9 @@ class FocusConvergenceCampaignSettings(BaseModel):
     max_consecutive_failures: int = 3
 
     #: Where results land.  None -> `Filer().accessible_shared_root()`, which PROBES
-    #: rather than asking whether a drive letter is mapped.  That distinction is the
-    #: point: with the share down but `Z:` still mapped, `Filer.shared.root` remains
-    #: `Z:/MAST/<host>/` and writes go nowhere, while the probe correctly yields
-    #: `C:/MAST/`.  Set this explicitly to pin the destination regardless.
+    #: rather than trusting `Filer.shared.root`, which names the share whether or not
+    #: it is up: with the share down, writes there go nowhere, while the probe correctly
+    #: yields `C:/MAST/`.  Set this explicitly to pin the destination regardless.
     products_root: str | None = None
 
     #: Return the focuser to the reference position when the campaign ends, so the

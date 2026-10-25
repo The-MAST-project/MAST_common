@@ -57,6 +57,46 @@ def is_accessible(path: str, timeout: float = 2.0) -> bool:
     return result.get("ok", False)
 
 
+#: The controller's SMB share, below which the share's `MAST/` folder lives. A constant
+#: until a site needs otherwise (plans/filing-areas-design.md 9).
+SHARE_NAME = "mast-share"
+
+
+def _share_host() -> str | None:
+    """The host serving the share: `controller_host` from the bootstrap config, or None.
+
+    The bare name, as the config spells it -- the name provisioning's `mast-shared-mount`
+    maps `Z:` to (`\\\\<controller_host>\\mast-share`). Windows keys an SMB session, and
+    the credentials that opened it, on the server name as written, so the UNC root reuses
+    the mapping's session only when it names the server the same way.
+
+    Imported here, not at the top: `common.config` imports `common.utils`, which builds a
+    `Filer` at import. MongoDB-free and cached.
+    """
+    from common.config.local import ConfigError, load_local_config
+
+    try:
+        return load_local_config().controller_host
+    except ConfigError:
+        return None
+
+
+def long_paths_enabled() -> bool | None:
+    """Windows' `LongPathsEnabled`: True / False, or None when it cannot be read (or off
+    Windows). Without it a product path over 260 characters cannot be moved, and the UNC
+    spelling is longer than `Z:`'s -- the longest on the share was 263 (plans/
+    filing-areas-design.md 2, 9). Provisioning's `long-paths` module sets it."""
+    if platform.system() != "Windows":
+        return None
+    import winreg
+
+    try:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Control\FileSystem") as key:
+            return bool(winreg.QueryValueEx(key, "LongPathsEnabled")[0])
+    except OSError:
+        return None
+
+
 class FilingArea(Enum):
     """The three places a machine files things (plans/filing-areas-design.md 3).
 
@@ -280,20 +320,22 @@ class Filer:
         sys = platform.system()
         if sys == "Windows":
             self.local = Location("C:/MAST/")
-            self.shared = (
-                Location(f"Z:/MAST/{socket.gethostname()}/") if is_windows_drive_mapped("Z:") else Location("C:/MAST/")
-            )
             self.ram = Location("D:/MAST/") if is_windows_drive_mapped("D:") else Location("C:/MAST/")
-            # The share itself, above every machine's product tree. NOT derived as the
-            # parent of `shared.root`: that works on Windows only by coincidence, since
-            # `shared.root` carries the hostname here and does not on Linux, so the same
-            # expression would mean two different things depending on which role ran it.
+            # The share itself, above every machine's product tree, by UNC: no drive letter
+            # to be mapped in the right logon session, or unmapped (plans/filing-areas-
+            # design.md 9). `Z:` only when the bootstrap config cannot be read -- a machine
+            # in that state does not run an app, but importing `common` must still work.
             #
-            # Deliberately without the drive-mapped fallback the others have. A caller
-            # asking for the share wants the share; handing back `C:/MAST/` because Z:
-            # is unmapped would put shared artifacts on a local disk under a name that
-            # says otherwise -- the failure that lost frames on 2026-07-14.
-            self.share_root = Location("Z:/MAST/")
+            # Never a local fallback here. A caller asking for the share wants the share;
+            # handing back `C:/MAST/` would put shared artifacts on a local disk under a
+            # name that says otherwise -- the failure that lost frames on 2026-07-14. While
+            # the share is unreachable, SHARE is demoted to `share_fallback` instead.
+            host = _share_host()
+            self.share_root = Location(f"//{host}/{SHARE_NAME}/MAST/" if host else "Z:/MAST/")
+            # THIS machine's folder on the share, always. It used to become `C:/MAST/` when
+            # Z: was unmapped at construction, and stayed so for the life of the process --
+            # `ram` and `shared` then both C:/MAST/, the layout that deletes products (1.2).
+            self.shared = Location(f"{self.share_root.root}{socket.gethostname()}/")
             # Where RAM and SHARE go while their primary has failed. Two folders, never one
             # and never C:/MAST/ itself: a RAM product moved to the share fallback would
             # otherwise be moved onto itself (plans/filing-areas-design.md 1.2, 3).
@@ -317,6 +359,21 @@ class Filer:
             self.share_fallback = None
 
         self.logger = logger
+        if sys == "Windows":
+            self._warn_without_long_paths()
+
+    #: Set once the long-paths warning has been given, so a Filer built per call says it once.
+    _long_paths_warned: ClassVar[bool] = False
+
+    def _warn_without_long_paths(self) -> None:
+        if Filer._long_paths_warned or long_paths_enabled() is not False:
+            return
+        Filer._long_paths_warned = True
+        self.warning(
+            "filing areas: Windows long paths are off (LongPathsEnabled = 0): a product whose path on the share "
+            f"('{self.share_root.root}') exceeds 260 characters cannot be moved there. Provisioning's 'long-paths' "
+            "module sets it; processes started before it was set keep the limit until restarted"
+        )
 
     def accessible_shared_root(self) -> str:
         """`shared.root` -- this machine's folder on the share -- if it is reachable, else
@@ -327,7 +384,7 @@ class Filer:
         """True if this machine's product root on the share is usable, creating it if that
         is the only thing missing.
 
-        `shared.root` is `Z:/MAST/<hostname>/` on Windows, and nothing ever created it:
+        `shared.root` is `//<controller_host>/mast-share/MAST/<hostname>/` on Windows, and nothing ever created it:
         not this class, not provisioning. A machine whose directory is absent -- a new one,
         or one that was renamed -- therefore defers every product forever. `mast-ns-spec`
         spent from its rename until 2026-08-18 in exactly that state, with two months of
@@ -339,11 +396,12 @@ class Filer:
 
         * share up, our directory missing -> create it, and say so;
         * share down -> False, so the caller defers exactly as it did before. Creating a
-          local `Z:/...` directory in that state is the failure that lost frames on
+          local stand-in for the share in that state is the failure that lost frames on
           2026-07-14;
-        * nothing per-machine in the path (Z: unmapped, so `shared` is the local disk) ->
-          never create. There is no per-machine component to add, and conjuring the
-          share's own mount point would mask an unmounted share.
+        * nothing per-machine in the path (`shared` is the share root or the local disk,
+          which only a hand-built Filer still does) -> never create. There is no
+          per-machine component to add, and conjuring the share's own mount point would
+          mask an unmounted share.
         """
         if is_accessible(self.shared.root):
             return True
@@ -411,7 +469,7 @@ class Filer:
             dst = Path(dst)
 
         # Never onto itself, nor into or out of its own subtree. With neither D: nor Z:
-        # mapped, `ram` and `shared` are both C:/MAST/, so moving a ram product to the
+        # mapped, `ram` and `shared` were both C:/MAST/, so moving a ram product to the
         # shared area is moving it onto itself: `_merge_into` then compared every file with
         # itself, found it "identical" and unlinked it -- verified on mast00 on 2026-10-13
         # (plans/filing-areas-design.md 1.2). True, not False: no retry can change it, and
@@ -772,6 +830,11 @@ class Filer:
         64: "unreachable",  # ERROR_NETNAME_DELETED
         67: "unreachable",  # ERROR_BAD_NET_NAME
         1231: "unreachable",  # ERROR_NETWORK_UNREACHABLE
+        # By UNC there is no mapping holding a session open: the server can also refuse
+        # this logon session as a whole, and then every path under it fails alike.
+        1219: "unreachable",  # ERROR_SESSION_CREDENTIAL_CONFLICT
+        1244: "unreachable",  # ERROR_NOT_AUTHENTICATED
+        1326: "unreachable",  # ERROR_LOGON_FAILURE
     }
     _AREA_LEVEL_ERRNOS: ClassVar[dict[int, str]] = {
         errno.ENOSPC: "full",

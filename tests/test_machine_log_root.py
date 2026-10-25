@@ -24,25 +24,24 @@ from unittest.mock import patch
 
 import pytest
 
-from common.filer import Filer, is_windows_drive_mapped
+from common.filer import Filer
 from common.testing.filer import real_filer, real_filer_init
 
 
 def _filer_as(system: str, hostname: str) -> Filer:
     """A Filer built as though it were running on `system` as `hostname`.
 
-    The drive probe is patched too, and it is not optional. `is_windows_drive_mapped`
-    reaches for `win32api`, which does not exist off Windows, so on a Linux or macOS
-    runner it answers False and the Windows branch takes its unmapped-share fallback --
-    `C:/MAST/`, with no hostname in it. The tests below would then be measuring the
-    fallback while claiming to measure the mapped share, which is how they came to fail on
-    every non-Windows runner. `True` is the state this file means by "on Windows".
+    The drive probe and the configured controller host are patched too: `is_windows_drive_mapped`
+    reaches for `win32api`, which does not exist off Windows, and the share's UNC root names
+    the controller from the bootstrap config, which a runner does not have.
     """
     with (
         real_filer_init(),
         patch("platform.system", return_value=system),
         patch("socket.gethostname", return_value=hostname),
         patch("common.filer.is_windows_drive_mapped", return_value=True),
+        patch("common.filer._share_host", return_value="mast-ns-control"),
+        patch("common.filer.long_paths_enabled", return_value=True),
     ):
         return Filer()
 
@@ -108,15 +107,15 @@ class TestWindowsIsUnchanged:
 
         assert filer.machine_log_root() in (filer.shared.root, filer.local.root)
 
-    @pytest.mark.skipif(platform.system() != "Windows", reason="needs the real Z: mapping")
+    @pytest.mark.skipif(platform.system() != "Windows", reason="needs the real share")
     def test_the_live_value_names_this_machine(self):
-        if not is_windows_drive_mapped("Z:"):
-            pytest.skip("Z: is not mapped, so the root falls back to the local disk")
-
-        root = real_filer().machine_log_root().replace("\\", "/")
+        filer = real_filer()
+        root = filer.machine_log_root().replace("\\", "/")
+        if root == filer.local.root:
+            pytest.skip("the share is not reachable here, so the root falls back to the local disk")
 
         assert socket.gethostname().lower() in root.lower()
-        assert root.startswith("Z:/MAST/")
+        assert root.startswith(filer.share_root.root)
 
 
 class TestTheFallback:

@@ -150,7 +150,7 @@ A second long-lived program on a machine passes `program=` to `configure_logging
 already attached raises.
 
 **`<base>` follows this machine's `SHARE` filing area** (`init_log` builds the handler with
-`follow_share=True`): its folder on the operational share (`Z:/MAST/<hostname>/` on Windows,
+`follow_share=True`): its folder on the operational share (`//<controller_host>/mast-share/MAST/<hostname>/` by UNC on Windows,
 `/Storage/mast-share/MAST/<hostname>` on Linux), asked for on **every record** — not fixed at
 start-up. So a unit's log lands beside its products on the share, **not** on the machine
 that produced it. While the share is demoted (unreachable) the file is
