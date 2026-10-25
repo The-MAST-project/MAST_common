@@ -46,32 +46,43 @@ class PlanStage(StrEnum):
     Spec = "Spec"  # the spectrograph's exposures
 
 
-#: The file a producer driven by a plan writes into each products folder it makes, holding
-#: the plan's ULID: the folder says which plan it belongs to wherever it is found, without
-#: control's links (plans/control_acquisition_design.md 5.10).
+#: The files a producer driven by a plan, or by a batch, writes into each products folder it
+#: makes, holding that plan's or batch's ULID: the folder says what it belongs to wherever it
+#: is found, without control's links (plans/control_acquisition_design.md 5.10).
 PLAN_ID_FILE = "plan_id"
+BATCH_ID_FILE = "batch_id"
 
 
-def write_plan_id_file(folder: str | os.PathLike | None, plan_ulid: str | None) -> str | None:
-    """Write `PLAN_ID_FILE` into ``folder`` and send it on to the share; its path, or None.
+def write_plan_id_file(folder: str | os.PathLike | None, plan_ulid: object | None) -> str | None:
+    """Write `PLAN_ID_FILE` into ``folder`` and send it on to the share; its path, or None."""
+    return _write_id_file(folder, PLAN_ID_FILE, plan_ulid)
 
-    Written under `protect`, so it is a product -- it travels to the share with the rest and
-    is never discarded with the folder as scratch -- and handed to the mover. Nothing without
-    a folder (an imager with no files) or a ULID (an operator's call). Never raises: the
-    file must not fail the operation it labels.
+
+def write_batch_id_file(folder: str | os.PathLike | None, batch_ulid: object | None) -> str | None:
+    """Write `BATCH_ID_FILE` into ``folder`` and send it on to the share; its path, or None."""
+    return _write_id_file(folder, BATCH_ID_FILE, batch_ulid)
+
+
+def _write_id_file(folder: str | os.PathLike | None, name: str, ulid: object | None) -> str | None:
+    """Written under `protect`, so it is a product -- it travels to the share with the rest
+    and is never discarded with the folder as scratch -- and handed to the mover. Nothing
+    without a folder (an imager with no files) or a ULID (an operator's call). Never raises:
+    the file must not fail the operation it labels. ``ulid`` as a string or a `ULID` -- a
+    `Batch` carries the latter.
     """
-    if folder is None or not plan_ulid:
+    text = "" if ulid is None else str(ulid)
+    if folder is None or not text:
         return None
     from common.filer import Filer, MoveGuardian
 
-    path = os.path.join(os.fspath(folder), PLAN_ID_FILE)
+    path = os.path.join(os.fspath(folder), name)
     try:
         os.makedirs(os.fspath(folder), exist_ok=True)
         with MoveGuardian().protect(path), open(path, "w", encoding="utf-8") as f:
-            f.write(f"{plan_ulid}\n")
+            f.write(f"{text}\n")
         Filer().move_ram_to_shared(path)
     except OSError as e:
-        logger.warning(f"plan {plan_ulid}: could not write '{path}': {e}")
+        logger.warning(f"{name} {text}: could not write '{path}': {e}")
         return None
     return path
 

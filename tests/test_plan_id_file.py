@@ -1,4 +1,5 @@
-"""`write_plan_id_file`: a plan's producers label each products folder with the plan's ULID."""
+"""`write_plan_id_file` / `write_batch_id_file`: a producer labels each products folder with the
+ULID of the plan, or the batch, that drove it."""
 
 from __future__ import annotations
 
@@ -7,7 +8,7 @@ import os
 import pytest
 
 from common.filer import Filer, MoveGuardian
-from common.models.plans import PLAN_ID_FILE, write_plan_id_file
+from common.models.plans import BATCH_ID_FILE, PLAN_ID_FILE, write_batch_id_file, write_plan_id_file
 
 ULID = "01JAD8Q4ZK7V3M2XG9T6R5N0HB"
 
@@ -49,3 +50,30 @@ def test_a_write_that_fails_does_not_raise(tmp_path, moved):
 
     assert write_plan_id_file(blocker, ULID) is None
     assert moved == []
+
+
+def test_a_batch_gets_its_own_file(tmp_path, moved):
+    batch = "01JAD8Q4ZK7V3M2XG9T6R5BTCH"
+    path = write_batch_id_file(tmp_path, batch)
+
+    assert os.path.basename(path) == BATCH_ID_FILE == "batch_id"
+    with open(path, encoding="utf-8") as f:
+        assert f.read() == f"{batch}\n"
+    assert moved == [path]
+    assert not (tmp_path / PLAN_ID_FILE).exists()
+
+
+def test_a_folder_can_carry_both(tmp_path, moved):
+    write_plan_id_file(tmp_path, ULID)
+    write_batch_id_file(tmp_path, "01JAD8Q4ZK7V3M2XG9T6R5BTCH")
+    assert sorted(os.listdir(tmp_path)) == ["batch_id", "plan_id"]
+
+
+def test_a_ulid_object_is_written_as_its_text(tmp_path, moved):
+    """`Batch.ulid` is a `ULID`, not a str."""
+    from ulid import ULID
+
+    batch = ULID()
+    path = write_batch_id_file(tmp_path, batch)
+    with open(path, encoding="utf-8") as f:
+        assert f.read() == f"{batch}\n"
