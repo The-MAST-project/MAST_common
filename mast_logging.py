@@ -7,6 +7,7 @@ import sys
 import threading
 import time
 from enum import StrEnum
+from pathlib import Path
 
 from rich.logging import RichHandler
 from rich.text import Text
@@ -213,7 +214,10 @@ class DailyFileHandler(logging.FileHandler):
                 # Its own name: the share has its own file of the night, and the two differ,
                 # so draining them under one name would be a collision on every sweep (10).
                 leaf = fallback_log_name(leaf)
-        return os.path.join(base, observing_night(datetime.datetime.now(datetime.UTC)), leaf)
+        # Forward-slashed, like every root Filer hands out: os.path.join put a backslash
+        # after "//host/mast-share/MAST/mast00/2026-10-24". Not `paths.as_posix`, which is
+        # this same call -- `common.paths` imports this module.
+        return Path(base, observing_night(datetime.datetime.now(datetime.UTC)), leaf).as_posix()
 
     @property
     def path(self) -> str | None:

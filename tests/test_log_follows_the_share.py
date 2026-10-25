@@ -189,4 +189,11 @@ class TestTheName:
     def test_a_fixed_base_dir_does_not_follow(self, tmp_path):
         h = DailyFileHandler(filename="fixed.log", base_dir=str(tmp_path))
         Filer().report_failure(FilingArea.SHARE, "x", _net_error())
-        assert h.path == os.path.join(str(tmp_path), _night(), "fixed.log")
+        assert h.path == (tmp_path / _night() / "fixed.log").as_posix()
+
+    def test_forward_slashed_like_the_roots_it_is_built_on(self, handler):
+        # os.path.join used to put a backslash after the forward-slashed root:
+        # '//mast-ns-control/mast-share/MAST/mast00/2026-10-24\mast-unit-log.txt'.
+        assert "\\" not in handler.path
+        Filer().report_failure(FilingArea.SHARE, "x", _net_error())
+        assert "\\" not in handler.path

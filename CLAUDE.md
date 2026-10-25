@@ -70,7 +70,10 @@ Two layers:
    `load_local_config()` parses it into a `LocalConfig` (`site`, `project`,
    `machine_role`, `controller_host`, `database`, `domain`, `location`, `mongo_port`)
    — cached and MongoDB-free. On any problem it raises `ConfigError` with a detailed
-   reason; apps should fail startup on that.
+   reason; apps should fail startup on that. Every `Z:` string in the file, in any table or
+   list, is rewritten on load to the share by UNC (`share_path`: `Z:\MAST\x` →
+   `//<controller_host>/mast-share/MAST/x`); `Filer.share_root` is built through the same
+   function, so the drive-letter-to-share mapping is spelled once.
 
 2. **Config DB — `Config` (`common/config/__init__.py`), a singleton.** Loads the
    configuration collections from **MongoDB only** (no local-file fallback), at
@@ -150,7 +153,7 @@ A second long-lived program on a machine passes `program=` to `configure_logging
 already attached raises.
 
 **`<base>` follows this machine's `SHARE` filing area** (`init_log` builds the handler with
-`follow_share=True`): its folder on the operational share (`Z:/MAST/<hostname>/` on Windows,
+`follow_share=True`): its folder on the operational share (`//<controller_host>/mast-share/MAST/<hostname>/` by UNC on Windows,
 `/Storage/mast-share/MAST/<hostname>` on Linux), asked for on **every record** — not fixed at
 start-up. So a unit's log lands beside its products on the share, **not** on the machine
 that produced it. While the share is demoted (unreachable) the file is

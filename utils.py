@@ -20,6 +20,7 @@ from astropy.coordinates import Angle
 from astropy.units import deg, hourangle  # type: ignore
 
 from common.filer import Filer
+from common.introspection import function_name  # noqa: F401 -- re-exported; defined there to break the config import cycle
 from common.mast_logging import get_logger
 from common.paths import PathMaker
 
@@ -135,31 +136,6 @@ def time_stamp():
     # datetime.UTC, not now(): isoformat_zulu appends 'Z' to a naive input, so a local
     # time went out labelled as UTC -- a three-hour lie at this site's offset.
     return isoformat_zulu(datetime.datetime.now(datetime.UTC))
-
-
-def function_name():
-    frame = inspect.currentframe()
-    if frame is None or frame.f_back is None:
-        return "UnknownFunction"
-    try:
-        caller_frame = frame.f_back
-        func_name = caller_frame.f_code.co_name
-
-        module = inspect.getmodule(caller_frame)
-        class_name = None
-        if "self" in caller_frame.f_locals:
-            class_name = caller_frame.f_locals["self"].__class__.__name__
-        elif "cls" in caller_frame.f_locals:
-            class_name = caller_frame.f_locals["cls"].__name__
-        ret = ""
-        if module:
-            ret += f"[{module.__name__}]."
-        if class_name:
-            ret += f"{class_name}."
-        ret += func_name
-        return ret
-    finally:
-        del frame  # avoid reference cycles
 
 
 def caller_name() -> str:

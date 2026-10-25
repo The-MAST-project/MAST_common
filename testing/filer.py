@@ -3,10 +3,9 @@
 ``common.utils`` builds a module-level ``Filer`` at import, so every module that imports it
 -- nearly all of them -- would otherwise reach for the machine's real roots:
 
-- on **Windows** a bare ``Filer()`` is ``D:/MAST/`` and ``Z:/MAST/<host>/`` when they are
-  mapped, which on a unit means the suite writes beside a running unit's products; and both
-  ``C:/MAST/`` when they are not, as on the CI runner, which is the layout that deletes
-  products by moving them onto themselves (plans/filing-areas-design.md, 1.2);
+- on **Windows** a bare ``Filer()`` is ``D:/MAST/`` (``C:/MAST/`` when unmapped, as on the
+  CI runner) and ``//<controller_host>/mast-share/MAST/<host>/``, which on a unit means the
+  suite writes beside a running unit's products, on the operational share;
 - on **Linux** it is ``/Storage/mast-share/MAST``, the control host's live share;
 - on **macOS** there is no layout at all, and the import raises.
 
