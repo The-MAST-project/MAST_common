@@ -225,7 +225,9 @@ in-progress → canceled
 - `requested_units` — unit specifiers (`mast01`, `ns:1,3,5`, `ns:10-17`), or `"any"`; never
   empty. `requested_unit_names()` expands them to hostnames (`None` for `"any"`)
 - `scheduled_units` — the scheduler's choice, empty until it chooses
-- `quorum` — how many units must reach guiding (default: 1)
+- `quorum` — the fewest units the plan needs to continue (default: 1). It does not start with
+  fewer eligible units; it succeeds once that many are guiding; and it is aborted when fewer
+  remain -- while units are still on their way, or during the spectrograph's exposure
 - `timeout_to_guiding` — seconds to wait for all units to reach guiding (default: 600)
 - `autofocus`, `too` (Target of Opportunity), `approved`, `production`
 - `constraints` — scheduling constraints
