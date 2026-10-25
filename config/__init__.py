@@ -17,8 +17,8 @@ from pydantic import BaseModel
 from pymongo import MongoClient
 
 from common.deep import deep_dict_difference, deep_dict_is_empty, deep_dict_update
+from common.introspection import function_name
 from common.mast_logging import get_logger
-from common.utils import function_name
 
 from . import _cache
 from ._memo import by_generation, make_memo

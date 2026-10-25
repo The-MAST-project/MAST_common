@@ -70,8 +70,11 @@ def _share_host() -> str | None:
     the credentials that opened it, on the server name as written, so the UNC root reuses
     the mapping's session only when it names the server the same way.
 
-    Imported here, not at the top: `common.config` imports `common.utils`, which builds a
-    `Filer` at import. MongoDB-free and cached.
+    Imported here, not at the top: `common.config` imports `common.mast_logging`, which
+    imports this module. Deferring it is not enough on its own -- `common.utils` builds a
+    `Filer` at import, so this runs while `utils` is half-initialised, and `common.config`
+    must not import from `utils` (hence `common.introspection`; tests/test_import_order.py).
+    MongoDB-free and cached.
     """
     from common.config.local import ConfigError, load_local_config
 
