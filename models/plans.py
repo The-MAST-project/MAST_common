@@ -307,7 +307,7 @@ class Plan(BaseModel, Activities):
             "ui": {
                 "label": "Quorum",
                 "widget": "number",
-                "tooltip": "The fewest units the plan needs to continue: it does not start with fewer, and is aborted when fewer remain",
+                "tooltip": "Fewest units to continue: the plan does not start with fewer, and is aborted when fewer remain",
                 "required_capabilities": ["can_manage_plans"],
                 "section": "Units",
             }
