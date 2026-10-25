@@ -6,9 +6,12 @@ which is half-initialised at that moment. It did (`function_name`), and the unit
 at `import common.activities` while this suite passed: by the time any test ran, collection
 had already loaded `common.config` first.
 
-So each case sets every loaded `common` module aside, imports the entry point from scratch,
-and puts the originals back. In-process rather than a fresh interpreter: conftest blocks
-subprocesses, and an import cycle needs nothing more than an empty `sys.modules` to show.
+So each case sets every loaded `common.*` module aside, imports the entry point from
+scratch, and puts the originals back. In-process rather than a fresh interpreter: conftest
+blocks subprocesses, and an import cycle needs nothing more than an empty `sys.modules` to
+show. The `common` package itself stays: where the clone is not on `sys.path` as `common`
+-- CI, a checkout named `MAST_common` -- conftest installs it as an alias, and nothing could
+import it again. The cycle is between its submodules, and is shown without it.
 """
 
 from __future__ import annotations
@@ -30,7 +33,18 @@ ENTRY_POINTS = [
 
 
 def _common_modules() -> list[str]:
-    return [name for name in sys.modules if name == "common" or name.startswith("common.")]
+    return [name for name in sys.modules if name.startswith("common.")]
+
+
+def _restore(saved: dict[str, object]) -> None:
+    for name in _common_modules():
+        del sys.modules[name]
+    sys.modules.update(saved)
+    # Importing a submodule binds it on its parent too: point those back at the originals.
+    for name, module in saved.items():
+        parent, _, child = name.rpartition(".")
+        if parent in sys.modules:
+            setattr(sys.modules[parent], child, module)
 
 
 @pytest.mark.parametrize("module", ENTRY_POINTS)
@@ -39,9 +53,27 @@ def test_imports_first(module: str):
     try:
         importlib.import_module(module)
     finally:
-        for name in _common_modules():
-            del sys.modules[name]
-        sys.modules.update(saved)
+        _restore(saved)
+
+
+def test_utils_imports_while_its_filer_reads_the_bootstrap_config():
+    """The cycle itself, on every platform. `Filer()` reads the controller host only on
+    Windows, so on the other runners `test_imports_first` would pass with the cycle in
+    place: here the freshly-imported `Filer` reads it everywhere, while `common.utils`
+    is half-initialised building one."""
+    saved = {name: sys.modules.pop(name) for name in _common_modules()}
+    try:
+        filer = importlib.import_module("common.filer")
+        real_init = filer.Filer.__init__
+
+        def init_reading_the_config(self, *args, **kwargs):
+            filer._share_host()
+            real_init(self, *args, **kwargs)
+
+        filer.Filer.__init__ = init_reading_the_config
+        importlib.import_module("common.utils")
+    finally:
+        _restore(saved)
 
 
 def test_function_name_is_still_exported_by_utils():
