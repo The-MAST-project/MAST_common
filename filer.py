@@ -1863,6 +1863,28 @@ class MoveGuardian:
         ancestor of it (caller holds the lock)."""
         return [p for p in registry if p == real or p.startswith(real + os.sep) or real.startswith(p + os.sep)]
 
+    def discard_folder(self, folder) -> None:
+        """Remove ``folder`` now, with whatever is in it, and everything this process kept
+        about it: its product records, its claim and the sibling ``.lock``.
+
+        For scratch its producer is done with -- a solver's working folder, once the
+        artifacts worth keeping have been moved out. Not `release_folder`, which waits for
+        every product to leave the RAM disk: scratch that is thrown away never leaves, so
+        the reaper would hold the folder to its timeout. Nor a bare ``rmtree``: a file
+        written there under `protect` claimed the folder, and the claim, its open handle,
+        its lock file and the product records outlived the folder -- one of each per
+        solve, verified on mast00 on 2026-10-25.
+
+        Synchronous; never raises. Waits for writes in progress under ``folder`` first.
+        """
+        real = os.path.realpath(str(folder))
+        try:
+            self.wait_until_free(real, timeout=self._RELEASE_TIMEOUT_SEC)
+            shutil.rmtree(real, ignore_errors=True)
+        finally:
+            self.forget_products_under(real)
+            self._release_claim(real)
+
     def release_folder(self, folder, logger=None, timeout: float | None = None) -> None:
         """Declare that nothing more will be written under ``folder``, and reap it.
 
