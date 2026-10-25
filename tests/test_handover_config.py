@@ -1,7 +1,7 @@
 """The ``phd2.handover`` section: which handover an FCU v2 unit runs (MAST_unit#30).
 
-The legacy handover -- fold mirror in before guiding -- is the default, so a unit
-with no section, or with a section that predates ``style``, gets it.
+The mirror-first handover -- fold mirror in before guiding -- is the default, so a
+unit with no section, or with a section that predates ``style``, gets it.
 """
 
 from __future__ import annotations
@@ -20,21 +20,25 @@ PHD2_DOC = {
 }
 
 
-def test_the_default_style_is_legacy():
-    assert HandoverConfig().style is HandoverStyle.LEGACY
+def test_the_default_style_is_mirror_first():
+    assert HandoverConfig().style is HandoverStyle.MIRROR_FIRST
 
 
-def test_a_unit_doc_without_the_section_gets_legacy():
-    assert PHD2Config.model_validate(PHD2_DOC).handover.style is HandoverStyle.LEGACY
+def test_a_unit_doc_without_the_section_gets_mirror_first():
+    assert PHD2Config.model_validate(PHD2_DOC).handover.style is HandoverStyle.MIRROR_FIRST
 
 
 def test_a_section_from_before_style_still_parses():
     conf = PHD2Config.model_validate({**PHD2_DOC, "handover": {"auto_insert": False}})
-    assert (conf.handover.style, conf.handover.auto_insert) == (HandoverStyle.LEGACY, False)
+    assert (conf.handover.style, conf.handover.auto_insert) == (HandoverStyle.MIRROR_FIRST, False)
 
 
 def test_bracketed_is_selectable():
     assert HandoverConfig.model_validate({"style": "bracketed"}).style is HandoverStyle.BRACKETED
+
+
+def test_mirror_first_parses():
+    assert HandoverConfig.model_validate({"style": "mirror_first"}).style is HandoverStyle.MIRROR_FIRST
 
 
 def test_an_unknown_style_is_refused():
