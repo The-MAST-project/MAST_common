@@ -8,12 +8,16 @@ fixed config-file path (no MAST_PROJECT env var), and the fail-fast behavior of
 import textwrap
 
 import pytest
+from pydantic import ConfigDict
 
+import common.config.local as local_module
 from common.config.local import (
     VALID_MACHINE_ROLES,
     ConfigError,
+    LocalConfig,
     _config_file_path,
     load_local_config,
+    share_path,
 )
 
 VALID_TOML = textwrap.dedent(
@@ -89,3 +93,66 @@ def test_malformed_toml_fails(tmp_path, monkeypatch):
     _point_at(tmp_path, "site = = broken", monkeypatch)
     with pytest.raises(ConfigError):
         load_local_config()
+
+
+# --- Z: is the share, spelled by UNC ------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("Z:", "//mast-ns-control/mast-share/"),
+        ("Z:\\", "//mast-ns-control/mast-share/"),
+        ("Z:/MAST/", "//mast-ns-control/mast-share/MAST/"),
+        (r"Z:\MAST\mast00\x.fits", "//mast-ns-control/mast-share/MAST/mast00/x.fits"),
+        (r"z:\\MAST//mast00\\", "//mast-ns-control/mast-share/MAST/mast00/"),
+        # Not the share: unchanged.
+        ("Z:foo", "Z:foo"),
+        (r"C:\MAST\x", r"C:\MAST\x"),
+        ("//mast-ns-control/mast-share/MAST/", "//mast-ns-control/mast-share/MAST/"),
+        ("Zeta: a name", "Zeta: a name"),
+        ("", ""),
+    ],
+)
+def test_share_path(value, expected):
+    assert share_path(value, "mast-ns-control") == expected
+
+
+def test_loading_rewrites_every_z_path_in_the_file(tmp_path, monkeypatch):
+    # No LocalConfig field holds a path yet, and extra keys are dropped -- so load into a
+    # model that keeps them, to see what the loader handed it.
+    class Keeps(LocalConfig):
+        model_config = ConfigDict(extra="allow")
+
+    monkeypatch.setattr(local_module, "LocalConfig", Keeps)
+    toml = VALID_TOML.replace(
+        'domain = "weizmann.ac.il"',
+        # TOML literal strings ('...'): backslashes as an operator would type them.
+        textwrap.dedent(
+            r"""
+            domain = "weizmann.ac.il"
+            share = 'Z:\MAST'
+            more = ['Z:/MAST/runs', 'C:\MAST\x']
+            """
+        ),
+    )
+    toml += textwrap.dedent(
+        r"""
+        [extra]
+        night = 'Z:\MAST\mast00\2026-10-24\'
+        """
+    )
+    _point_at(tmp_path, toml, monkeypatch)
+
+    local = load_local_config()
+
+    assert local.share == "//mast-ns-control/mast-share/MAST"
+    assert local.more == ["//mast-ns-control/mast-share/MAST/runs", r"C:\MAST\x"]
+    assert local.extra == {"night": "//mast-ns-control/mast-share/MAST/mast00/2026-10-24/"}
+    assert local.controller_host == "mast-ns-control"  # the rest is untouched
+
+
+def test_filer_share_root_is_z_through_the_same_function():
+    from common.filer import SHARE_DRIVE_ROOT
+
+    assert share_path(SHARE_DRIVE_ROOT, "mast-ns-control") == "//mast-ns-control/mast-share/MAST/"

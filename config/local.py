@@ -1,7 +1,9 @@
 import os
 import platform
+import re
 import tomllib
 from functools import lru_cache
+from typing import Any
 
 from pydantic import BaseModel, ValidationError, field_validator
 
@@ -10,6 +12,42 @@ from .site import Location
 # The machine's role in the MAST deployment. Distinct from a person's
 # permissions, which are MAST_gui's Django accounts and groups.
 VALID_MACHINE_ROLES = ("unit", "spec", "control")
+
+#: The controller's SMB share, below which the share's `MAST/` folder lives -- what
+#: provisioning's `mast-shared-mount` maps `Z:` to (`\\<controller_host>\mast-share`). A
+#: constant until a site needs otherwise (plans/filing-areas-design.md 9).
+SHARE_NAME = "mast-share"
+
+# `Z:` alone, or followed by a separator. Not `Z:foo`, which is relative to Z:'s current
+# directory, and means nothing once the drive letter is gone.
+_Z_DRIVE = re.compile(r"^[Zz]:(?:[\\/]|$)")
+
+
+def share_path(value: str, controller_host: str) -> str:
+    """A `Z:` path spelled as the share's UNC path; anything else unchanged.
+
+    `Z:\\MAST\\mast00\\x.fits` -> `//mast-ns-control/mast-share/MAST/mast00/x.fits`:
+    forward slashes, doubled separators collapsed, a trailing one kept. The share is
+    reached by UNC, not through a drive letter that has to be mapped in the right logon
+    session (plans/filing-areas-design.md 9), so a `Z:` written by hand is never kept.
+    """
+    if not _Z_DRIVE.match(value):
+        return value
+    rest = value[2:].replace("\\", "/")
+    parts = [p for p in rest.split("/") if p]
+    trailing = "/" if rest.endswith("/") or not parts else ""
+    return "/".join([f"//{controller_host}", SHARE_NAME, *parts]) + trailing
+
+
+def _share_paths(raw: Any, controller_host: str) -> Any:
+    """`raw` with every `Z:` string in it -- any table, any list -- through `share_path`."""
+    if isinstance(raw, str):
+        return share_path(raw, controller_host)
+    if isinstance(raw, dict):
+        return {key: _share_paths(value, controller_host) for key, value in raw.items()}
+    if isinstance(raw, list):
+        return [_share_paths(value, controller_host) for value in raw]
+    return raw
 
 
 class ConfigError(Exception):
@@ -145,6 +183,11 @@ def load_local_config() -> "LocalConfig":
             raw = tomllib.loads(fp.read())
     except (OSError, tomllib.TOMLDecodeError) as ex:
         raise ConfigError(f"cannot read/parse configuration file '{path}': {ex}") from ex
+
+    # No controller_host, no share to name -- and validation below rejects the file anyway.
+    controller_host = raw.get("controller_host")
+    if isinstance(controller_host, str) and controller_host:
+        raw = _share_paths(raw, controller_host)
 
     try:
         return LocalConfig(**raw)

@@ -57,9 +57,8 @@ def is_accessible(path: str, timeout: float = 2.0) -> bool:
     return result.get("ok", False)
 
 
-#: The controller's SMB share, below which the share's `MAST/` folder lives. A constant
-#: until a site needs otherwise (plans/filing-areas-design.md 9).
-SHARE_NAME = "mast-share"
+#: The share's `MAST/` folder as the drive letter spells it; `share_root` is this, by UNC.
+SHARE_DRIVE_ROOT = "Z:/MAST/"
 
 
 def _share_host() -> str | None:
@@ -333,8 +332,13 @@ class Filer:
             # handing back `C:/MAST/` would put shared artifacts on a local disk under a
             # name that says otherwise -- the failure that lost frames on 2026-07-14. While
             # the share is unreachable, SHARE is demoted to `share_fallback` instead.
+            #
+            # `share_path` is what the bootstrap config does to every `Z:` it holds, so the
+            # mapping from the drive letter to the share is spelled in one place.
+            from common.config.local import share_path  # deferred, as in _share_host
+
             host = _share_host()
-            self.share_root = Location(f"//{host}/{SHARE_NAME}/MAST/" if host else "Z:/MAST/")
+            self.share_root = Location(share_path(SHARE_DRIVE_ROOT, host) if host else SHARE_DRIVE_ROOT)
             # THIS machine's folder on the share, always. It used to become `C:/MAST/` when
             # Z: was unmapped at construction, and stayed so for the life of the process --
             # `ram` and `shared` then both C:/MAST/, the layout that deletes products (1.2).

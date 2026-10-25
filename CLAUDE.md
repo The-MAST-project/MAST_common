@@ -70,7 +70,10 @@ Two layers:
    `load_local_config()` parses it into a `LocalConfig` (`site`, `project`,
    `machine_role`, `controller_host`, `database`, `domain`, `location`, `mongo_port`)
    — cached and MongoDB-free. On any problem it raises `ConfigError` with a detailed
-   reason; apps should fail startup on that.
+   reason; apps should fail startup on that. Every `Z:` string in the file, in any table or
+   list, is rewritten on load to the share by UNC (`share_path`: `Z:\MAST\x` →
+   `//<controller_host>/mast-share/MAST/x`); `Filer.share_root` is built through the same
+   function, so the drive-letter-to-share mapping is spelled once.
 
 2. **Config DB — `Config` (`common/config/__init__.py`), a singleton.** Loads the
    configuration collections from **MongoDB only** (no local-file fallback), at
