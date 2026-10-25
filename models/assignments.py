@@ -160,9 +160,12 @@ class AssignmentNotification(BaseModel):
     # `Filer().shared.root / initiator.hostname / shared_top` into the run folder.
     #
     # A producer computes it from the ram-side folder it wrote into:
-    #     os.path.relpath(folder, Filer().ram.root)
-    # which is exactly the path `Filer.move_ram_to_shared` moves that folder to, since the
-    # move only swaps ram.root for shared.root.
+    #     Filer().area_of(folder)[1]
+    # which is forward-slashed and relative to the area's root -- not `os.path.relpath`, whose
+    # backslashes on Windows the Linux controller reads as one path component. It is exactly
+    # the path `Filer.move_ram_to_shared` moves that folder to: the move keeps the path
+    # relative to the area and re-roots it under the share (by way of the share's fallback
+    # while the share is down).
     #
     # This was previously an absolute ram path (MAST_spec#39): it named a directory that is
     # reaped once the products move, in a drive-letter spelling meaningless on the Linux
