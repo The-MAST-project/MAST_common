@@ -8,7 +8,7 @@ from common.config.local import load_local_config
 from common.models.batches import Batch
 from common.models.deepspec import DeepspecSettings
 from common.models.highspec import HighspecSettings
-from common.models.plans import Plan
+from common.models.plans import Plan, PlanStage
 from common.models.spectrographs import SpectrographModel
 from common.notifications import NotificationInitiator
 from common.parsers import parse_units
@@ -169,9 +169,15 @@ class AssignmentNotification(BaseModel):
     # controller. `os.symlink` accepts a dangling target, so it failed silently.
     shared_top: str | None = None
 
-    # Which kind of products these are ("acquisition", "autofocus", "deepspec", ...). Names
-    # the symlink the controller creates under the run folder; not part of the source path.
+    # Which kind of products these are ("acquisition", "autofocus", "deepspec", ...). Not part
+    # of the source path. Read by the controller only when `stage` is absent, as from the
+    # spectrograph and from producers that predate it.
     shared_subpath: str | None = None
+
+    # Which stage of a plan produced these: where the controller links them in the plan
+    # execution's products folder (plans/control_acquisition_design.md 5.10). Optional, so
+    # a notification from a producer that does not send it still parses.
+    stage: PlanStage | None = None
 
     def model_post_init(self, _context: Any):
         if self.initiator is None:

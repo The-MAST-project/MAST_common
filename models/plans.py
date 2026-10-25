@@ -6,6 +6,7 @@ import os
 import shutil
 import socket
 import time
+from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
 
@@ -34,6 +35,15 @@ logger = get_logger(__name__)
 #: Seconds a unit gets to go from "acquire" to guiding: a plan's default, and its upper
 #: bound. Also used by MAST_control's new-plan template and its multi-unit acquisition.
 DEFAULT_TIMEOUT_TO_GUIDING: float = 600
+
+
+class PlanStage(StrEnum):
+    """The stages whose products an execution links into its products folder, by name
+    (plans/control_acquisition_design.md 5.10)."""
+
+    Autofocus = "Autofocus"  # focus_on_star
+    Acquisition = "Acquisition"  # start_acquisition_and_guiding, its plate solves included
+    Spec = "Spec"  # the spectrograph's exposures
 
 
 class Plan(BaseModel, Activities):
