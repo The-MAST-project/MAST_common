@@ -100,7 +100,7 @@ class TestPlanToToml:
     def test_no_empty_tables_no_nones_and_merit_kept(self):
         doc = tomlkit.loads(plan_to_toml(plan(ulid="01JAD8Q4ZK7V3M2XG9T6R5N0HB")))
         assert "science" not in doc["target"]
-        assert "spec_assignment" not in doc and "constraints" not in doc
+        assert "spec" not in doc and "constraints" not in doc
         assert doc["merit"] == 1
         assert doc["requested_units"] == "any"
 

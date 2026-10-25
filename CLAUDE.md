@@ -219,7 +219,7 @@ in-progress → canceled
 ### `Plan` model fields
 - `ulid` — auto-generated ULID, also encoded in the filename; enforced on load
 - `target` — celestial target
-- `spec_assignment` — `SpectrographModel` describing the spectrograph configuration, and the
+- `spec` — `SpectrographModel` describing the spectrograph configuration, and the
   exposure series (`requested_exposure_duration`, required with an `instrument`;
   `requested_number_of_exposures`, `max_exposure_duration`, `repeats`)
 - `requested_units` — unit specifiers (`mast01`, `ns:1,3,5`, `ns:10-17`), or `"any"`; never

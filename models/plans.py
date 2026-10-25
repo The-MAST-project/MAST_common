@@ -265,7 +265,7 @@ class Plan(BaseModel, Activities):
             "searchable": True,
         },
     )
-    spec_assignment: SpectrographModel | None = Field(
+    spec: SpectrographModel | None = Field(
         default=None,
         json_schema_extra={
             "ui": {
@@ -407,27 +407,27 @@ class Plan(BaseModel, Activities):
         except socket.gaierror:
             ipaddr = None
 
-        if not self.spec_assignment:
+        if not self.spec:
             logger.error("cannot create a spectrograph model, aborting!")
             return None
-        if not self.spec_assignment.instrument:
+        if not self.spec.instrument:
             logger.error("spectrograph model has no instrument, aborting!")
             return None
 
         initiator = Initiator.local_machine()
         try:
-            spec_assignment = SpectrographAssignment(
-                instrument=self.spec_assignment.instrument,
+            spec = SpectrographAssignment(
+                instrument=self.spec.instrument,
                 initiator=initiator,
                 plan=self,
-                spec=self.spec_assignment,
+                spec=self.spec,
             )
         except ValidationError as e:
             for err in e.errors():
                 logger.error(f"ERR:\n  {err}")
             raise
 
-        return Manifest(hostname=spec_hostname, fqdn=fqdn, ipaddr=ipaddr, assignment=spec_assignment)
+        return Manifest(hostname=spec_hostname, fqdn=fqdn, ipaddr=ipaddr, assignment=spec)
 
     @classmethod
     def from_toml_file(cls, toml_file: str):

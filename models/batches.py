@@ -19,7 +19,7 @@ class Batch(BaseModel, Activities):
     ulid: ULID | None = None
     immediate: bool = False  # for immediate execution or merely forecasted
     plans: list[Plan]
-    spec_assignment: SpectrographModel | None = None
+    spec: SpectrographModel | None = None
     predicted_duration: float | None = None
     controller: Any | None = None
     spec_api: Any | None = Field(default=None, exclude=True)
@@ -29,9 +29,9 @@ class Batch(BaseModel, Activities):
         Activities.__init__(self)
 
         self.controller = context["controller"] if context and "controller" in context else None
-        assert all(plan.spec_assignment is not None for plan in self.plans), "All plans must have a spectrograph assignment"
+        assert all(plan.spec is not None for plan in self.plans), "All plans must have a spectrograph assignment"
         assert all(
-            plan.spec_assignment.instrument == self.plans[0].spec_assignment.instrument  # type: ignore
+            plan.spec.instrument == self.plans[0].spec.instrument  # type: ignore
             for plan in self.plans
         ), "All plans must have the same spectrograph instrument"
 
@@ -50,42 +50,42 @@ class Batch(BaseModel, Activities):
         #
         # The exposure series is the spectrograph's (plans/control_acquisition_design.md 3.2).
         self.exposure_duration = max(
-            plan.spec_assignment.requested_exposure_duration  # type: ignore[union-attr]
+            plan.spec.requested_exposure_duration  # type: ignore[union-attr]
             for plan in self.plans
-            if plan.spec_assignment.requested_exposure_duration is not None  # type: ignore[union-attr]
+            if plan.spec.requested_exposure_duration is not None  # type: ignore[union-attr]
         )
 
         self.number_of_exposures = max(
             (
-                plan.spec_assignment.requested_number_of_exposures  # type: ignore[union-attr]
+                plan.spec.requested_number_of_exposures  # type: ignore[union-attr]
                 for plan in self.plans
-                if plan.spec_assignment.requested_number_of_exposures is not None  # type: ignore[union-attr]
+                if plan.spec.requested_number_of_exposures is not None  # type: ignore[union-attr]
             ),
             default=1,
         )
 
         requested_calibration = CalibrationSettings(lamp_on=False, filter=None)
         requested_calibration.lamp_on = any(
-            plan.spec_assignment.calibration.lamp_on  # type: ignore
+            plan.spec.calibration.lamp_on  # type: ignore
             for plan in self.plans
-            if plan.spec_assignment.calibration is not None  # type: ignore
+            if plan.spec.calibration is not None  # type: ignore
         )
 
         if requested_calibration.lamp_on:
             requested_filters = [
-                plan.spec_assignment.calibration.filter  # type: ignore
+                plan.spec.calibration.filter  # type: ignore
                 for plan in self.plans
-                if plan.spec_assignment.calibration is not None  # type: ignore
-                and plan.spec_assignment.calibration.lamp_on  # type: ignore
-                and plan.spec_assignment.calibration.filter is not None  # type: ignore
+                if plan.spec.calibration is not None  # type: ignore
+                and plan.spec.calibration.lamp_on  # type: ignore
+                and plan.spec.calibration.filter is not None  # type: ignore
             ]
             filter_densities = [int(f.replace("ND", "")) for f in requested_filters if f.startswith("ND")]
             requested_calibration.filter = str(max(filter_densities)) if filter_densities else None
             if requested_calibration.filter is not None:
                 requested_calibration.filter = f"ND{requested_calibration.filter}"
 
-        self.spec_assignment = SpectrographModel(
-            instrument=self.plans[0].spec_assignment.instrument,  # type: ignore
+        self.spec = SpectrographModel(
+            instrument=self.plans[0].spec.instrument,  # type: ignore
             calibration=requested_calibration,
         )
 
