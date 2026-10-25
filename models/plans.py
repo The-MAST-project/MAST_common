@@ -307,7 +307,7 @@ class Plan(BaseModel, Activities):
             "ui": {
                 "label": "Quorum",
                 "widget": "number",
-                "tooltip": "Minimum operational units required for the plan to proceed",
+                "tooltip": "How many units must reach guiding for the plan to succeed",
                 "required_capabilities": ["can_manage_plans"],
                 "section": "Units",
             }
