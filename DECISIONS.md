@@ -11,6 +11,24 @@
 **Implications:** the status code stays the whole answer; the body is still only the logged detail. A supervisor older than this branch still sends `503` for a single failure, which reads as giving up, as before. This client against such a supervisor, or that supervisor against an older client, mis-names one case and changes nothing else.
 
 ---
+## [2026-10-25] The mirror-first handover style is named for what it does
+
+**Why:** `legacy` read as "deprecated" for the default, and said nothing about the behavior.
+The style decides one thing, when the fold mirror goes in relative to guiding; the guide frame,
+the exclusion region and the nudge are separate settings.
+
+**What:** `HandoverStyle.LEGACY` / `legacy` is renamed `MIRROR_FIRST` / `mirror_first`, still the
+default. **Supersedes** only the naming in the 2026-10-22 entry "`phd2.handover.style` selects
+the fold-mirror handover; legacy is the default". There is no alias: `legacy` no longer validates.
+
+**Implications:** A unit document holding `style: legacy` fails validation on code with this
+change, and so does every reader of it: MAST-control validates all deployed units' documents
+when it starts. `mirror_first` fails only on the pre-rename `eli/exclude-region` and
+`eli/ab-night` builds; `master` has no `handover` section and ignores it. The stored `style` key
+is therefore deleted rather than rewritten, when each unit gets this code, so the unit takes
+the default. No document may hold `legacy` before this reaches `master`; mast01, mast02 and
+mast04 hold it as of this entry.
+
 ## [2026-10-22] `phd2.handover.style` selects the fold-mirror handover; legacy is the default
 
 **Why:** MAST_unit makes the legacy handover (fold mirror in before guiding, ready once guiding

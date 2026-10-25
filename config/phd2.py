@@ -365,7 +365,7 @@ class LockNudgeConfig(BaseModel):
     put it. The nudge measures that drift against the target and corrects the
     lock position for it.
 
-    It runs once per acquisition handover, after settle: on the legacy handover
+    It runs once per acquisition handover, after settle: on the mirror-first handover
     with the fold mirror already in, on the bracketed one before the mirror
     moves. A manually started guide session is never nudged -- the operator has
     tuned the pointing by other means.
@@ -407,7 +407,7 @@ class HandoverStyle(StrEnum):
 
     #: The acquirer inserts the mirror before guiding starts; PHD2 then picks its star
     #: on the field it will guide on for the whole exposure.
-    LEGACY = "legacy"
+    MIRROR_FIRST = "mirror_first"
     #: Guide at SKY, settle, then insert the mirror under a full pause and resume.
     BRACKETED = "bracketed"
 
@@ -418,7 +418,7 @@ class HandoverConfig(BaseModel):
     Both styles hold ``PreGuiding`` from the start of guiding until the handover
     is done; ready-for-exposure is ``Guiding`` without ``PreGuiding``.
 
-    - ``legacy`` (the default): the acquirer leaves the stage at SPEC, and the
+    - ``mirror_first`` (the default): the acquirer leaves the stage at SPEC, and the
       handover waits for settle and applies the lock nudge.
     - ``bracketed``: the stage stays at SKY; the handover waits for settle,
       nudges, pauses, moves the stage to SPEC and resumes. On 2026-10-20 it lost
@@ -432,7 +432,7 @@ class HandoverConfig(BaseModel):
     operating one.
     """
 
-    style: HandoverStyle = HandoverStyle.LEGACY
+    style: HandoverStyle = HandoverStyle.MIRROR_FIRST
     auto_insert: bool = True
 
 
