@@ -142,10 +142,10 @@ class TestWholeShareFolders:
         plans = PurePath(PathMaker.make_plans_folder())
         assert plans.parent == PurePath(filer.share_root.root)
 
-    def test_runs_are_under_the_share_root_not_this_machines_folder(self):
+    def test_plan_products_are_under_the_share_root_not_this_machines_folder(self):
         from common.paths import PathMaker
 
         filer = Filer()
-        run = PurePath(PathMaker.make_run_folder())
-        assert PurePath(filer.share_root.root) / "runs" in run.parents
-        assert PurePath(filer.shared.root) not in run.parents
+        products = PurePath(PathMaker.make_plan_products_folder())
+        assert products == PurePath(filer.share_root.root) / "plans" / "products"
+        assert PurePath(filer.shared.root) not in products.parents

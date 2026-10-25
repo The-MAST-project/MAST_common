@@ -314,9 +314,11 @@ class PathMaker:
         return as_posix(Path(PathMaker.make_plans_folder()) / "files")
 
     @staticmethod
-    def make_run_folder():
-        nightly_run_folder = PathMaker().make_observing_night_folder(root=os.path.join(Filer().share_root.root, "runs"))
-        return as_posix(os.path.join(nightly_run_folder, "run-" + PathMaker().make_seq(folder=nightly_run_folder)))
+    def make_plan_products_folder() -> str:
+        """Where each plan execution's products folder goes, `plans/products/`
+        (plans/control_acquisition_design.md 5.10). Under `plans/`, never a `Plans/` beside
+        it: Samba shows the share case-blind, so the two would be one folder there."""
+        return as_posix(Path(PathMaker.make_plans_folder()) / "products")
 
     @staticmethod
     def make_spec_acquisitions_folder(spec_name: Literal["highspec", "deepspec"]):

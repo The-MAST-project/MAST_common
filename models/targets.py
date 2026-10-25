@@ -1,10 +1,11 @@
 from pydantic import BaseModel, Field, field_validator
 
+from common.models.events import EventModel
+
 # One implementation, beside the FastAPI patterns that guard the same grammar, so a
 # coordinate cannot mean one thing to a plan and another to an endpoint.
-from common.models.constraints import RepeatsModel
 from common.models.science import ScienceModel
-from common.parsers import sexagesimal_degrees_to_decimal, sexagesimal_hours_to_decimal
+from common.parsers import sexagesimal_degrees_to_decimal, sexagesimal_hours_to_decimal, target_coordinates
 
 
 class Target(BaseModel):
@@ -71,64 +72,6 @@ class Target(BaseModel):
             }
         },
     )
-    requested_exposure_duration: float | None = Field(
-        default=None,
-        gt=0,
-        le=3600,
-        json_schema_extra={
-            "ui": {
-                "error_message": "Positive decimal between 0 and 3600",
-                "label": "Duration per exposure",
-                "widget": "number",
-                "unit": "seconds",
-                "summary": True,
-                "required": True,
-                "section": {
-                    "label": "Exposure Series",
-                    "tooltip": "Series of exposures to be scheduled for this target",
-                },
-            },
-        },
-    )
-    max_exposure_duration: float | None = Field(
-        default=None,
-        gt=0,
-        le=3600,
-        json_schema_extra={
-            "ui": {
-                "error_message": "Positive decimal between 0 and 3600",
-                "label": "Max duration per exposure",
-                "widget": "number",
-                "unit": "seconds",
-                "tooltip": "Plans with longer durations will not be batched together,<br>&nbsp;to prevent over exposure",
-                "section": "Exposure Series",
-            }
-        },
-    )
-    requested_number_of_exposures: int | None = Field(
-        default=1,
-        gt=0,
-        json_schema_extra={
-            "ui": {
-                "error_message": "Positive integer",
-                "label": "Number of exposures",
-                "widget": "number",
-                "required": True,
-                "section": {
-                    "label": "Exposure Series",
-                },
-            }
-        },
-    )
-    repeats: RepeatsModel = Field(
-        default_factory=RepeatsModel,
-        json_schema_extra={
-            "ui": {
-                "label": "repeats",
-                "tooltip": "When and how much should the exposure series be rescheduled?",
-            }
-        },
-    )
 
     @field_validator("ra_hours")
     @classmethod
@@ -152,3 +95,29 @@ class Target(BaseModel):
 
     def __repr__(self) -> str:
         return f"Target(ra_hours={self.ra_hours}, dec_degrees={self.dec_degrees})"
+
+
+def resolve_target(target: dict, resolve_timeout: float | None = None) -> tuple[dict, EventModel | None]:
+    """``target`` with decimal coordinates written in, and the `resolved` event if a name had
+    to be resolved for them (plans/control_acquisition_design.md 3.8).
+
+    Run on the raw dict whenever a plan is **written** -- never by `Target`'s validator,
+    which runs on every load -- so the file carries coordinates and later loads never touch
+    the network. Usable coordinates win and the name stays a label; otherwise the name is
+    resolved. Raises `ObjectNameError` for a name that does not resolve, ValueError when
+    there is neither.
+    """
+    ra, dec, name = target.get("ra_hours"), target.get("dec_degrees"), target.get("name")
+    ra_hours, dec_degrees, resolved = target_coordinates(ra, dec, name, resolve_timeout)
+    if ra_hours is None or dec_degrees is None:
+        raise ValueError("a target needs both coordinates, or a name to resolve")
+    out = {**target, "ra_hours": ra_hours, "dec_degrees": dec_degrees}
+    if resolved is None:
+        return out, None
+    details = []
+    if ra not in (None, "") or dec not in (None, ""):
+        details.append(f"coordinates unusable (ra={ra!r}, dec={dec!r}), resolved the name instead")
+    details.append(f"{name} -> ra={ra_hours:.6f}h dec={dec_degrees:+.6f}d via {resolved.database or resolved.resolver}")
+    if resolved.canonical_name:
+        details.append(f"canonical name: {resolved.canonical_name}")
+    return out, EventModel(what="resolved", details=details)

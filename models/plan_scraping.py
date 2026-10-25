@@ -15,6 +15,7 @@ class ScrapingResults(BaseModel):
     owners: list[OwnersModel] | None = None
     classifications: list[str] | None = None
     known_classifications: list[str] | None = None
-    allocated_units: list[str] | None = None
-    required_units: int | None = None
+    # The units seen across all plans, offered in the GUI's unit picker. Was
+    # `allocated_units`, a third meaning of that name (plans/control_acquisition_design.md 3.1).
+    known_units: list[str] | None = None
     scraped_at: str = Field(default_factory=time_stamp)
