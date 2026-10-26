@@ -16,7 +16,7 @@ import os
 import pytest
 
 import common.filer as filer_module
-from common.filer import Filer, FilingArea
+from common.filer import Filer, FilingArea, MoveGuardian
 from common.mast_logging import DailyFileHandler, fallback_log_name, observing_night
 from common.testing.filer import DiskUsage, reset_filing_areas
 
@@ -197,3 +197,55 @@ class TestTheName:
         assert "\\" not in handler.path
         Filer().report_failure(FilingArea.SHARE, "x", _net_error())
         assert "\\" not in handler.path
+
+
+class TestTheDrain:
+    """The fallback's drain leaves the night folder the handler writes in alone (a claim), and
+    takes it once the handler has moved on. It used to remove that folder, empty because the
+    handler had only just made it, from under the handler: the record was lost, on the Windows
+    CI runner, three times."""
+
+    def _promote_without_draining(self):
+        # check_now would also start a drain, on its own thread: these tests drain by hand.
+        with Filer._state_lock:
+            Filer._demoted.pop(FilingArea.SHARE, None)
+
+    def test_a_drain_leaves_the_folder_being_written_alone(self, handler):
+        Filer().report_failure(FilingArea.SHARE, "x", _net_error())
+        _emit(handler, "on the fallback")
+        self._promote_without_draining()
+
+        Filer().drain_fallbacks()
+
+        assert _read(_on_fallback(handler)) == "on the fallback\n", "claimed: not moved, not removed"
+
+    def test_an_empty_folder_just_made_survives_a_drain(self, handler, tmp_path):
+        night = os.path.join(Filer().share_fallback.root, "2026-10-26")
+        handler._claim_folder_for(night)
+        os.makedirs(night, exist_ok=True)
+        self._promote_without_draining()
+
+        Filer().drain_fallbacks()
+
+        assert os.path.isdir(night), "claimed before it was made: the drain's empty-folder sweep left it"
+        handler._release_folder()
+
+    def test_once_the_handler_moves_on_the_next_drain_takes_it(self, handler):
+        Filer().report_failure(FilingArea.SHARE, "x", _net_error())
+        _emit(handler, "during")
+        fallback_file = _on_fallback(handler)
+        self._promote_without_draining()
+        _emit(handler, "after")  # back on the share: the fallback folder is released
+
+        Filer().drain_fallbacks()
+
+        assert not os.path.exists(fallback_file)
+        moved = os.path.join(Filer().shared.root, _night(), fallback_log_name(handler.leaf))
+        assert _read(moved) == "during\n"
+
+    def test_closing_releases_it(self, handler):
+        Filer().report_failure(FilingArea.SHARE, "x", _net_error())
+        _emit(handler, "x")
+        night = os.path.dirname(_on_fallback(handler))
+        handler.close()
+        assert not MoveGuardian().folder_is_claimed(night)
