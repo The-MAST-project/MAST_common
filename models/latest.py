@@ -1,9 +1,10 @@
-"""The unit's latest runs, one shape for all of them: `FullUnitStatus.latest.<kind>`.
+"""The latest runs, one shape for all of them: `FullUnitStatus.latest.<kind>` on a unit,
+`SpecStatus.latest.<kind>` on the spectrograph.
 
-Each kind of run a unit does -- a focus-on-star, an acquisition, an exposure series -- keeps a
-record of its latest run, current or finished. They all extend `LatestBase`: when it started
-and ended, whether it succeeded and why not, where its products are written and where they
-end up on the share, and the plan it ran under. Each adds what is particular to its kind.
+Each kind of run -- a focus-on-star, an acquisition, an exposure series -- keeps a record of
+its latest run, current or finished. They all extend `LatestBase`: when it started and ended,
+whether it succeeded and why not, where its products are written and where they end up on the
+share, and the plan it ran under. Each adds what is particular to its kind.
 
 A run's record is replaced, by a fresh one, before the endpoint that started it answers; so
 the first status read after the request describes that run, never the one before. When the
@@ -16,10 +17,11 @@ from __future__ import annotations
 import datetime
 import json
 import os
+import threading
 from enum import StrEnum
 from typing import Any
 
-from pydantic import BaseModel, Field, computed_field
+from pydantic import BaseModel, Field, PrivateAttr, computed_field
 
 from common.mast_logging import get_logger
 
@@ -71,9 +73,13 @@ class LatestBase(BaseModel):
     def begin(self, folder: str | os.PathLike | None = None, plan_id: str | None = None):
         """Mark the run started, with its products folder. Returns the record."""
         self.started = _now()
-        self.local_products_path, self.shared_products_path = products_paths(folder)
+        self.products_at(folder)
         self.plan_id = plan_id
         return self
+
+    def products_at(self, folder: str | os.PathLike | None) -> None:
+        """Where the run's products go, for a run that learns it only after it started."""
+        self.local_products_path, self.shared_products_path = products_paths(folder)
 
     def finish(self, succeeded: bool, errors: list[str] | None = None) -> None:
         """Mark the run ended. Idempotent: a second call changes nothing."""
@@ -96,7 +102,7 @@ class LatestBase(BaseModel):
             with MoveGuardian().protect(path), open(path, "w", encoding="utf-8") as f:
                 json.dump(self.model_dump(mode="json"), f, indent=2)
             Filer().move_ram_to_shared(path)
-        except OSError as e:
+        except Exception as e:  # noqa: BLE001 -- the record must never fail the run it describes
             logger.warning(f"could not write '{path}': {e}")
             return None
         return path
@@ -172,9 +178,47 @@ class LatestExposure(LatestBase):
     last_frame: str | None = None
 
 
+class LatestSpecExposure(LatestBase):
+    """The spectrograph's exposure series: a plan's or a batch's (`execute_assignment`), or an
+    operator's (`acquire`). `SpecStatus.latest.exposure`.
+
+    Deepspec exposes its bands on a thread each, so frames and errors are recorded through
+    `frame_saved` and `fail`, which serialise them."""
+
+    instrument: str | None = None  # highspec | deepspec
+    exposure_duration: float | None = None  # seconds, requested
+    number_of_exposures: int | None = None  # requested, per band for deepspec
+    lamp_on: bool | None = None  # the ThAr lamp
+    filter: str | None = None  # the ThAr filter
+    batch_id: str | None = None
+    completed: int = 0  # frames saved, every band together
+    last_frame: str | None = None
+
+    _lock: threading.Lock = PrivateAttr(default_factory=threading.Lock)
+
+    def frame_saved(self, path: str | os.PathLike | None = None) -> None:
+        """One more frame saved, at ``path`` when its name is known."""
+        with self._lock:
+            self.completed += 1
+            if path is not None:
+                self.last_frame = os.fspath(path).replace("\\", "/")
+
+    def fail(self, error: str) -> None:
+        """Record an error now; `succeeded` is decided when the run finishes."""
+        with self._lock:
+            if error not in self.errors:
+                self.errors.append(error)
+
+
 class LatestRecords(BaseModel):
     """`FullUnitStatus.latest`: each kind's latest run, None until one has happened."""
 
     focus_on_star: LatestFocusOnStar | None = None
     acquisition: LatestAcquisition | None = None
     exposure: LatestExposure | None = None
+
+
+class LatestSpecRecords(BaseModel):
+    """`SpecStatus.latest`: the spectrograph's latest runs, None until one has happened."""
+
+    exposure: LatestSpecExposure | None = None

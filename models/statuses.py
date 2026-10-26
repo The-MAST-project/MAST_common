@@ -8,7 +8,11 @@ from pydantic import BaseModel, Field
 from common import asi
 from common.activities import ActivitiesVerbal
 from common.mast_logging import get_logger
-from common.models.latest import AcquisitionState, LatestRecords  # noqa: F401 -- AcquisitionState re-exported
+from common.models.latest import (  # noqa: F401 -- AcquisitionState re-exported
+    AcquisitionState,
+    LatestRecords,
+    LatestSpecRecords,
+)
 from common.opmode import OpMode, OpState
 from common.rois import SkyRoi, SpecRoi, UnitRoi
 from common.spec import (
@@ -942,6 +946,7 @@ class SpecStageStatus(ComponentStatus):
 class SpecStatus(PowerStatus, BaseStatus):
     # The plan the spectrograph is working for (`SpecActivities.ExecutingPlan`); None when none.
     plan_id: str | None = None
+    latest: LatestSpecRecords | None = None
     deepspec: DeepspecStatus | None = None
     highspec: HighspecStatus | None = None
     stages: dict[SpecStageNames, SpecStageStatus] | None = None

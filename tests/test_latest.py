@@ -1,9 +1,11 @@
-"""The unit's latest-run records: one shape, `FullUnitStatus.latest.<kind>` (common.models.latest)."""
+"""The latest-run records: one shape, `FullUnitStatus.latest.<kind>` and `SpecStatus.latest.<kind>`
+(common.models.latest)."""
 
 from __future__ import annotations
 
 import json
 import os
+import threading
 
 from common.filer import Filer, FilingArea, MoveGuardian
 from common.models.latest import (
@@ -14,9 +16,11 @@ from common.models.latest import (
     LatestExposure,
     LatestFocusOnStar,
     LatestRecords,
+    LatestSpecExposure,
+    LatestSpecRecords,
 )
 from common.models.statuses import AcquisitionState as ReExported
-from common.models.statuses import FullUnitStatus
+from common.models.statuses import FullUnitStatus, SpecStatus
 
 
 def _status(**fields) -> FullUnitStatus:
@@ -106,3 +110,42 @@ class TestInTheStatus:
         wire = _status().model_dump(mode="json")
         del wire["latest"]
         assert FullUnitStatus.model_validate(wire).latest is None
+
+
+class TestTheSpectrograph:
+    def test_the_products_folder_can_come_after_the_start(self, tmp_path):
+        record = LatestSpecExposure(instrument="highspec").begin(plan_id="01JAD8")
+        assert record.local_products_path is None
+        record.products_at(tmp_path / "0007")
+        assert record.local_products_path == (tmp_path / "0007").as_posix()
+
+    def test_bands_count_their_frames_together(self):
+        record = LatestSpecExposure(instrument="deepspec").begin()
+
+        def band(name):
+            for n in range(100):
+                record.frame_saved(f"D:\\x\\{name}\\exposure-{n:03}.fits")
+
+        threads = [threading.Thread(target=band, args=[b]) for b in "IGRU"]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        assert record.completed == 400
+        assert "\\" not in record.last_frame
+
+    def test_an_error_is_recorded_once_and_the_outcome_waits_for_finish(self):
+        record = LatestSpecExposure().begin()
+        record.fail("deepspec-I: no image")
+        record.fail("deepspec-I: no image")
+        assert record.errors == ["deepspec-I: no image"] and record.succeeded is None
+        record.finish(not record.errors)
+        assert record.succeeded is False
+
+    def test_round_trips_in_the_status(self):
+        record = LatestSpecExposure(instrument="deepspec", number_of_exposures=2).begin()
+        record.frame_saved("x.fits")
+        wire = SpecStatus(latest=LatestSpecRecords(exposure=record)).model_dump(mode="json")
+        assert "_lock" not in wire["latest"]["exposure"]
+        back = SpecStatus.model_validate(wire)
+        assert back.latest.exposure.completed == 1 and back.latest.exposure.running
