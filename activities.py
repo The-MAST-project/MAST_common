@@ -343,6 +343,10 @@ class UnitActivities(IntFlag):
     # PUT /unit/focus_on_star: one isolated catalog star on the fibre pixel, then a
     # narrow-field HFD V-curve around it. Appended, per the rule above.
     FocusingOnStar = auto()
+    # The plan umbrella: the unit works on behalf of `Unit.plan_id`, set by the first request
+    # carrying it, and refuses state-changing requests for any other plan until an abort
+    # releases it (plans/control_acquisition_design.md 6.6). Appended, per the rule above.
+    ExecutingPlan = auto()
 
 
 class ImagerActivities(IntFlag):

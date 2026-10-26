@@ -39,9 +39,9 @@ def test_per_unit_override_is_honoured():
 
 def test_flag_is_appended_after_aborting():
     # Appending keeps every existing member's number: MAST_control and MAST_gui compare them.
-    members = list(UnitActivities)
-    assert members[-1] is UnitActivities.FocusingOnStar
+    # Its number, not its being last: later members are appended after it.
     assert UnitActivities.FocusingOnStar == UnitActivities.Aborting << 1
+    assert UnitActivities.ExecutingPlan == UnitActivities.FocusingOnStar << 1
 
 
 def test_folder_name():

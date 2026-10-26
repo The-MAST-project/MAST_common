@@ -17,6 +17,10 @@ class SpecActivities(IntFlag):
     ExposingDeepspec = auto()
     StartingUp = auto()
     ShuttingDown = auto()
+    # The plan umbrella: the spectrograph works on behalf of `Spec.plan_id` until it has made
+    # the plan's products (it then ends this itself, and tells control) or an abort releases
+    # it (plans/control_acquisition_design.md 6.6). Appended: the bitmask goes on the wire.
+    ExecutingPlan = auto()
 
 
 class SpecId(IntFlag):
