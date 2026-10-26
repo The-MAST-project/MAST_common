@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from common import asi
 from common.activities import ActivitiesVerbal
 from common.mast_logging import get_logger
+from common.models.latest import AcquisitionState, LatestRecords  # noqa: F401 -- AcquisitionState re-exported
 from common.opmode import OpMode, OpState
 from common.rois import SkyRoi, SpecRoi, UnitRoi
 from common.spec import (
@@ -790,29 +791,8 @@ class FluxMeteringStatus(BaseModel):
 COOLING_DOWN_REASON = "imager: cooling down"
 
 
-class AcquisitionState(StrEnum):
-    """Where the unit's latest `start_acquisition_and_guiding` run is."""
-
-    RUNNING = "running"  # accepted: phases, or the guider calibrating, in progress
-    GUIDING = "guiding"  # guiding, locked on a star (PHD2 state exactly "Guiding")
-    ENDED = "ended"  # guiding stopped, after it had locked
-    FAILED = "failed"
-    ABORTED = "aborted"  # cancelled: `Acquiring` cleared, or `unit/abort`
-
-
-class AcquisitionOutcome(BaseModel):
-    """The unit's latest acquisition, as `FullUnitStatus.acquisition` reports it.
-
-    No id: a unit runs one acquisition at a time, and replaces this with a fresh `RUNNING`
-    one before `start_acquisition_and_guiding` answers. So the first status read after a
-    successful PUT already describes that acquisition, never the one before it.
-    Design: mast-claude-config plans/control_acquisition_design.md.
-    """
-
-    state: AcquisitionState
-    errors: list[str] = Field(default_factory=list)
-    started_at: str  # ISO UTC
-    ended_at: str | None = None
+# The acquisition's state and record are in `common.models.latest` (`LatestAcquisition`,
+# `FullUnitStatus.latest.acquisition`); `AcquisitionState` is re-exported here.
 
 
 class FullUnitStatus(ComponentStatus, PowerStatus):
@@ -826,9 +806,9 @@ class FullUnitStatus(ComponentStatus, PowerStatus):
     # unit never claimed -- "not reported" is the honest reading of an old unit.
     opmode: OpMode | None = None
     opstate: OpState | None = None
-    # The latest acquisition. `None` is "not reported" -- an old unit, or none since the unit
-    # started -- for the same reason as `opstate`; never an empty default.
-    acquisition: AcquisitionOutcome | None = None
+    # Each kind's latest run -- `latest.focus_on_star`, `latest.acquisition`, `latest.exposure`
+    # -- in one shape (`common.models.latest`). None from a unit that does not report it.
+    latest: LatestRecords | None = None
     # The plan the unit is working for (`UnitActivities.ExecutingPlan`); None when none.
     plan_id: str | None = None
     # Idleness (mast-claude-config plans/unit_idleness_design.md). `None` means UNKNOWN -- an
