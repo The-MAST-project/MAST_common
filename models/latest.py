@@ -157,6 +157,23 @@ class LatestAcquisitionPhase(BaseModel):
         return abs(self.last_ra_delta) <= self.tolerance_ra and abs(self.last_dec_delta) <= self.tolerance_dec  # type: ignore[operator]
 
 
+class LockNudgeOutcome(BaseModel):
+    """What the lock nudge did on the acquisition's handover (``phd2.lock_nudge``).
+
+    Applied or refused, and why, so an operator sees a refused nudge without reading the
+    unit's log. Offsets are the mean over the solved frames; `residual_px` is PHD2's
+    guide distance once the moved lock was confirmed.
+    """
+
+    applied: bool
+    reason: str
+    offset_arcsec: float | None = None
+    offset_px: tuple[float, float] | None = None
+    spread_arcsec: float | None = None
+    frames_used: int | None = None
+    residual_px: float | None = None
+
+
 class LatestAcquisition(LatestBase):
     """`PUT /unit/start_acquisition_and_guiding`. `succeeded` once the guider has locked on a
     star -- the acquisition's goal -- and the run goes on, guiding, until it ends."""
@@ -167,6 +184,8 @@ class LatestAcquisition(LatestBase):
     phases: dict[str, LatestAcquisitionPhase] = Field(default_factory=dict)
     handed_over: bool = False  # to the guider, automatically
     solver: str | None = None
+    # None: no nudge ran (off, or not the acquisition's own handover), or an older unit.
+    nudge: LockNudgeOutcome | None = None
 
 
 class LatestExposure(LatestBase):

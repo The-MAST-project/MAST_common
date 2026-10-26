@@ -393,12 +393,29 @@ class LockNudgeConfig(BaseModel):
     confirm_px: float = 5.0
     confirm_timeout: float = 60.0
 
+    #: Distinct guide frames solved for one nudge; the lock goes to the mean of their
+    #: estimates. One solve places the fiber to 0.56" radial (1 sigma, 2026-10-20), about
+    #: the size of the error being corrected.
+    solve_frames: int = 4
+    #: Refuse the nudge when the per-frame estimates scatter (RMS radial, about their
+    #: mean) by more than this. Provisional until the solve-precision rerun on the
+    #: unit's own solver sets it.
+    max_spread_arcsec: float = 1.0
+    #: Give up collecting `solve_frames` usable frames after this long; no nudge then.
+    frames_timeout: float = 90.0
+
     @model_validator(mode="after")
     def _positive_knobs(self):
         if self.max_offset_px <= 0:
             raise ValueError("phd2.lock_nudge: max_offset_px must be positive")
         if self.confirm_frames < 0:
             raise ValueError("phd2.lock_nudge: confirm_frames cannot be negative")
+        if self.solve_frames < 1:
+            raise ValueError("phd2.lock_nudge: solve_frames must be at least 1")
+        if self.max_spread_arcsec <= 0:
+            raise ValueError("phd2.lock_nudge: max_spread_arcsec must be positive")
+        if self.frames_timeout <= 0:
+            raise ValueError("phd2.lock_nudge: frames_timeout must be positive")
         return self
 
 
