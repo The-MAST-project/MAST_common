@@ -291,7 +291,7 @@ class ExcludeRegionConfig(BaseModel):
 
 
 class LockValidityConfig(BaseModel):
-    """Thresholds for the guide-lock validity supervisor (`science.lock_validity`).
+    """Thresholds for the lock-validity check (`science.lock_validity`).
 
     Config lives here rather than beside the component so a unit can be retuned
     from the controller DB without a deployment -- which is what the campaign
@@ -349,7 +349,7 @@ class LockValidityConfig(BaseModel):
     require_background: bool = False
 
     #: **Does reaching NotAStar stop the guiding?** Detection and action are
-    #: separate switches on purpose. The supervisor is meant to run for a night
+    #: separate switches on purpose. The check is meant to run for a night
     #: reporting only, so the state can be read against what actually happened
     #: before anything acts on it -- and so the action can be withdrawn without
     #: losing the signal if it proves too eager.
