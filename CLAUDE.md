@@ -219,13 +219,24 @@ in-progress → canceled
 ### `Plan` model fields
 - `ulid` — auto-generated ULID, also encoded in the filename; enforced on load
 - `target` — celestial target
-- `spec_assignment` — `SpectrographModel` describing the spectrograph configuration
-- `requested_units` / `allocated_units` — unit names involved
-- `quorum` — minimum operational units required (default: 1)
+- `spec` — `SpectrographModel` describing the spectrograph configuration, and the
+  exposure series (`requested_exposure_duration`, required with an `instrument`;
+  `requested_number_of_exposures`, `max_exposure_duration`, `repeats`)
+- `requested_units` — unit specifiers (`mast01`, `ns:1,3,5`, `ns:10-17`), or `"any"`; never
+  empty. `requested_unit_names()` expands them to hostnames (`None` for `"any"`)
+- `scheduled_units` — the scheduler's choice, empty until it chooses
+- `quorum` — the fewest units the plan needs to continue (default: 1). It does not start with
+  fewer eligible units; it succeeds once that many are guiding; and it is aborted when fewer
+  remain -- while units are still on their way, or during the spectrograph's exposure
 - `timeout_to_guiding` — seconds to wait for all units to reach guiding (default: 600)
 - `autofocus`, `too` (Target of Opportunity), `approved`, `production`
 - `constraints` — scheduling constraints
 - `events` — audit log appended back into the TOML file as `[[events]]`
+
+Write a plan file only through `plan_to_toml`, and resolve a target's name only when a plan is
+written (`resolve_target`), never in a validator. Executing a plan is MAST_control's
+`PlanExecution`; each execution's products are linked under `plans/products/PLAN_<ulid>/<UTC
+start>/` (`PlanProducts`). See `plans/control_acquisition_design.md` in mast-claude-config.
 
 ## Conventions
 

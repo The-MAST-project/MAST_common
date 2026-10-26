@@ -115,6 +115,62 @@ def parse_units(specifiers: list[str] | str) -> list[str]:
     return ret
 
 
+#: The one requested_units entry that is not a specifier: the plan runs on whatever units
+#: are deployed and not in maintenance (plans/control_acquisition_design.md 3.1).
+ANY_UNITS = "any"
+
+_UNIT_SPECIFIER = re.compile(r"^(?:(?P<site>[A-Za-z]\w*):)?(?:(?P<building>[A-Za-z]\w*):)?(?P<ids>[\w,-]+)$")
+
+
+def is_unit_specifier(specifier: str) -> bool:
+    """Syntax only -- `w`, `mast01`, `ns:1,3,5`, `ns:10-17`, `ns:north:9` -- with no
+    configuration, so a plan can be validated wherever it is loaded."""
+    return bool(_UNIT_SPECIFIER.match(specifier)) and specifier != ANY_UNITS
+
+
+def expand_units(specifiers: list[str], sites: list, local_site) -> list[str]:
+    """Unit hostnames (``mast01``) for unit specifiers, in order, duplicates dropped.
+
+    ``<site>:`` defaults to ``local_site``; ``<site>:<building>:<n>`` is the building's
+    ``n``-th unit; ids are site-relative (``1``, ``01``, ``mast01``), with ``,`` lists and
+    ``a-b`` ranges. Raises ValueError for anything that names no unit of a known site.
+
+    Does **not** filter on deployment or maintenance, unlike `parse_units`, which drops
+    those with a log line: whoever runs the plan says why a unit is not used
+    (plans/control_acquisition_design.md 5.6).
+    """
+    names: list[str] = []
+    for specifier in specifiers:
+        match = _UNIT_SPECIFIER.match(specifier)
+        if not match or specifier == ANY_UNITS:
+            raise ValueError(f"not a unit specifier: {specifier!r}")
+        site_name = match.group("site")
+        site = local_site if site_name is None else next((s for s in sites if s.name == site_name), None)
+        if site is None:
+            raise ValueError(f"{specifier!r}: no site named {site_name!r} (sites: {[s.name for s in sites]})")
+        ids = parse_unit_ids(match.group("ids"))
+        building_name = match.group("building")
+        if building_name is not None:
+            building = next((b for b in site.buildings if building_name in b.names), None)
+            if building is None:
+                raise ValueError(f"{specifier!r}: no building {building_name!r} at '{site.name}'")
+            in_building = building.units or []
+            hostnames = []
+            for i in ids:
+                if not i.isdigit() or not 1 <= int(i) <= len(in_building):
+                    raise ValueError(f"{specifier!r}: building {building_name!r} has units 1-{len(in_building)}")
+                hostnames.append(in_building[int(i) - 1])
+        else:
+            hostnames = site.normalize_unit_specifier(ids)
+        known = site.unit_ids if isinstance(site.unit_ids, list) else site.normalize_unit_specifier(site.unit_ids)
+        for hostname in hostnames:
+            if hostname not in known:
+                raise ValueError(f"{specifier!r}: '{hostname}' is not a unit of site '{site.name}'")
+            if hostname not in names:
+                names.append(hostname)
+    return names
+
+
 def parse_unit_ids(units_spec: str) -> list[str]:
     """
     Parses and validates a units specifier (a string):

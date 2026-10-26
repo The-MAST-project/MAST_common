@@ -33,7 +33,7 @@ def _every_path() -> dict[str, str]:
         "make_flux_metering_folder": pm.make_flux_metering_folder(),
         "make_plans_folder": PathMaker.make_plans_folder(),
         "make_plans_files_folder": PathMaker.make_plans_files_folder(),
-        "make_run_folder": PathMaker.make_run_folder(),
+        "make_plan_products_folder": PathMaker.make_plan_products_folder(),
         "make_spec_acquisitions_folder": PathMaker.make_spec_acquisitions_folder("highspec"),
         "make_spec_exposures_folder(band)": PathMaker.make_spec_exposures_folder("deepspec", band="U"),
     }

@@ -343,6 +343,10 @@ class UnitActivities(IntFlag):
     # PUT /unit/focus_on_star: one isolated catalog star on the fibre pixel, then a
     # narrow-field HFD V-curve around it. Appended, per the rule above.
     FocusingOnStar = auto()
+    # The plan umbrella: the unit works on behalf of `Unit.plan_id`, set by the first request
+    # carrying it, and refuses state-changing requests for any other plan until an abort
+    # releases it (plans/control_acquisition_design.md 6.6). Appended, per the rule above.
+    ExecutingPlan = auto()
 
 
 class ImagerActivities(IntFlag):
@@ -398,11 +402,9 @@ class StageActivities(IntFlag):
     Overheating = auto()
 
 
-class SpecActivities(IntFlag):
-    StartingUp = auto()
-    ShuttingDown = auto()
-    Positioning = auto()
-    Exposing = auto()
+# The spectrograph's own activities are `common.spec.SpecActivities`. A second, unused
+# `SpecActivities` lived here until 2026-10-26, with different members and numbers: importing
+# it by mistake would decode the spectrograph's activity bitmask wrongly, without a word.
 
 
 class DeepspecActivities(IntFlag):

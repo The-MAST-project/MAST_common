@@ -829,6 +829,8 @@ class FullUnitStatus(ComponentStatus, PowerStatus):
     # The latest acquisition. `None` is "not reported" -- an old unit, or none since the unit
     # started -- for the same reason as `opstate`; never an empty default.
     acquisition: AcquisitionOutcome | None = None
+    # The plan the unit is working for (`UnitActivities.ExecutingPlan`); None when none.
+    plan_id: str | None = None
     # Idleness (mast-claude-config plans/unit_idleness_design.md). `None` means UNKNOWN -- an
     # old unit, control's fabricated BasicUnitStatus, or a unit not STARTED_UP -- and that is
     # load-bearing: `why_busy` must never default to `{}`, which encodes "known and idle", or a
@@ -958,6 +960,8 @@ class SpecStageStatus(ComponentStatus):
 
 
 class SpecStatus(PowerStatus, BaseStatus):
+    # The plan the spectrograph is working for (`SpecActivities.ExecutingPlan`); None when none.
+    plan_id: str | None = None
     deepspec: DeepspecStatus | None = None
     highspec: HighspecStatus | None = None
     stages: dict[SpecStageNames, SpecStageStatus] | None = None

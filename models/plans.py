@@ -1,34 +1,30 @@
 from __future__ import annotations
 
-import asyncio
+import datetime
 import json
 import os
 import shutil
 import socket
-import time
+from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING
 
 import tomlkit
 import ulid
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, field_serializer, field_validator, model_validator
 from pydantic.config import ConfigDict
 
-from common.activities import Activities, PlanActivities, UnitActivities
+from common.activities import Activities
 from common.mast_logging import get_logger
 from common.models.constraints import ConstraintsModel
 from common.models.events import EventModel
 from common.models.spectrographs import SpectrographModel
 from common.models.targets import Target
-from common.utils import function_name
+from common.parsers import ANY_UNITS, expand_units, is_unit_specifier
 
 if TYPE_CHECKING:
-    from common.api import SpecApi, UnitApi
-    from common.canonical import CanonicalResponse
-    from common.interfaces.components import ComponentStatus
     from common.models.assignments import Manifest
-    from common.tasks.models import GatherResponse
 
 logger = get_logger(__name__)
 
@@ -85,6 +81,79 @@ def _write_id_file(folder: str | os.PathLike | None, name: str, ulid: object | N
         logger.warning(f"{name} {text}: could not write '{path}': {e}")
         return None
     return path
+
+
+@dataclass(frozen=True)
+class PlanProducts:
+    """One execution's products folder: `plans/products/PLAN_<ulid>/<YYYY-MM-DD_HH-MM-SS>/`,
+    with a folder per stage and per producer, into which control links what the producers
+    report (plans/control_acquisition_design.md 5.10). Control's: it runs where the share is
+    a local disk, and only it can make links there."""
+
+    plan_ulid: str
+    execution: str
+    root: str
+
+    @classmethod
+    def start(cls, plan_ulid: str, now: datetime.datetime | None = None, base: str | None = None) -> PlanProducts:
+        """Name the execution by its UTC start and create its folder. Two starts in one
+        second: the second gets `_2`, and so on."""
+        from common.paths import PathMaker
+
+        when = now or datetime.datetime.now(datetime.UTC)
+        stamp = when.astimezone(datetime.UTC).strftime("%Y-%m-%d_%H-%M-%S")
+        plan_folder = Path(base or PathMaker.make_plan_products_folder()) / f"PLAN_{plan_ulid}"
+        plan_folder.mkdir(parents=True, exist_ok=True)
+        name, n = stamp, 2
+        while True:
+            try:
+                (plan_folder / name).mkdir()
+                break
+            except FileExistsError:
+                name, n = f"{stamp}_{n}", n + 1
+        return cls(plan_ulid=plan_ulid, execution=name, root=(plan_folder / name).as_posix())
+
+    def folder_for(self, stage: PlanStage, producer: str) -> Path:
+        return Path(self.root) / stage.value / producer
+
+    def link(self, stage: PlanStage, producer: str, target: str | os.PathLike) -> Path:
+        """A relative link to ``target``, named after it, in `folder_for(stage, producer)`.
+
+        Relative, so it resolves on control and through the share alike. The target may not
+        exist yet -- products reach the share after the RAM-to-share move -- and that is not
+        an error. Idempotent: an existing link is left as it is.
+        """
+        folder = self.folder_for(stage, producer)
+        folder.mkdir(parents=True, exist_ok=True)
+        target = Path(target)
+        link = folder / target.name
+        if link.is_symlink() or link.exists():
+            return link
+        os.symlink(os.path.relpath(target, folder), link, target_is_directory=True)
+        return link
+
+
+def _without_empty_tables(value):
+    """``value`` with every dict that ends up with no keys removed, recursively. Lists stay,
+    empty or not: `scheduled_units = []` says "not scheduled"."""
+    if isinstance(value, dict):
+        pruned = {key: _without_empty_tables(item) for key, item in value.items()}
+        return {key: item for key, item in pruned.items() if not (isinstance(item, dict) and not item)}
+    if isinstance(value, list):
+        return [_without_empty_tables(item) for item in value]
+    return value
+
+
+#: Never written to a plan file: where it was loaded from is not part of the plan.
+_NOT_IN_THE_FILE = {"full_path", "toml_file"}
+
+
+def plan_to_toml(plan: Plan) -> str:
+    """The only way a plan reaches a file (plans/control_acquisition_design.md 3.4): no
+    `None`s, no empty tables (`[target.science]` with nothing set), meaningful defaults such
+    as `merit = 1` kept -- which `exclude_defaults` would drop."""
+    data = plan.model_dump(mode="json", exclude_none=True, exclude=_NOT_IN_THE_FILE)
+    return tomlkit.dumps(_without_empty_tables(data))
 
 
 class Plan(BaseModel, Activities):
@@ -196,19 +265,11 @@ class Plan(BaseModel, Activities):
             "searchable": True,
         },
     )
-    spec_assignment: SpectrographModel | None = Field(
+    spec: SpectrographModel | None = Field(
         default=None,
         json_schema_extra={
             "ui": {
                 "label": "Spectrograph",
-            }
-        },
-    )
-    run_folder: str | None = Field(
-        default=None,
-        json_schema_extra={
-            "ui": {
-                "hidden": True,
             }
         },
     )
@@ -240,105 +301,90 @@ class Plan(BaseModel, Activities):
             }
         },
     )
-    committed_unit_apis: list[Any] = Field(
-        default_factory=list,
-        json_schema_extra={
-            "ui": {
-                "hidden": True,
-            }
-        },
-    )  # list[UnitApi]
-    timings: dict = Field(
-        default_factory=dict,
-        json_schema_extra={
-            "ui": {
-                "hidden": True,
-            }
-        },
-    )
-    required_units: int = Field(
-        default=1,
-        json_schema_extra={
-            "ui": {
-                "label": "Required",
-                "widget": "number",
-                "tooltip": "Number of required units",
-                "section": {"label": "Units"},
-            }
-        },
-    )
     quorum: int = Field(
         default=1,
         json_schema_extra={
             "ui": {
                 "label": "Quorum",
                 "widget": "number",
-                "tooltip": "Minimum operational units required for the plan to proceed",
+                "tooltip": "Fewest units to continue: the plan does not start with fewer, and is aborted when fewer remain",
                 "required_capabilities": ["can_manage_plans"],
                 "section": "Units",
             }
         },
     )
-    allocated_units: list[str] = Field(
+    requested_units: list[str] = Field(
+        min_length=1,
+        json_schema_extra={
+            "ui": {
+                "label": "Requested",
+                "tooltip": "Unit specifiers (mast01, ns:1,3,5, ns:10-17), or <b>any</b>",
+                "required": True,
+                "section": {"label": "Units"},
+            }
+        },
+    )
+    scheduled_units: list[str] = Field(
         default_factory=list,
         json_schema_extra={
             "ui": {
-                "label": "Allocated",
+                "label": "Scheduled",
                 "editable": False,
                 "required_capabilities": ["can_manage_plans"],
-                "tooltip": "Units allocated by scheduler",
+                "tooltip": "Units chosen by the scheduler; empty until it chooses",
                 "section": "Units",
             }
         },
     )
-    unit_apis: list[Any] = Field(
-        default=[],
-        json_schema_extra={
-            "ui": {
-                "hidden": True,
-            }
-        },
-    )
-    spec_api: Any | None = Field(
-        default=None,
-        json_schema_extra={
-            "ui": {
-                "hidden": True,
-            }
-        },
-    )
-    terminated: bool = Field(
-        default=False,
-        json_schema_extra={
-            "ui": {
-                "hidden": True,
-            }
-        },
-    )
 
-    @property
-    def remote_unit_assignments(self) -> list[Manifest]:
-        from common.models.assignments import (
-            Initiator,
-            Manifest,
-            UnitAssignment,
+    @field_validator("requested_units", mode="before")
+    @classmethod
+    def _a_string_is_one_entry(cls, v):
+        """People write `"any"`, or one unit; code always sees a list."""
+        return [v] if isinstance(v, str) else v
+
+    @field_validator("requested_units")
+    @classmethod
+    def _specifiers_or_any(cls, v: list[str]) -> list[str]:
+        if ANY_UNITS in v and v != [ANY_UNITS]:
+            raise ValueError(f"'{ANY_UNITS}' can only be the sole entry of requested_units, got {v}")
+        bad = [u for u in v if u != ANY_UNITS and not is_unit_specifier(u)]
+        if bad:
+            raise ValueError(f"not unit specifiers: {bad}")
+        return v
+
+    @field_serializer("requested_units")
+    def _any_is_a_word(self, v: list[str]):
+        return ANY_UNITS if v == [ANY_UNITS] else v
+
+    @model_validator(mode="after")
+    def _quorum_fits_the_named_units(self) -> Plan:
+        if self.quorum < 1:
+            raise ValueError(f"quorum must be at least 1, got {self.quorum}")
+        # Specifiers can name several units each (ns:1-5); the count is known only once
+        # they are expanded, by whoever runs the plan (5.6). One entry is at least one unit.
+        one_unit_each = self.requested_units != [ANY_UNITS] and all(
+            "," not in u and "-" not in u.split(":")[-1] for u in self.requested_units
         )
-        from common.parsers import parse_units
+        if one_unit_each and self.quorum > len(self.requested_units):
+            raise ValueError(f"quorum {self.quorum} is more than the {len(self.requested_units)} requested units")
+        return self
 
-        ret: list[Manifest] = []
-        initiator = Initiator.local_machine()
-        for unit_name in self.allocated_units or []:
-            unit_assignment: UnitAssignment = UnitAssignment(
-                initiator=initiator,
-                plan=self,
-            )
+    def requested_unit_names(self, sites=None, local_site=None) -> list[str] | None:
+        """The requested units as hostnames (``mast01``), or None for `"any"`.
 
-            units_specifier = parse_units(unit_name)
-            if units_specifier:
-                units = Manifest.from_units_specifier(units_specifier, unit_assignment)
-                if units:
-                    ret += units
-        return ret
+        Expanded, not filtered: whoever runs the plan says why a unit is not used (5.6).
+        `sites` / `local_site` default to the configuration's. Raises ValueError for a
+        specifier that names no unit.
+        """
+        if self.requested_units == [ANY_UNITS]:
+            return None
+        if sites is None or local_site is None:
+            from common.config import Config
+
+            sites = Config().sites if sites is None else sites
+            local_site = Config().local_site if local_site is None else local_site
+        return expand_units(self.requested_units, sites, local_site)
 
     @property
     def remote_spec_assignment(self) -> Manifest | None:
@@ -361,27 +407,27 @@ class Plan(BaseModel, Activities):
         except socket.gaierror:
             ipaddr = None
 
-        if not self.spec_assignment:
+        if not self.spec:
             logger.error("cannot create a spectrograph model, aborting!")
             return None
-        if not self.spec_assignment.instrument:
+        if not self.spec.instrument:
             logger.error("spectrograph model has no instrument, aborting!")
             return None
 
         initiator = Initiator.local_machine()
         try:
-            spec_assignment = SpectrographAssignment(
-                instrument=self.spec_assignment.instrument,
+            spec = SpectrographAssignment(
+                instrument=self.spec.instrument,
                 initiator=initiator,
                 plan=self,
-                spec=self.spec_assignment,
+                spec=self.spec,
             )
         except ValidationError as e:
             for err in e.errors():
                 logger.error(f"ERR:\n  {err}")
             raise
 
-        return Manifest(hostname=spec_hostname, fqdn=fqdn, ipaddr=ipaddr, assignment=spec_assignment)
+        return Manifest(hostname=spec_hostname, fqdn=fqdn, ipaddr=ipaddr, assignment=spec)
 
     @classmethod
     def from_toml_file(cls, toml_file: str):
@@ -456,446 +502,30 @@ class Plan(BaseModel, Activities):
     def __repr__(self):
         return f"<Plan>(ulid='{self.ulid}')"
 
-    @staticmethod
-    async def api_coroutine(api, method: str, sub_url: str, data=None, _json: dict | None = None):
-        response = None
-        try:
-            if method == "GET":
-                response = await api.get(sub_url)
-            elif method == "PUT":
-                response = await api.put(sub_url, data=data, json=_json)
-        except Exception as e:
-            logger.error(f"api_coroutine: error {e}")
-            raise
-        return response
+    def add_event(self, event: EventModel, toml_path: str | os.PathLike | None = None):
+        """Append ``event`` to the plan's file: ``toml_path``, else the file it was loaded from.
 
-    async def fetch_statuses(
-        self, units: list[UnitApi], spec: SpecApi | None = None
-    ) -> tuple[list[GatherResponse], Any | None]:
-        """Asynchronously fetch status information from multiple units and optionally a spectrograph."""
-        tasks = [self.api_coroutine(api=unit_api, method="GET", sub_url="status") for unit_api in units]
-
-        if spec:
-            tasks.append(self.api_coroutine(api=spec, method="GET", sub_url="status"))
-        all_status_responses: list[GatherResponse] = await asyncio.gather(*tasks, return_exceptions=True)
-
-        if spec:
-            return all_status_responses[:-1], all_status_responses[-1]
-        return all_status_responses, None
-
-    async def get_spec_status(self) -> Any | None:  # ComponentStatus | None
-        if not self.spec_api:
-            raise Exception(f"{function_name()}: spec_api is None")
-
-        canonical_response = await self.spec_api.get(method="status")
-        if not canonical_response.succeeded:
-            canonical_response.log(_logger=logger, label="spec")
-            await self.abort()
-            self.end_activity(PlanActivities.Exposing)
-            return None
-
-        return canonical_response.value
-
-    def prepare(self, controller):
-        self.controller = controller
-        self.sites_conf = controller.sites_conf
-
-    async def terminate(self, reason: Literal["failed", "rejected", "completed"], details: list[str]):
-        self.controller.task_in_progress = None
-
-        logger.error(f"terminating task '{self.ulid}', {reason=}, {details=}")
-
-        self.add_event(EventModel(what=reason, details=details))
-
-        if not self.model_extra or "toml_file" not in self.model_extra:
-            logger.error(f"cannot get 'toml_file' from {self.model_extra=}")
-        else:
-            current_path = Path(self.model_extra["toml_file"])
-            sub_folder = "failed" if reason in ["failed", "rejected"] else "completed"
-            new_path = current_path.parent.parent / sub_folder / current_path.name
-            os.makedirs(new_path.parent, exist_ok=True)
-            shutil.move(str(current_path), str(new_path))
-            logger.info(f"moved plan '{self.ulid}' from {current_path!s} to {new_path!s}")
-        self.end_activity(PlanActivities.Executing)
-        self.terminated = True
-
-    def add_event(self, event: EventModel):
-        if self.model_extra and "toml_file" in self.model_extra:
-            file = self.model_extra["toml_file"]
-
-            with open(file) as f:
-                toml_doc = tomlkit.load(f)
-
-            if "events" not in toml_doc:
-                toml_doc["events"] = tomlkit.aot()
-
-            new_event = tomlkit.table()
-            new_event.add("what", event.what)
-            new_event.add("details", event.details)
-            new_event.add("when", event.when)
-            toml_doc["events"].append(new_event)  # type: ignore
-
-            with open(file, "w") as f:
-                f.write(tomlkit.dumps(toml_doc))
-
-    async def probe(self):
-        """Checks if the allocated components (units and spectrograph) are available and operational."""
-
-        self.start_activity(PlanActivities.Probing)
-        if not self.unit_apis or not self.spec_api:
-            self.end_activity(PlanActivities.Probing)
-            await self.terminate(
-                reason="rejected",
-                details=["no units assigned to this task"],
-            )
-            return
-        canonical_unit_responses, spec_response = await self.fetch_statuses(self.unit_apis, self.spec_api)
-
-        # see what units respond at all
-        detected_unit_apis = [unit_api for unit_api in self.unit_apis if unit_api.detected]
-        n_detected = len(detected_unit_apis)
-        if self.quorum is not None and n_detected < self.quorum:
-            self.end_activity(PlanActivities.Probing)
-            if n_detected == 0:
-                await self.terminate(
-                    reason="rejected",
-                    details=[f"no units quorum, no units were detected (required: {self.quorum})"],
-                )
-            else:
-                await self.terminate(
-                    reason="rejected",
-                    details=[
-                        f"no units quorum, detected only {n_detected} "
-                        + f"({[unit_api.hostname for unit_api in detected_unit_apis]}), "
-                        + f"required {self.quorum}"
-                    ],
-                )
-            return
-        logger.info(f"'detected_units' quorum achieved ({n_detected} detected out of {self.quorum} required)")
-
-        if not self.spec_api.detected:
-            # spec does not respond
-            self.end_activity(PlanActivities.Probing)
-            await self.terminate(reason="rejected", details=["spec not detected"])
-            return
-
-        # enough units were detected (they answered to API calls), now check if they are operational
-        self.operational_unit_apis = []
-        for i, response in enumerate(canonical_unit_responses):
-            unit_api = self.unit_apis[i]
-
-            from common.models.statuses import UnitStatus
-
-            if isinstance(response, CanonicalResponse):
-                if response.failed:
-                    continue
-                unit_status = cast(UnitStatus, response.value)
-                if unit_status is None:
-                    logger.error(f"unit '{unit_api.hostname}' ({unit_api.ipaddr}) returned None, ignoring")
-                    continue
-
-                if unit_status.operational:
-                    self.operational_unit_apis.append(self.unit_apis[i])
-                    logger.info(f"unit '{unit_api.hostname}' ({unit_api.ipaddr}), operational")
-                else:
-                    logger.info(
-                        f"unit '{unit_api.hostname}' ({unit_api.ipaddr}), "
-                        + f"not operational: {unit_status.why_not_operational}"
-                    )
-
-        if len(self.operational_unit_apis) == 0:
-            self.end_activity(PlanActivities.Probing)
-            await self.terminate(
-                reason="rejected",
-                details=[f"no operational units (quorum: {self.quorum})"],
-            )
-            return
-        elif self.quorum is not None:
-            if len(self.operational_unit_apis) < self.quorum:
-                self.end_activity(PlanActivities.Probing)
-                await self.terminate(
-                    reason="rejected",
-                    details=[f"only {len(self.operational_unit_apis)} operational " + f"units (quorum: {self.quorum})"],
-                )
-                return
-
-        logger.info(f"continuing with {len(self.operational_unit_apis)} unit(s) (quorum: {self.quorum})")
-
-        if isinstance(spec_response, CanonicalResponse):
-            if spec_response and spec_response.failed:
-                self.end_activity(PlanActivities.Probing)
-                await self.terminate(
-                    reason="rejected",
-                    details=[
-                        f"cannot talk to spec '{self.spec_api.hostname}' ({self.spec_api.ipaddr}) "
-                        + f"(errors: {spec_response.errors})"
-                    ],
-                )
-                return
-
-            assert spec_response is not None
-            spec_status = spec_response.value
-            if spec_status and not spec_status.operational:
-                self.end_activity(PlanActivities.Probing)
-                await self.terminate(
-                    reason="rejected",
-                    details=[f"spec is not operational {spec_status.why_not_operational}"],
-                )
-                return
-
-        elif isinstance(spec_response, BaseException):
-            self.end_activity(PlanActivities.Probing)
-            await self.terminate(
-                reason="failed",
-                details=[f"exception when getting status from spec {spec_response=}"],
-            )
-            return
-
-        self.end_activity(PlanActivities.Probing)
-
-    async def dispatch(self):
-        """We have a quorum of responding units and a responding spec, we can dispatch the assignments"""
-
-        self.start_activity(PlanActivities.Dispatching)
-        assignment_tasks = []
-        for operational_unit_api in self.operational_unit_apis:
-            for unit_assignment in self.remote_unit_assignments:
-                if unit_assignment.assignment is None:
-                    logger.error(f"unit_assignment.assignment is None for unit '{unit_assignment.hostname}'")
-                    continue
-                if operational_unit_api.ipaddr == unit_assignment.ipaddr:
-                    assignment_tasks.append(
-                        self.api_coroutine(
-                            operational_unit_api,
-                            method="PUT",
-                            sub_url="execute_assignment",
-                            _json=unit_assignment.assignment.model_dump(),
-                        )
-                    )
-                    break
-        canonical_unit_responses: list[GatherResponse] = await asyncio.gather(*assignment_tasks, return_exceptions=True)
-        self.end_activity(PlanActivities.Dispatching)
-
-        for i, canonical_response in enumerate(canonical_unit_responses):
-            try:
-                if isinstance(canonical_response, CanonicalResponse):
-                    if canonical_response.succeeded:
-                        self.committed_unit_apis.append(self.operational_unit_apis[i])
-                    else:
-                        canonical_response.log(
-                            _logger=logger,
-                            label=f"{self.operational_unit_apis[i].hostname} " + f"({self.operational_unit_apis[i].ipaddr})",
-                        )
-                elif isinstance(canonical_response, BaseException):
-                    logger.error(
-                        f"exception response from {self.operational_unit_apis[i].hostname} "
-                        + f"({self.operational_unit_apis[i].ipaddr}): {canonical_response}"
-                    )
-
-            except Exception:
-                logger.exception("non-canonical response, ignoring!")
-                continue
-
-        n_committed = len(self.committed_unit_apis)
-        if n_committed == 0:
-            self.end_activity(PlanActivities.Dispatching)
-            await self.terminate(
-                reason="rejected",
-                details=[f"no committed units (quorum: {self.quorum})"],
-            )
-            return
-        elif self.quorum is not None:
-            if n_committed < self.quorum:
-                self.end_activity(PlanActivities.Dispatching)
-                await self.terminate(
-                    reason="rejected",
-                    details=[f"only {n_committed} units (quorum: {self.quorum})"],
-                )
-                return
-
-        self.add_event(
-            EventModel(
-                what="dispatched",
-                details=[f"committed_units: {[api.hostname for api in self.committed_unit_apis]}"],
-            )
-        )
-
-    async def expose(self):
-        """Tell the spectrograph to execute the assignment and wait for it to finish"""
-
-        self.start_activity(PlanActivities.Exposing)
-
-        # get (again) the spectrograph's status and make sure it is operational and not busy
-        spec_status = await self.get_spec_status()
-        assert spec_status is not None, "spec_status should not be None"
-
-        if not spec_status.operational:
-            await self.terminate(
-                reason="failed",
-                details=[f"spec not operational: {spec_status.why_not_operational}"],
-            )
-            return
-
-        if spec_status.activities != Activities.Idle:
-            await self.terminate(
-                reason="failed",
-                details=[f"spectrograph is busy (activities={spec_status.activities}), aborting!"],
-            )
-            return
-
-        assert self.remote_spec_assignment is not None, "spec_assignment should not be None"
-
-        assert self.spec_api is not None, "spec_api should not be None"
-        canonical_response = await self.spec_api.put(
-            method="execute_assignment", json=self.remote_spec_assignment.model_dump()
-        )
-
-        if not canonical_response.succeeded:
-            await self.terminate(
-                reason="failed",
-                details=[f"failed to send assignment to spectrograph: {canonical_response.errors}"],
-            )
-            return
-
-    async def wait_for_guiding(self):
-        """Units are committed to their assignments, now wait for them to reach 'guiding'"""
-
-        start = time.monotonic()
-        reached_guiding = False
-        self.start_activity(PlanActivities.WaitingForGuiding)
-
-        assert self.timeout_to_guiding is not None, (
-            "task.timeout_to_guiding should not be None, it should be set in the task definition"
-        )
-
-        # monotonic, and elapsed seconds rather than timedelta.seconds: the latter is the
-        # 0-86399 component, so a backwards clock step normalised to days=-1, seconds=86399
-        # and this loop would have run for about a day instead of timing out.
-        while time.monotonic() - start < self.timeout_to_guiding:
-            time.sleep(20)
-            responses = await self.fetch_statuses(self.committed_unit_apis)
-
-            canonical_responses: list[CanonicalResponse] = [
-                response for response in responses if isinstance(response, CanonicalResponse)
-            ]
-
-            statuses: list[ComponentStatus] = [
-                response.value
-                for response in canonical_responses
-                if response.value is not None and isinstance(response.value, ComponentStatus)
-            ]
-
-            if all([(status.activities & UnitActivities.Guiding) for status in statuses]):
-                logger.info(
-                    f"all committed units ({[f'{u.hostname} ({u.ipaddr})' for u in self.committed_unit_apis]}) "
-                    + "have reached 'Guiding'"
-                )
-                reached_guiding = True
-                break
-        self.end_activity(PlanActivities.WaitingForGuiding)
-
-        if not reached_guiding:
-            await self.terminate(
-                reason="failed",
-                details=[f"did not reach 'guiding' within {self.timeout_to_guiding} seconds"],
-            )
-            return
-
-    async def wait_for_spec_done(self):
-        """Wait for the spectrograph to finish the assignment (go back to idle)"""
-
-        self.start_activity(PlanActivities.WaitingForSpecDone)
-        while True:
-            time.sleep(20)
-            spec_status: ComponentStatus | None = await self.get_spec_status()
-            assert spec_status is not None, "spec_status should not be None"
-
-            if not spec_status.operational:
-                if spec_status.why_not_operational is not None:
-                    for err in spec_status.why_not_operational:
-                        logger.error(f"spec not operational: {err}")
-                self.end_activity(PlanActivities.WaitingForSpecDone)
-                await self.terminate(
-                    reason="failed",
-                    details=[f"spec not operational: {spec_status.why_not_operational}"],
-                )
-                return
-
-            logger.info("wait_for_spec_done: " + json.dumps(spec_status, indent=2))
-            if spec_status.activities == Activities.Idle:
-                logger.info("spec is Idle")
-                self.end_activity(PlanActivities.WaitingForSpecDone)
-                break
-            else:
-                logger.info(
-                    f"wait_for_spec_done: spec is busy: activities: {spec_status.activities} "
-                    + f"({spec_status.activities_verbal})"
-                )
-
-        self.end_activity(PlanActivities.WaitingForSpecDone)
-
-    async def execute(self, controller):
+        A read-modify-write of the whole file: a caller with more than one writer (control's
+        execution, one thread per unit) holds its own lock around it (5.2).
         """
-        Executes the plan by orchestrating the probing, dispatching, guiding, exposing and waiting for completion phases.
-        """
-        from common.api import SpecApi, UnitApi
-        from common.config import Config
-
-        local_site = Config().local_site
-        assert local_site is not None
-
-        self.spec_api = SpecApi(local_site.name)
-        self.controller = controller
-        unit_apis: list[UnitApi] = []
-
-        for assignment in self.remote_unit_assignments:
-            unit_apis.append(UnitApi(ipaddr=assignment.ipaddr))
-
-        self.start_activity(PlanActivities.Executing)
-
-        await self.probe()
-        if self.terminated:
-            logger.debug(f"{function_name()}: terminated after probing, exiting execute()")
+        file = toml_path if toml_path is not None else (self.model_extra or {}).get("toml_file")
+        if file is None:
             return
 
-        await self.dispatch()
-        if self.terminated:
-            logger.debug(f"{function_name()}: terminated after dispatching, exiting execute()")
-            return
+        with open(file) as f:
+            toml_doc = tomlkit.load(f)
 
-        await self.wait_for_guiding()
-        if self.terminated:
-            logger.debug(f"{function_name()}: terminated while waiting for guiding, exiting execute()")
-            return
+        if "events" not in toml_doc:
+            toml_doc["events"] = tomlkit.aot()
 
-        await self.expose()
-        if self.terminated:
-            logger.debug(f"{function_name()}: terminated while exposing, exiting execute()")
-            return
+        new_event = tomlkit.table()
+        new_event.add("what", event.what)
+        new_event.add("details", event.details)
+        new_event.add("when", event.when)
+        toml_doc["events"].append(new_event)  # type: ignore
 
-        await self.wait_for_spec_done()
-        if self.terminated:
-            logger.debug(f"{function_name()}: terminated while waiting for spec done, exiting execute()")
-            return
-
-        await self.terminate(reason="completed", details=["plan executed successfully"])
-
-    async def abort(self):
-        from common.activities import PlanActivities
-
-        self.start_activity(PlanActivities.Aborting)
-        # PUT everywhere: abort changes state, and a state-changing route is PUT across the
-        # fleet. The units moved first (MAST_unit#48, #112) and accepted both while that
-        # migrated; MAST_unit#113 takes GET off once nothing sends it.
-        tasks = [self.api_coroutine(unit_api, method="PUT", sub_url="abort") for unit_api in self.committed_unit_apis]
-        # The spectrograph followed on 2026-09-06. The note that used to sit here said its
-        # abort route "has not been checked for PUT" -- in fact MAST_spec registered no
-        # /spec/abort at all, so this call had been answering 404 rather than waiting on a
-        # verb. MAST_spec#69 added the route the client actually asks for, #70 made every
-        # state-changing spec route PUT-only, and GET now 405s. This line is what closes
-        # that window.
-        tasks.append(self.api_coroutine(self.spec_api, method="PUT", sub_url="abort"))
-        self.end_activity(PlanActivities.Aborting)
+        with open(file, "w") as f:
+            f.write(tomlkit.dumps(toml_doc))
 
 
 if __name__ == "__main__":
