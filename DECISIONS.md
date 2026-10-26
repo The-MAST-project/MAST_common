@@ -2,6 +2,36 @@
 
 ---
 
+## [2026-10-26] The lock nudge's gate knobs, and its outcome in the unit status
+
+**Why:** MAST_unit's lock nudge now solves several guide frames and refuses when they disagree,
+and an operator needs to see a refused nudge without reading the unit's log.
+
+**What:** team decision, 2026-10-25. `LockNudgeConfig` gains `solve_frames = 4`,
+`max_spread_arcsec = 1.0` (provisional until the solve-precision rerun) and
+`frames_timeout = 90.0`, all defaulted, since mast01's stored section is
+`lock_nudge: {enabled: false}`, and checked by `_positive_knobs`. `LatestAcquisition.nudge` (`status.latest.acquisition.nudge`) is a typed
+`LockNudgeOutcome | None` (applied, reason, offsets, spread, frames used, residual), None by
+default.
+
+**Implications:** `enabled` stays False. An older unit, or an acquisition with no nudge, reads
+`nudge` as None, "not reported".
+
+## [2026-10-26] Tolerances are on the sky; corrections are recorded in plain RA
+
+**Why:** nothing said which convention `ToleranceConfig` and `Correction.ra_delta` carry, and
+the unit's acquisition loop read the same number as both (MAST_unit#191).
+
+**What:** team decision, 2026-10-26. `ToleranceConfig` is in arcsec on the sky; the unit
+applies its RA side in plain RA as `ra_arcsec / cos(dec)`. `Correction.ra_delta` and
+`Corrections.tolerance_ra` are plain RA (the RA coordinate difference, as the mount offset takes
+it). Docstrings only; no field changes.
+
+**Implications:** a reader of `corrections.json` scales RA by `cos(target_dec)` to compare
+nights at different declinations. `tolerance_ra` varies with the target's Dec.
+
+---
+
 ## [2026-10-22] A single failed RAM-disk revival is `FAILED` (502), not giving up
 
 **Why:** the supervisor answered `503` both for one revival that did not bring `D:` back and for reaching its give-up limit, and `SupervisorApi` maps the status to the answer, so `Filer` logged an ERROR "the supervisor has given up" after one failure. The supervisor keeps reviving on its own probe until its limit, so that was false.
@@ -11,6 +41,42 @@
 **Implications:** the status code stays the whole answer; the body is still only the logged detail. A supervisor older than this branch still sends `503` for a single failure, which reads as giving up, as before. This client against such a supervisor, or that supervisor against an older client, mis-names one case and changes nothing else.
 
 ---
+## [2026-10-25] The mirror-first handover style is named for what it does
+
+**Why:** `legacy` read as "deprecated" for the default, and said nothing about the behavior.
+The style decides one thing, when the fold mirror goes in relative to guiding; the guide frame,
+the exclusion region and the nudge are separate settings.
+
+**What:** `HandoverStyle.LEGACY` / `legacy` is renamed `MIRROR_FIRST` / `mirror_first`, still the
+default. **Supersedes** only the naming in the 2026-10-22 entry "`phd2.handover.style` selects
+the fold-mirror handover; legacy is the default". There is no alias: `legacy` no longer validates.
+
+**Implications:** A unit document holding `style: legacy` fails validation on code with this
+change, and so does every reader of it: MAST-control validates all deployed units' documents
+when it starts. `mirror_first` fails only on the pre-rename `eli/exclude-region` and
+`eli/ab-night` builds; `master` has no `handover` section and ignores it. The stored `style` key
+is therefore deleted rather than rewritten, when each unit gets this code, so the unit takes
+the default. No document may hold `legacy` before this reaches `master`; mast01, mast02 and
+mast04 hold it as of this entry.
+
+## [2026-10-22] `phd2.handover.style` selects the fold-mirror handover; legacy is the default
+
+**Why:** MAST_unit makes the legacy handover (fold mirror in before guiding, ready once guiding
+has settled) the default and keeps the bracketed one (insert after settle, under a pause)
+selectable. The bracketed handover lost its guide star at insertion on 3 of 13 arms in the
+2026-10-20/21 mast01 A/B; see MAST_unit's DECISIONS entry of the same date.
+
+**What:** `HandoverStyle` (`legacy` | `bracketed`) and `HandoverConfig.style`, defaulting to
+`legacy`. `auto_insert` keeps its meaning: off hands the insertion to the caller and runs no
+handover. `LockNudgeConfig`'s docstring now says when the nudge runs on each style, and why it
+stays off until a unit's insertion has been measured to leave the image in place.
+
+**Implications:** A unit document with no `handover` section, or one written before `style`,
+gets the legacy handover. Units on a MAST_unit without this change ignore the key. Known gap:
+`Plan.wait_for_guiding` (`models/plans.py`) still counts a unit as guiding on `Guiding` alone,
+which now goes up before PHD2 has a star. It is dormant -- no unit route reaches the assignment
+path that waits on it, and that path is being retired with `execute_assignment` -- so it is left
+to that work.
 
 ## [2026-10-18] Scripts may build on operator endpoints
 
@@ -248,6 +314,29 @@ one INFO.
 **Implications:** an HTTP-level send failure still drops the notification, as before; only a
 construction failure keeps it queued. `BaseApi` and every other subclass are unchanged, so a bare
 name that does not resolve still raises at construction for `ControllerApi` and `SpecApi`.
+
+---
+
+## [2026-10-04] The guider status carries a pointing record, and "off target on the sky" has one helper
+
+**Why:** MAST_unit#283 plate solves the guide frame while guiding continues, to check that the
+target is still on the fiber while PHD2 holds its star still. The result needs a home in
+`/unit/status` and a shape that the status and the on-disk journal share. The nudge and the new
+monitor also both turn a `target_offset_arcsec` pair into one angle on the sky. That needs a
+`cos(dec)` the pair deliberately leaves out, and two copies of it could drift apart.
+
+**What:**
+
+- `PointingSample`, `PointingSampleOutcome` and `PointingCheckStatus` in `models/statuses.py`,
+  and `PHD2GuiderStatus.pointing_check`. A sample is Solved, NotSolved or Unavailable. A failed
+  solve and an unjudgeable frame are both recorded rather than dropped.
+- `offset_on_sky_arcsec(d_ra, d_dec, dec)` beside `target_offset_arcsec`.
+- `phd2.validation_interval` is now the monitor's cadence. Its old consumer, `validate_guiding`,
+  stopped guiding to take a frame. It was never enabled (0 on every unit) and is removed in
+  MAST_unit.
+
+**Implications:** the field keeps its name, so no DB document changes. A non-zero value now
+means sampling without interrupting guiding.
 
 ---
 
@@ -859,6 +948,50 @@ DNS already provides this). Verified end-to-end on the dev VM against a local Mo
 `mongo_uri` composed to `mongodb://mast-ns-control.weizmann.ac.il:27017`, connected, and
 cross-validated against the DB `sites` doc; the fail-fast paths (missing role/file,
 malformed TOML, DB drift) each raised `ConfigError` and exited non-zero.
+
+---
+
+## [2026-07-03] PHD2 guide-star exclusion region becomes persisted configuration (`phd2.exclude_region`)
+
+**Why:** Guiding must be able to lock *before* the FCU fold mirror is inserted, on
+stars the mirror will not occult. A guide star must pass PHD2's selection
+gates (unsaturated, SNR/mass minimums, HFD window), and MAST's strong coma smears
+the outer field, so surviving candidates cluster in the low-coma center of the
+frame — exactly the zone the mirror covers; selection is quality-biased toward
+the stars guaranteed to be lost. The custom PHD2 `set_exclude_region` API (MAST build
+`2.6.14dev1mastbuild4`) excludes a rectangle from guide-star auto-selection; the
+rectangle (mirror shadow + safety margin) is per-unit geometry and therefore
+belongs in the config DB, not in code.
+
+**What:** Added `ExcludeRegionConfig` to `config/phd2.py` and a
+`PHD2Config.exclude_region` field, shaped like `LimitFrameConfig`: a `mode`
+discriminator (`off` | `fixed`) naming the outcome directly, the rectangle in
+unbinned camera pixels, a `has_roi` accessor, the per-unit `depth` / `pad_px`
+knobs with their `derived_from_*` derivation record, and `json_schema_extra` UI
+metadata gated on `CAN_CHANGE_CONFIGURATION`. Two deliberate differences from the
+limit frame:
+
+- **`off` is the default and there is no `derived` counterpart** — unlike the limit
+  frame there is no sensible fallback rectangle; the mirror shadow must be measured
+  per unit before the feature can do anything but harm.
+- **A rectangle configured under `off` is legal, not a contradiction.** For the limit
+  frame a rect under a non-`fixed` mode is rejected so it can never be silently
+  ignored. Here that pair is the intended workflow: the shadow-measurement tool
+  writes each unit's band and derivation record as soon as it is measured, and the
+  region is switched on later, per unit. Rejecting it would force an operator to
+  delete a measurement in order to disable the feature, and would make "measured but
+  not yet enabled" inexpressible. `mode` alone decides what is sent.
+
+**Implications:** Existing DB documents parse unchanged (absent section ⇒ `off`).
+Consumers (`MAST_unit`'s `PHD2Connector.guide`) send `set_exclude_region` before
+every `guide` RPC — the rect under `fixed`, an explicit reset under `off` —
+mirroring the limit-frame set-or-reset discipline. The set call requires the
+mastbuild4 PHD2 build and fails loudly on older builds; the reset tolerates the
+method being absent (an older build has no exclusion state to reset). Real-sky
+validation on a provisioned unit rig is still pending; until then the safe state is
+the default (`off`). Guarded by `tests/test_exclude_region_config.py`: the mode
+contract, the `off`-with-rectangle asymmetry, the depth/pad staleness matrix, and
+legacy-document compatibility.
 
 ---
 
