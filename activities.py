@@ -402,11 +402,9 @@ class StageActivities(IntFlag):
     Overheating = auto()
 
 
-class SpecActivities(IntFlag):
-    StartingUp = auto()
-    ShuttingDown = auto()
-    Positioning = auto()
-    Exposing = auto()
+# The spectrograph's own activities are `common.spec.SpecActivities`. A second, unused
+# `SpecActivities` lived here until 2026-10-26, with different members and numbers: importing
+# it by mistake would decode the spectrograph's activity bitmask wrongly, without a word.
 
 
 class DeepspecActivities(IntFlag):
