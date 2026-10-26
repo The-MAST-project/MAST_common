@@ -2,6 +2,21 @@
 
 ---
 
+## [2026-10-26] The lock nudge's gate knobs, and its outcome in the unit status
+
+**Why:** MAST_unit's lock nudge now solves several guide frames and refuses when they disagree,
+and an operator needs to see a refused nudge without reading the unit's log.
+
+**What:** team decision, 2026-10-25. `LockNudgeConfig` gains `solve_frames = 4`,
+`max_spread_arcsec = 1.0` (provisional until the solve-precision rerun) and
+`frames_timeout = 90.0`, all defaulted, since mast01's stored section is
+`lock_nudge: {enabled: false}`, and checked by `_positive_knobs`. `LatestAcquisition.nudge` (`status.latest.acquisition.nudge`) is a typed
+`LockNudgeOutcome | None` (applied, reason, offsets, spread, frames used, residual), None by
+default.
+
+**Implications:** `enabled` stays False. An older unit, or an acquisition with no nudge, reads
+`nudge` as None, "not reported".
+
 ## [2026-10-26] Tolerances are on the sky; corrections are recorded in plain RA
 
 **Why:** nothing said which convention `ToleranceConfig` and `Correction.ra_delta` carry, and
