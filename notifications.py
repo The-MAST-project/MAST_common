@@ -1,7 +1,9 @@
 import asyncio
 import socket
 import threading
+import time
 from collections import deque
+from dataclasses import dataclass, field
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -128,13 +130,50 @@ class UiUpdateNotifications(BaseModel):
     notifications: list[UiUpdateNotification] = []  # List of individual notification items
 
 
+@dataclass
+class _Pending:
+    """One notification waiting to be sent."""
+
+    data: str
+    #: UI notifications with the same key replace each other while they wait: only the latest
+    #: value of an element is worth showing. None: never replaced (a card is a message).
+    key: tuple | None = None
+    enqueued_at: float = field(default_factory=time.monotonic)
+
+
 class Notifier:
+    """Queues notifications to the control machine and sends them on its own thread.
+
+    Two queues, because the two kinds are different things:
+
+    - **Assignment notifications** are a handshake. The controller answers `ok` only once it
+      has acted on one (or deliberately decided to ignore it), so anything else -- a refused
+      connection, a timeout, an error -- leaves it at the head of its queue, to be sent again.
+      Never evicted; first in, first out, one at a time, so a plan's `in-progress` always
+      precedes its `completed`; always sent before any UI notification. Given up after
+      ASSIGNMENT_MAX_AGE, with an ERROR: the plan's own backstop then decides
+      (plans/control_acquisition_design.md 5.7).
+    - **UI notifications** are ephemeral. Bounded; one waiting for the same elements as a newer
+      one is replaced by it; the oldest goes when the queue is full. They wait while the
+      control machine is unreachable and are sent when it is back.
+
+    A failed send backs off, BACKOFF_FIRST doubling up to BACKOFF_MAX, and any success resets it.
+
+    It used to be one queue of 10, where a burst of UI updates could push a plan's notification
+    out before it was ever tried, and where a send that came back with errors -- `BaseApi.put`
+    returns them, it does not raise -- was taken off the queue as though delivered.
+    """
+
     _instance = None
     _initialized = False
     _init_lock = threading.Lock()
 
-    NOTIFICATION_QUEUE_SIZE = 10
-    NOTIFICATION_TIMEOUT = 2.0
+    NOTIFICATION_QUEUE_SIZE = 10  # UI notifications
+    NOTIFICATION_TIMEOUT = 2.0  # UI notifications
+    ASSIGNMENT_TIMEOUT = 10.0
+    ASSIGNMENT_MAX_AGE = 600.0
+    BACKOFF_FIRST = 1.0
+    BACKOFF_MAX = 30.0
 
     def __new__(cls):
         if cls._instance is None:
@@ -148,9 +187,11 @@ class Notifier:
 
             self.lock = threading.Lock()
 
-            # Notification queue and worker thread
-            self.notification_queue = deque(maxlen=self.NOTIFICATION_QUEUE_SIZE)
+            # The two queues (see the class docstring) and the worker thread
+            self.assignment_queue: deque[_Pending] = deque()
+            self.notification_queue: deque[_Pending] = deque(maxlen=self.NOTIFICATION_QUEUE_SIZE)
             self.notification_event = threading.Event()
+            self._backoff = 0.0
             self.stop_event = threading.Event()
 
             self.initiator = _build_initiator()
@@ -170,35 +211,59 @@ class Notifier:
             self._initialized = True
 
     def _notification_worker(self):
-        """Background worker that sends queued notifications"""
+        """Send what is queued, assignment notifications first; back off on failure."""
         while not self.stop_event.is_set():
-            # Wait for signal or timeout
-            self.notification_event.wait(timeout=1.0)
-
-            # Process all queued notifications
-            while True:
+            if self._backoff:
+                # After a failed send: wait out the back-off, whatever arrives meanwhile.
+                if self.stop_event.wait(self._backoff):
+                    break
+            else:
+                # Woken by a new notification (or every second, to be safe).
+                self.notification_event.wait(timeout=1.0)
+            while not self.stop_event.is_set():
                 with self.lock:
-                    if not self.notification_queue:
+                    self._give_up_on_stale_assignments()
+                    queue = self.assignment_queue if self.assignment_queue else self.notification_queue
+                    if not queue:
                         self.notification_event.clear()
                         break
-                    data = self.notification_queue[0]
-
-                # Log what we're sending
-                # logger.debug(f"Attempting to send notification: {data[:200]}...")
-
-                # Try to send
-                try:
-                    response = asyncio.run(self._api().put("notifications", data=data))
-                    # Success - remove from queue
-                    with self.lock:
-                        if self.notification_queue and self.notification_queue[0] == data:
-                            self.notification_queue.popleft()
-                            # logger.debug("Notification sent successfully")
-                    self._report_reachability(response.errors if response.failed else None)
-                except Exception as e:  # noqa: BLE001 -- the sender thread must outlive any one failed notification
-                    self._report_reachability(e)
-                    # Keep in queue for retry
+                    pending = queue[0]
+                if not self._send(pending, assignment=queue is self.assignment_queue):
+                    self._backoff = min(self.BACKOFF_MAX, max(self.BACKOFF_FIRST, self._backoff * 2))
                     break
+                self._backoff = 0.0
+                with self.lock:
+                    if queue and queue[0] is pending:
+                        queue.popleft()
+
+    def _send(self, pending: _Pending, assignment: bool) -> bool:
+        """True when it went: for an assignment notification, the controller answered `ok`."""
+        try:
+            timeout = self.ASSIGNMENT_TIMEOUT if assignment else self.NOTIFICATION_TIMEOUT
+            response = asyncio.run(self._api().put("notifications", data=pending.data, timeout=timeout))
+        except Exception as e:  # noqa: BLE001 -- the sender thread must outlive any one failed notification
+            self._report_reachability(e)
+            return False
+        if response.failed:
+            self._report_reachability(response.errors)
+            return False
+        self._report_reachability(None)
+        if assignment and response.value != "ok":
+            logger.warning(
+                f"notifications: the controller did not acknowledge an assignment notification: {response.value!r}"
+            )
+            return False
+        return True
+
+    def _give_up_on_stale_assignments(self) -> None:
+        """Drop assignment notifications older than ASSIGNMENT_MAX_AGE (caller holds the lock)."""
+        now = time.monotonic()
+        while self.assignment_queue and now - self.assignment_queue[0].enqueued_at > self.ASSIGNMENT_MAX_AGE:
+            stale = self.assignment_queue.popleft()
+            logger.error(
+                f"notifications: gave up on an assignment notification after {self.ASSIGNMENT_MAX_AGE:g} s "
+                f"undelivered: {stale.data}"
+            )
 
     def _api(self):
         if self.notification_api is None:
@@ -217,13 +282,22 @@ class Notifier:
             logger.info("notifications: the control machine is reachable again")
         self._unreachable = failure is not None
 
-    def _enqueue_notification(self, data: str):
-        """Add notification to queue and signal worker if needed"""
+    def _enqueue_notification(self, data: str, key: tuple | None = None):
+        """Queue a UI notification, replacing one waiting for the same elements."""
         with self.lock:
-            was_empty = len(self.notification_queue) == 0
-            self.notification_queue.append(data)
-            if was_empty:
-                self.notification_event.set()
+            if key is not None:
+                for i, waiting in enumerate(self.notification_queue):
+                    if waiting.key == key:
+                        del self.notification_queue[i]
+                        break
+            self.notification_queue.append(_Pending(data, key))
+            self.notification_event.set()
+
+    def _enqueue_assignment(self, data: str):
+        """Queue an assignment notification: never evicted, sent before any UI one."""
+        with self.lock:
+            self.assignment_queue.append(_Pending(data))
+            self.notification_event.set()
 
     def ui_notification(self, ui_specs: list[UiUpdateSpec] | UiUpdateSpec):
         """
@@ -286,7 +360,12 @@ class Notifier:
             # logger.debug(f"Notifier.ui_notification: message={message.model_dump_json()}")
             ui_update_request.notifications.append(message)
 
-        self._enqueue_notification(ui_update_request.model_dump_json())
+        # Replaceable by a newer one for the same elements, unless it carries a card: a card is
+        # a message to show, not a value to bring up to date.
+        key = None
+        if all(n.card is None for n in ui_update_request.notifications):
+            key = tuple(tuple(n.cache.path or []) for n in ui_update_request.notifications if n.cache is not None)
+        self._enqueue_notification(ui_update_request.model_dump_json(), key)
 
     def assignment_notification(self, notification):
         """
@@ -299,7 +378,7 @@ class Notifier:
 
         assert isinstance(notification, AssignmentNotification)
         notification.initiator = self.initiator
-        self._enqueue_notification(notification.model_dump_json())
+        self._enqueue_assignment(notification.model_dump_json())
 
 
 def __getattr__(name: str):

@@ -45,7 +45,7 @@ class FlakyNotificationApi:
         if not FlakyNotificationApi.reachable.is_set():
             raise socket.gaierror(11001, "getaddrinfo failed")
 
-    async def put(self, method, data=None):
+    async def put(self, method, data=None, timeout=None):
         FlakyNotificationApi.sent.append(data)
         return CanonicalResponse(value="ok")
 
@@ -62,6 +62,8 @@ def notifier(monkeypatch):
         lambda: NotificationInitiator(site="ns", type="unit", hostname="mast99", project="mast"),
     )
     monkeypatch.setattr(Notifier, "_instance", None)
+    monkeypatch.setattr(Notifier, "BACKOFF_FIRST", 0.01)
+    monkeypatch.setattr(Notifier, "BACKOFF_MAX", 0.05)
     yield
     instance = Notifier._instance
     if instance is not None and getattr(instance, "stop_event", None) is not None:
