@@ -12,7 +12,7 @@ from pathlib import Path
 from rich.logging import RichHandler
 from rich.text import Text
 
-from common.filer import Filer, FilingArea
+from common.filer import Filer, FilingArea, MoveGuardian, _is_under
 
 default_log_level = logging.DEBUG
 
@@ -169,6 +169,8 @@ class DailyFileHandler(logging.FileHandler):
         self.follow_share = follow_share
         self._filer: Filer | None = None
         self.current_path: str | None = None
+        #: The fallback night folder this handler has claimed from the drain, if any.
+        self._claimed: str | None = None
         self._next_open_attempt: float = 0.0
         self._inside = threading.local()
         self._deferred: list[str] = []
@@ -301,7 +303,41 @@ class DailyFileHandler(logging.FileHandler):
         if len(self._deferred) < self.DEFERRED_MAX:
             self._deferred.append(line)
 
+    def _claim_folder_for(self, folder: str) -> None:
+        """Claim ``folder`` before it is created, when it is in the share's fallback, and give
+        up any folder claimed before.
+
+        The fallback's drain moves its night folders to the share once the share is back, and
+        removes the empty ones: without a claim it can take a night folder the handler has
+        just made and not yet written into, and the record is lost. Claimed, the folder is
+        left for the next drain -- after the handler has moved on and released it. The lock
+        file sits beside the folder, so it is taken before the folder exists.
+        """
+        if folder == self._claimed:
+            return
+        self._release_folder()
+        if not self.follow_share:
+            return
+        fallback = self._filing().fallback_of(FilingArea.SHARE)
+        if fallback is None or not _is_under(os.path.realpath(folder), os.path.realpath(fallback.root)):
+            return
+        os.makedirs(os.path.dirname(folder), exist_ok=True)
+        if MoveGuardian().claim_folder(folder):
+            self._claimed = folder
+
+    def _release_folder(self) -> None:
+        if getattr(self, "_claimed", None) is not None:
+            MoveGuardian().unclaim_folder(self._claimed)
+            self._claimed = None
+
+    def close(self) -> None:
+        try:
+            super().close()
+        finally:
+            self._release_folder()
+
     def _close_stream(self) -> None:
+        self._release_folder()
         if self.stream is not None:
             try:
                 self.stream.flush()
@@ -335,6 +371,7 @@ class DailyFileHandler(logging.FileHandler):
             return False
         try:
             self.baseFilename = filename
+            self._claim_folder_for(os.path.dirname(filename))
             os.makedirs(os.path.dirname(filename), exist_ok=True)
             self.stream = self._open()
         except OSError:

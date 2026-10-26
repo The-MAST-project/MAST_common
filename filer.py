@@ -1256,13 +1256,15 @@ class Filer:
             and self.ensure_shared_root()
         ):
             for folder in _product_folders(share_fallback.root):
-                if not os.path.isdir(folder):
+                # A claimed folder is still being written to -- tonight's log, while the
+                # share is down -- and is left for the next drain, as on the RAM fallback.
+                if not os.path.isdir(folder) or guardian.folder_is_claimed(folder):
                     continue
                 destination = self.to_top(FilingArea.SHARE, folder)
                 os.makedirs(os.path.dirname(destination.rstrip("/")), exist_ok=True)
                 if self.move(folder, destination):
                     from_share += 1
-            _remove_empty_folders(share_fallback.root)
+            _remove_empty_folders(share_fallback.root, keep=guardian.folder_is_claimed)
             from_share += self._drain_legacy_night_folders()
 
         if from_ram or from_share:
@@ -1472,10 +1474,15 @@ def _product_folders(root: str) -> list[str]:
     return sorted(found, key=len, reverse=True)
 
 
-def _remove_empty_folders(root: str) -> None:
-    """Remove every empty folder under ``root``, deepest first; never ``root`` itself."""
+def _remove_empty_folders(root: str, keep: Callable[[str], bool] | None = None) -> None:
+    """Remove every empty folder under ``root``, deepest first; never ``root`` itself, nor one
+    ``keep`` says to keep. A claimed folder may be empty because its user has just made it
+    and not yet written into it: removing it then pulls the folder from under them -- the
+    log handler's fallback night folder, on the Windows CI runner, three times."""
     real_root = os.path.realpath(root)
     for dirpath, _dirnames, _filenames in os.walk(real_root, topdown=False):
+        if keep is not None and keep(dirpath):
+            continue
         if os.path.realpath(dirpath) != real_root:
             with contextlib.suppress(OSError):
                 os.rmdir(dirpath)
@@ -1821,6 +1828,12 @@ class MoveGuardian:
             return not _try_lock(handle, exclusive=True)
         finally:
             _close_claim(handle)
+
+    def unclaim_folder(self, folder) -> None:
+        """Drop this process's claim on ``folder``, and its lock file, leaving the folder and
+        what it holds -- for a user done writing there whose contents are still to move (the
+        log handler's fallback night folder, which the next drain then takes to the share)."""
+        self._release_claim(os.path.realpath(str(folder)))
 
     def _release_claim(self, real_folder: str) -> None:
         """Drop our claim and remove the lock file, once the folder is finished with."""
