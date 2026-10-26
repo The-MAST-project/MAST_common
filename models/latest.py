@@ -182,6 +182,10 @@ class LatestSpecExposure(LatestBase):
     """The spectrograph's exposure series: a plan's or a batch's (`execute_assignment`), or an
     operator's (`acquire`). `SpecStatus.latest.exposure`.
 
+    A failed exposure does not end the series: it is recorded (`fail`) and the next one is
+    tried. The series succeeds if it saved any frame (`finish_series`); `errors` says which
+    did not. Only an abort (`cancel`) stops it early, and an aborted series has not succeeded.
+
     Deepspec exposes its bands on a thread each, so frames and errors are recorded through
     `frame_saved` and `fail`, which serialise them."""
 
@@ -195,6 +199,7 @@ class LatestSpecExposure(LatestBase):
     last_frame: str | None = None
 
     _lock: threading.Lock = PrivateAttr(default_factory=threading.Lock)
+    _cancelled: threading.Event = PrivateAttr(default_factory=threading.Event)
 
     def frame_saved(self, path: str | os.PathLike | None = None) -> None:
         """One more frame saved, at ``path`` when its name is known."""
@@ -208,6 +213,19 @@ class LatestSpecExposure(LatestBase):
         with self._lock:
             if error not in self.errors:
                 self.errors.append(error)
+
+    def cancel(self, reason: str = "aborted") -> None:
+        """Stop the series: each exposure loop checks `cancelled` before its next exposure."""
+        self.fail(reason)
+        self._cancelled.set()
+
+    @property
+    def cancelled(self) -> bool:
+        return self._cancelled.is_set()
+
+    def finish_series(self) -> None:
+        """End the series: succeeded if it saved any frame and was not aborted."""
+        self.finish(self.completed > 0 and not self.cancelled)
 
 
 class LatestRecords(BaseModel):

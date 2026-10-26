@@ -139,13 +139,33 @@ class TestTheSpectrograph:
         record.fail("deepspec-I: no image")
         record.fail("deepspec-I: no image")
         assert record.errors == ["deepspec-I: no image"] and record.succeeded is None
-        record.finish(not record.errors)
+
+    def test_a_series_with_any_frame_succeeds_and_keeps_its_errors(self):
+        record = LatestSpecExposure(number_of_exposures=3).begin()
+        record.fail("highspec: exposure-001: camera timed out")
+        record.frame_saved("exposure-002.fits")
+        record.finish_series()
+        assert record.succeeded and record.errors == ["highspec: exposure-001: camera timed out"]
+
+    def test_a_series_with_no_frame_fails(self):
+        record = LatestSpecExposure(number_of_exposures=2).begin()
+        record.fail("deepspec-I: exposure-001 was not saved")
+        record.finish_series()
         assert record.succeeded is False
+
+    def test_an_aborted_series_has_not_succeeded_whatever_it_saved(self):
+        record = LatestSpecExposure(number_of_exposures=5).begin()
+        record.frame_saved("exposure-001.fits")
+        assert not record.cancelled
+        record.cancel()
+        assert record.cancelled
+        record.finish_series()
+        assert record.succeeded is False and record.errors == ["aborted"]
 
     def test_round_trips_in_the_status(self):
         record = LatestSpecExposure(instrument="deepspec", number_of_exposures=2).begin()
         record.frame_saved("x.fits")
         wire = SpecStatus(latest=LatestSpecRecords(exposure=record)).model_dump(mode="json")
-        assert "_lock" not in wire["latest"]["exposure"]
+        assert "_lock" not in wire["latest"]["exposure"] and "cancelled" not in wire["latest"]["exposure"]
         back = SpecStatus.model_validate(wire)
         assert back.latest.exposure.completed == 1 and back.latest.exposure.running
