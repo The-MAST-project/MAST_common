@@ -228,12 +228,60 @@ class LatestSpecExposure(LatestBase):
         self.finish(self.completed > 0 and not self.cancelled)
 
 
+class SkyQualityWindow(BaseModel):
+    """A guiding session's guide frames over the last `seconds`. Medians throughout: one bad
+    frame -- a cosmic ray, a gust -- moves them by one sample, not by its size."""
+
+    seconds: int
+    samples: int = 0  # guide frames measured
+    #: First to last sample: short of `seconds` early in a session, or after a gap.
+    span_seconds: float = 0.0
+    hfd_px: float | None = None  # the guide star's half-flux diameter, guide pixels
+    hfd_arcsec: float | None = None  # None without a plate scale
+    hfd_arcsec_spread: float | None = None  # MAD scaled to a standard deviation
+    snr: float | None = None
+    star_mass: float | None = None
+    #: `star_mass` over the session's baseline: below 1, less light than at the start.
+    transparency: float | None = None
+    star_lost: int = 0  # PHD2 `StarLost` events
+    rejected: int = 0  # guide frames PHD2 flagged (`ErrorCode`) or that had no usable HFD
+
+
+class LatestGuidingSkyQuality(LatestBase):
+    """The sky, as PHD2's guide frames see it, over one guiding session -- `StartGuiding` to
+    `GuidingStopped`. Seeing from the guide star's HFD; transparency from its StarMass,
+    relative to the session's first minute, so it says how the sky changed, not how good it
+    was to begin with. Frames taken while settling are left out: the star is moving.
+
+    PHD2's HFD is its own measure, through the guide exposure and binning: read it as
+    delivered image size, comparable within a session and between sessions of one unit."""
+
+    #: Arcseconds per guide pixel, binning included. None: the plate scale was unknown.
+    plate_scale_arcsec: float | None = None
+    binning: int | None = None
+    #: Median StarMass over the session's first `baseline_seconds`; None until then.
+    baseline_star_mass: float | None = None
+    baseline_seconds: int = 60
+    samples: int = 0  # over the whole session
+    star_lost: int = 0
+    rejected: int = 0
+    last_sample: str | None = None  # ISO UTC
+    windows: list[SkyQualityWindow] = Field(default_factory=list)  # shortest first
+
+
+class LatestSkyQuality(BaseModel):
+    """`FullUnitStatus.latest.sky_quality`."""
+
+    while_guiding: LatestGuidingSkyQuality | None = None
+
+
 class LatestRecords(BaseModel):
     """`FullUnitStatus.latest`: each kind's latest run, None until one has happened."""
 
     focus_on_star: LatestFocusOnStar | None = None
     acquisition: LatestAcquisition | None = None
     exposure: LatestExposure | None = None
+    sky_quality: LatestSkyQuality | None = None
 
 
 class LatestSpecRecords(BaseModel):
