@@ -148,6 +148,9 @@ class FocuserStatus(PowerStatus, AscomStatus, ComponentStatus):
 
 # Guider stuff
 class SkyQualityStatus(BaseModel):
+    """Deprecated: the unit reports `FullUnitStatus.latest.sky_quality.while_guiding` instead
+    (common.models.latest.LatestGuidingSkyQuality). Kept until MAST_unit stops importing it."""
+
     score: float | None = None
     state: str | None = None
     latest_update: str | None = None
