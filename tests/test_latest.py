@@ -18,6 +18,7 @@ from common.models.latest import (
     LatestRecords,
     LatestSpecExposure,
     LatestSpecRecords,
+    LatestSpiral,
 )
 from common.models.statuses import AcquisitionState as ReExported
 from common.models.statuses import FullUnitStatus, SpecStatus
@@ -59,6 +60,17 @@ class TestTheBase:
     def test_a_folder_under_no_filing_area_has_no_share_path(self, tmp_path):
         record = LatestExposure().begin(tmp_path)
         assert record.local_products_path and record.shared_products_path is None
+
+    def test_while_the_share_is_demoted_there_is_no_share_path(self, monkeypatch):
+        """Products go to the share's local fallback then: a client told the share path
+        would wait for files that never arrive there."""
+        monkeypatch.setitem(Filer._demoted, FilingArea.SHARE, "unreachable")
+        ram = Filer().ram
+        assert ram is not None
+        folder = os.path.join(ram.root, "2026-10-29", "Spirals", "0001")
+        record = LatestSpiral().begin(folder)
+        assert record.local_products_path == folder.replace("\\", "/")
+        assert record.shared_products_path is None
 
 
 class TestWritingIt:
@@ -105,6 +117,16 @@ class TestInTheStatus:
         assert wire["latest"]["acquisition"]["state"] == "failed"
         assert back.latest.acquisition.errors == ["sky: no solution"]
         assert back.latest.focus_on_star is None and back.latest.exposure is None
+
+    def test_a_spiral_session_round_trips(self):
+        record = LatestSpiral(x_step_arcsec=3.0, y_step_arcsec=3.0, exposure_seconds=4.0).begin()
+        record.stepped("D:\\MAST\\2026-10-29\\Spirals\\0001\\step-0001.fits")
+        record.finish(False, ["no step or spiral_end_path within 1h"])
+        back = FullUnitStatus.model_validate(_status(latest=LatestRecords(spiral=record)).model_dump(mode="json"))
+        assert back.latest is not None and back.latest.spiral is not None
+        spiral = back.latest.spiral
+        assert spiral.steps == 1 and spiral.last_frame == "D:/MAST/2026-10-29/Spirals/0001/step-0001.fits"
+        assert spiral.succeeded is False and not spiral.running
 
     def test_a_unit_that_reports_no_latest_reads_as_not_reported(self):
         wire = _status().model_dump(mode="json")

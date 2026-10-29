@@ -38,14 +38,17 @@ def _now() -> str:
 def products_paths(folder: str | os.PathLike | None) -> tuple[str | None, str | None]:
     """``folder``, forward-slashed, and where it ends up on this machine's share -- known when
     the run starts, before anything has moved. The share's is None for a folder under no
-    filing area."""
+    filing area, and while the share is demoted: its products then go to the local fallback."""
     if folder is None:
         return None, None
     from common.filer import Filer, FilingArea
 
     local = os.fspath(folder).replace("\\", "/")
+    filer = Filer()
+    if filer.is_demoted(FilingArea.SHARE):
+        return local, None
     try:
-        shared = Filer().to_top(FilingArea.SHARE, local)
+        shared = filer.to_top(FilingArea.SHARE, local)
     except ValueError:
         shared = None
     return local, shared
@@ -60,7 +63,8 @@ class LatestBase(BaseModel):
     errors: list[str] = Field(default_factory=list)
     #: Where the run writes its products: the RAM disk, or its fallback.
     local_products_path: str | None = None
-    #: Where those products end up: this machine's folder on the share.
+    #: Where those products end up: this machine's folder on the share. None while the
+    #: share is demoted, when they go to its local fallback instead.
     shared_products_path: str | None = None
     #: The plan the run was for, if any (plans/control_acquisition_design.md 6.6).
     plan_id: str | None = None
@@ -178,6 +182,26 @@ class LatestExposure(LatestBase):
     last_frame: str | None = None
 
 
+class LatestSpiral(LatestBase):
+    """The operator spiral session, `PUT /unit/spiral_new_path` to `spiral_end_path`.
+    `succeeded` once the shift is measured; a session closed without one -- left an hour
+    with no step, superseded by a new session, or its final frame failed -- has not."""
+
+    x_step_arcsec: float | None = None
+    y_step_arcsec: float | None = None
+    exposure_seconds: float | None = None
+    save_intermediate_exposures: bool | None = None
+    steps: int = 0  # taken, the reference not counted
+    last_frame: str | None = None  # on the unit; its name under `shared_products_path` on the share
+    shift: dict[str, Any] | None = None  # the measurement `spiral_end_path` returned
+
+    def stepped(self, frame: str | os.PathLike | None = None) -> None:
+        """One more step, and the frame it saved, if any."""
+        self.steps += 1
+        if frame is not None:
+            self.last_frame = os.fspath(frame).replace("\\", "/")
+
+
 class LatestSpecExposure(LatestBase):
     """The spectrograph's exposure series: a plan's or a batch's (`execute_assignment`), or an
     operator's (`acquire`). `SpecStatus.latest.exposure`.
@@ -281,6 +305,7 @@ class LatestRecords(BaseModel):
     focus_on_star: LatestFocusOnStar | None = None
     acquisition: LatestAcquisition | None = None
     exposure: LatestExposure | None = None
+    spiral: LatestSpiral | None = None
     sky_quality: LatestSkyQuality | None = None
 
 
