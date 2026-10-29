@@ -11,10 +11,12 @@ from common.filer import Filer, FilingArea, MoveGuardian
 from common.models.latest import (
     LATEST_FILE,
     AcquisitionState,
+    GuidingSettle,
     LatestAcquisition,
     LatestAcquisitionPhase,
     LatestExposure,
     LatestFocusOnStar,
+    LatestGuiding,
     LatestRecords,
     LatestSpecExposure,
     LatestSpecRecords,
@@ -169,3 +171,45 @@ class TestTheSpectrograph:
         assert "_lock" not in wire["latest"]["exposure"] and "cancelled" not in wire["latest"]["exposure"]
         back = SpecStatus.model_validate(wire)
         assert back.latest.exposure.completed == 1 and back.latest.exposure.running
+
+
+class TestGuiding:
+    def test_no_settle_until_phd2_reports_one(self):
+        record = LatestGuiding(backend="phd2", settle_pixels=1.5).begin()
+        assert record.running and record.settle is None and record.settled_at is None
+
+    def test_a_settle_that_succeeded(self):
+        record = LatestGuiding(backend="phd2").begin()
+        record.settle_done(None)
+        assert record.settle is GuidingSettle.SETTLED and record.settled_at is not None
+        assert record.settle_error is None and record.running
+
+    def test_a_failed_settle_is_recorded_and_the_run_goes_on(self):
+        record = LatestGuiding(backend="phd2").begin()
+        record.settle_done("Settling failed to complete within the timeout")
+        assert record.settle is GuidingSettle.FAILED
+        assert record.settle_error == "Settling failed to complete within the timeout"
+        assert record.running and record.succeeded is None and record.errors == []
+
+    def test_only_the_first_settle_counts(self):
+        record = LatestGuiding(backend="phd2").begin()
+        record.settle_done("timed out")
+        record.settle_done(None)  # a dither's, or a restart's
+        assert record.settle is GuidingSettle.FAILED and record.settle_error == "timed out"
+
+    def test_a_settle_after_the_run_ended_is_ignored(self):
+        record = LatestGuiding(backend="phd2").begin()
+        record.finish(False, ["the connection to PHD2 was lost"])
+        record.settle_done(None)
+        assert record.settle is None
+
+    def test_the_settle_values_match_pr30s_outcome(self):
+        assert [s.value for s in GuidingSettle] == ["settled", "failed"]
+
+    def test_round_trips_in_the_status(self):
+        record = LatestGuiding(backend="phd2", settle_pixels=1.5, settle_time=10, settle_timeout=60).begin()
+        record.settle_done(None)
+        wire = _status(latest=LatestRecords(guiding=record)).model_dump(mode="json")
+        assert wire["latest"]["guiding"]["settle"] == "settled"
+        back = FullUnitStatus.model_validate(wire)
+        assert back.latest.guiding.settle is GuidingSettle.SETTLED and back.latest.guiding.settle_timeout == 60
