@@ -17,7 +17,11 @@ from .supervisor import SupervisorConfig
 
 
 class ToleranceConfig(BaseModel):
-    """Configuration for the acquisition tolerances."""
+    """Configuration for the acquisition tolerances, in arcsec on the sky.
+
+    The unit judges offsets in plain RA (the RA coordinate difference, as the mount offset
+    takes it), so it applies ``ra_arcsec`` as ``ra_arcsec / cos(dec)`` of the target.
+    """
 
     ra_arcsec: float
     dec_arcsec: float
