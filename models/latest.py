@@ -184,12 +184,19 @@ class LatestExposure(LatestBase):
 
 class LatestSpiral(LatestBase):
     """The operator spiral session, `PUT /unit/spiral_new_path` to `spiral_end_path`.
-    `succeeded` once the shift is measured; a session closed without one -- left an hour
-    with no step, superseded by a new session, or its final frame failed -- has not."""
 
+    An imaging session (`frames`) has succeeded once the shift is measured; one closed
+    without it -- left an hour with no step, superseded by a new session, aborted, or its
+    final frame failed -- has not. A frameless session takes no frames and measures
+    nothing: it has succeeded when `spiral_end_path` closed it, and not when it was
+    abandoned, superseded or aborted. Whether the caller's own walk completed is in the
+    caller's record, not here."""
+
+    #: False for a session that only moves the mount, leaving the frames to `/expose`.
+    frames: bool | None = None
     x_step_arcsec: float | None = None
     y_step_arcsec: float | None = None
-    exposure_seconds: float | None = None
+    exposure_seconds: float | None = None  # None for a frameless session
     save_intermediate_exposures: bool | None = None
     steps: int = 0  # taken, the reference not counted
     last_frame: str | None = None  # on the unit; its name under `shared_products_path` on the share

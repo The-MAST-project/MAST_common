@@ -128,6 +128,11 @@ class TestInTheStatus:
         assert spiral.steps == 1 and spiral.last_frame == "D:/MAST/2026-10-29/Spirals/0001/step-0001.fits"
         assert spiral.succeeded is False and not spiral.running
 
+    def test_a_frameless_spiral_session_says_so(self):
+        wire = _status(latest=LatestRecords(spiral=LatestSpiral(frames=False).begin())).model_dump(mode="json")
+        assert wire["latest"]["spiral"]["frames"] is False
+        assert wire["latest"]["spiral"]["exposure_seconds"] is None
+
     def test_a_unit_that_reports_no_latest_reads_as_not_reported(self):
         wire = _status().model_dump(mode="json")
         del wire["latest"]
