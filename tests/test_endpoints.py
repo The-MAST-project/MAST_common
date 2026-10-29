@@ -269,6 +269,26 @@ def test_methods_are_honoured():
     assert [route.methods for route in router.routes] == [{"PUT"}]
 
 
+class Verbs:
+    @endpoint(tier=Tier.OPERATION, methods=("PUT",))
+    def move(self):
+        return {}
+
+
+def test_the_declared_methods_are_served():
+    router = APIRouter()
+    add_api_route(router, "/unit/thing/move", endpoint=Verbs().move)
+
+    assert [route.methods for route in router.routes] == [{"PUT"}]
+
+
+def test_methods_at_the_call_override_the_declaration():
+    router = APIRouter()
+    add_api_route(router, "/unit/thing/move", endpoint=Verbs().move, methods=["POST"])
+
+    assert [route.methods for route in router.routes] == [{"POST"}]
+
+
 # --------------------------------------------------------------------------- envelope (stage 3)
 
 
