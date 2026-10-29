@@ -178,6 +178,39 @@ class LatestExposure(LatestBase):
     last_frame: str | None = None
 
 
+class GuidingSettle(StrEnum):
+    """How PHD2's settle after a guide start ended (its `SettleDone`)."""
+
+    SETTLED = "settled"
+    FAILED = "failed"
+
+
+class LatestGuiding(LatestBase):
+    """A guide start: `PUT /unit/start_guiding`, or the acquisition's handover to the guider.
+
+    `settle` is the first `SettleDone` after the start; a dither's does not rewrite it. A
+    failed settle does not end the run: PHD2 goes on guiding, and the client decides. The run
+    ends where `sky_quality.while_guiding` does, at PHD2's `GuidingStopped`, or when guiding is
+    stopped through the unit (`succeeded`); or when the guider refused to start or lost PHD2
+    (not `succeeded`). Whichever comes first."""
+
+    backend: str | None = None  # phd2 | solving
+    settle_pixels: float | None = None  # PHD2's settle criterion
+    settle_time: float | None = None  # seconds
+    settle_timeout: float | None = None  # seconds
+    settle: GuidingSettle | None = None  # None until PHD2 reports it, and for the solving guider
+    settled_at: str | None = None  # ISO UTC
+    settle_error: str | None = None  # PHD2's, for a failed settle
+
+    def settle_done(self, error: str | None) -> None:
+        """PHD2's `SettleDone`: recorded if it is the run's first, and the run is still on."""
+        if self.settle is not None or not self.running:
+            return
+        self.settle = GuidingSettle.SETTLED if error is None else GuidingSettle.FAILED
+        self.settled_at = _now()
+        self.settle_error = error
+
+
 class LatestSpecExposure(LatestBase):
     """The spectrograph's exposure series: a plan's or a batch's (`execute_assignment`), or an
     operator's (`acquire`). `SpecStatus.latest.exposure`.
@@ -281,6 +314,7 @@ class LatestRecords(BaseModel):
     focus_on_star: LatestFocusOnStar | None = None
     acquisition: LatestAcquisition | None = None
     exposure: LatestExposure | None = None
+    guiding: LatestGuiding | None = None
     sky_quality: LatestSkyQuality | None = None
 
 
