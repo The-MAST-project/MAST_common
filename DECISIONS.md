@@ -2,6 +2,18 @@
 
 ---
 
+## [2026-10-30] `phd2.guide_solve_mask`: sensor columns left out of guide-frame solves
+
+**Why:** stars beside the fold mirror's shadow band are measured displaced away from it, and
+MAST_unit's guide-frame solves (the lock nudge's and the pointing check's) bend the fiber's
+position by a median 0.37" when they use them (mast01, 2026-10-28).
+
+**What:** `x_from`/`x_to`, unbinned sensor columns, beside `exclude_region` in `phd2`. Off
+unless both are set, so stored sections without it parse unchanged; `columns` gives the pair
+or None.
+
+**Implications:** per-unit, measured like the exclusion region (mast01: 2000-5800).
+
 ## [2026-10-26] The lock nudge's gate knobs, and its outcome in the unit status
 
 **Why:** MAST_unit's lock nudge now solves several guide frames and refuses when they disagree,

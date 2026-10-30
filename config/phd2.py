@@ -419,6 +419,33 @@ class LockNudgeConfig(BaseModel):
         return self
 
 
+class GuideSolveMaskConfig(BaseModel):
+    """Sensor columns left out of guide-frame plate solves: the nudge's and the pointing check's.
+
+    With the fold mirror in, stars within about 1000 px of its shadow band are measured
+    displaced away from the band, following the vignetting, and a solve that uses them bends
+    the fiber's position by a median 0.37" (mast01, 2026-10-28). Blanking the columns from
+    ``x_from`` to ``x_to`` (unbinned sensor pixels) keeps them out. Only guide frames: the
+    acquisition's solves are taken with the mirror out, where those columns are clear.
+
+    Off unless both edges are set; measured per unit, as the exclusion region is.
+    """
+
+    x_from: int = Field(default=0, ge=0)
+    x_to: int = Field(default=0, ge=0)
+
+    @model_validator(mode="after")
+    def _left_to_right(self):
+        if (self.x_from or self.x_to) and self.x_to <= self.x_from:
+            raise ValueError("phd2.guide_solve_mask: x_to must be right of x_from")
+        return self
+
+    @property
+    def columns(self) -> tuple[int, int] | None:
+        """``(x_from, x_to)``, or None when the mask is off."""
+        return (self.x_from, self.x_to) if self.x_to > self.x_from else None
+
+
 class HandoverStyle(StrEnum):
     """When an FCU v2 unit inserts its fold mirror, relative to guiding."""
 
@@ -465,4 +492,5 @@ class PHD2Config(BaseModel):
     exclude_region: ExcludeRegionConfig = Field(default_factory=ExcludeRegionConfig)
     lock_validity: LockValidityConfig = Field(default_factory=LockValidityConfig)
     lock_nudge: LockNudgeConfig = Field(default_factory=LockNudgeConfig)
+    guide_solve_mask: GuideSolveMaskConfig = Field(default_factory=GuideSolveMaskConfig)
     handover: HandoverConfig = Field(default_factory=HandoverConfig)
