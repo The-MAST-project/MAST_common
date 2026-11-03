@@ -2,6 +2,22 @@
 
 ---
 
+## [2026-11-03] `LatestGuiding`: the guide start's settle outcome
+
+**Why:** MAST_unit reports whether a guide start settled (MAST_unit#384, for #383), and the
+record's shape is shared with its clients.
+
+**What:** `LatestGuiding(LatestBase)`, published as `FullUnitStatus.latest.guiding`: the
+backend, PHD2's settle criterion (pixels, time, timeout), and the first `SettleDone`'s outcome
+(`settle`: `settled` | `failed`, `settled_at`, `settle_error`). `settle_done()` records only
+the first settle of a running record, and a failed settle does not end it. `LatestRecords.guiding`
+is optional, so statuses from units without it parse.
+
+**Implications:** one record per guide start; a later settle in the same guide start is not
+recorded.
+
+---
+
 ## [2026-10-22] A single failed RAM-disk revival is `FAILED` (502), not giving up
 
 **Why:** the supervisor answered `503` both for one revival that did not bring `D:` back and for reaching its give-up limit, and `SupervisorApi` maps the status to the answer, so `Filer` logged an ERROR "the supervisor has given up" after one failure. The supervisor keeps reviving on its own probe until its limit, so that was false.

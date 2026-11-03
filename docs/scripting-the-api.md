@@ -176,6 +176,11 @@ learns which one, and why.
 **Every wait gets a timeout.** A flag that never clears is a real failure mode, and an
 unbounded poll turns it into a hung script instead of an error someone can read.
 
+**Whether guiding settled** is `status.latest.guiding`, one record per guide start: `settle` is
+`settled` or `failed` once PHD2 has reported its first settle (`null` until then), with
+`settled_at` and PHD2's `settle_error`. A failed settle does not stop guiding; the script
+decides. The record ends when guiding stops.
+
 ## Boilerplate
 
 One dependency: `python -m pip install httpx`. (`requests` works the same way, and so does
