@@ -15,6 +15,18 @@ is optional, so statuses from units without it parse.
 
 **Implications:** one record per guide start; a later settle in the same guide start is not
 recorded.
+## [2026-10-26] Tolerances are on the sky; corrections are recorded in plain RA
+
+**Why:** nothing said which convention `ToleranceConfig` and `Correction.ra_delta` carry, and
+the unit's acquisition loop read the same number as both (MAST_unit#191).
+
+**What:** team decision, 2026-10-26. `ToleranceConfig` is in arcsec on the sky; the unit
+applies its RA side in plain RA as `ra_arcsec / cos(dec)`. `Correction.ra_delta` and
+`Corrections.tolerance_ra` are plain RA (the RA coordinate difference, as the mount offset takes
+it). Docstrings only; no field changes.
+
+**Implications:** a reader of `corrections.json` scales RA by `cos(target_dec)` to compare
+nights at different declinations. `tolerance_ra` varies with the target's Dec.
 
 ---
 
