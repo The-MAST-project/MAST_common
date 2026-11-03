@@ -176,6 +176,11 @@ learns which one, and why.
 **Every wait gets a timeout.** A flag that never clears is a real failure mode, and an
 unbounded poll turns it into a hung script instead of an error someone can read.
 
+**Whether guiding settled** is `status.latest.guiding`, one record per guide start: `settle` is
+`settled` or `failed` once PHD2 has reported its first settle (`null` until then), with
+`settled_at` and PHD2's `settle_error`. A failed settle does not stop guiding; the script
+decides. The record ends when guiding stops.
+
 **A spiral session** opened with `spiral_new_path` is `status.latest.spiral` until the next one
 opens: `steps` taken, `last_frame`, and on `spiral_end_path` the measured `shift`. Each step's
 answer carries its frame's path on the share as `image`. `shared_products_path` is `null`
