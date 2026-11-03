@@ -184,7 +184,9 @@ decides. The record ends when guiding stops.
 **A spiral session** opened with `spiral_new_path` is `status.latest.spiral` until the next one
 opens: `steps` taken, `last_frame`, and on `spiral_end_path` the measured `shift`. Each step's
 answer carries its frame's path on the share as `image`. `shared_products_path` is `null`
-while the share is demoted: the frames are then on the unit, not lost.
+while the share is demoted: the frames are then on the unit, not lost. A session opened with
+`frames=false` takes no frames and measures nothing: its `frames` is `false`, and it has
+succeeded when `spiral_end_path` closed it.
 
 ## Boilerplate
 
