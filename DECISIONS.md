@@ -15,6 +15,31 @@ record.
 
 **Implications:** a client reads `shared_products_path: null` as "the products are on the
 unit", not as an error.
+## [2026-11-03] `LatestGuiding`: the guide start's settle outcome
+
+**Why:** MAST_unit reports whether a guide start settled (MAST_unit#384, for #383), and the
+record's shape is shared with its clients.
+
+**What:** `LatestGuiding(LatestBase)`, published as `FullUnitStatus.latest.guiding`: the
+backend, PHD2's settle criterion (pixels, time, timeout), and the first `SettleDone`'s outcome
+(`settle`: `settled` | `failed`, `settled_at`, `settle_error`). `settle_done()` records only
+the first settle of a running record, and a failed settle does not end it. `LatestRecords.guiding`
+is optional, so statuses from units without it parse.
+
+**Implications:** one record per guide start; a later settle in the same guide start is not
+recorded.
+## [2026-10-26] Tolerances are on the sky; corrections are recorded in plain RA
+
+**Why:** nothing said which convention `ToleranceConfig` and `Correction.ra_delta` carry, and
+the unit's acquisition loop read the same number as both (MAST_unit#191).
+
+**What:** team decision, 2026-10-26. `ToleranceConfig` is in arcsec on the sky; the unit
+applies its RA side in plain RA as `ra_arcsec / cos(dec)`. `Correction.ra_delta` and
+`Corrections.tolerance_ra` are plain RA (the RA coordinate difference, as the mount offset takes
+it). Docstrings only; no field changes.
+
+**Implications:** a reader of `corrections.json` scales RA by `cos(target_dec)` to compare
+nights at different declinations. `tolerance_ra` varies with the target's Dec.
 
 ---
 

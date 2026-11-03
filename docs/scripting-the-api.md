@@ -176,6 +176,11 @@ learns which one, and why.
 **Every wait gets a timeout.** A flag that never clears is a real failure mode, and an
 unbounded poll turns it into a hung script instead of an error someone can read.
 
+**Whether guiding settled** is `status.latest.guiding`, one record per guide start: `settle` is
+`settled` or `failed` once PHD2 has reported its first settle (`null` until then), with
+`settled_at` and PHD2's `settle_error`. A failed settle does not stop guiding; the script
+decides. The record ends when guiding stops.
+
 **A spiral session** opened with `spiral_new_path` is `status.latest.spiral` until the next one
 opens: `steps` taken, `last_frame`, and on `spiral_end_path` the measured `shift`. Each step's
 answer carries its frame's path on the share as `image`. `shared_products_path` is `null`
@@ -362,14 +367,21 @@ unit = MastService.unit("mast01")
 unit.put("mount/goto_ra_dec_j2000", ra_j2000_hours="14:39:36", dec_j2000_degs="-60:50:02")
 unit.wait_for("Slewing", component="mount", timeout_seconds=180)
 
-unit.put("expose", exposure_seconds=5, repeats=3, gain=170)
-unit.wait_for("Exposing", component="imager", timeout_seconds=120)
+unit.put("expose", exposure_seconds=5, repeats=3, gain=170, subfolder="run-0001")
+unit.wait_for("Exposing", timeout_seconds=120)
+frames = unit.status()["latest"]["exposure"]["frames"]
 ```
 
-`expose` is an operator verb whose completion is **undeclared**, so that second wait is a
-best-effort read of the imager's own activity rather than a declared signal — check the
-frames landed rather than trusting the flag alone. Passing `ra_j2000_hours` and
-`dec_j2000_degs` to `expose` makes it slew first; supply both or neither.
+`expose` declares `completion=activity:Exposing`, a unit-level flag, so the wait reads the
+unit's own `activities_verbal` (no `component`); the imager's own `Exposing` clears after
+each frame of a run. `status.latest.exposure` describes the run from the first status read
+after the answer, and the `subfolder` you sent ends its `local_products_path`, which is how
+you know the record is yours. Its `frames` lists every frame attempted, in order: `name` (on
+the share under `shared_products_path`), `date_obs` and `exposure_seconds` from the frame's
+header, and `error` for a frame that failed or was aborted; `completed` counts the frames
+saved. On PHD2, not guiding, `[date_obs, date_obs + exposure_seconds]` is the frame's real
+window in the unit's clock. Passing `ra_j2000_hours` and `dec_j2000_degs` to `expose` makes it
+slew first; supply both or neither.
 
 **Acquire a spectrum.** `spec_name` is one of `Deepspec` or `Highspec`:
 

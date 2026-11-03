@@ -173,13 +173,79 @@ class LatestAcquisition(LatestBase):
     solver: str | None = None
 
 
+class LatestExposureFrame(BaseModel):
+    """One frame an exposure series attempted. Its place on the share is `name` under the
+    record's `shared_products_path`.
+
+    `date_obs` and `exposure_seconds` are the frame's `DATE-OBS` and `EXPOSURE` (`EXPTIME`)
+    as the backend wrote them. On PHD2, not guiding, `[date_obs, date_obs + exposure_seconds]`
+    is the frame's real window, in the unit's clock. While PHD2 is guiding it saves the guide
+    frame it already has, so `date_obs` can predate the request and `exposure_seconds` is the
+    guide exposure. The ASCOM and ZWO backends stamp `DATE-OBS` at save time, after the
+    exposure, so the window is wrong there."""
+
+    name: str
+    date_obs: str | None = None  # ISO UTC, aware
+    exposure_seconds: float | None = None
+    error: str | None = None  # None: the frame was saved
+
+
 class LatestExposure(LatestBase):
-    """`PUT /unit/expose`: an exposure series."""
+    """`PUT /unit/expose`: an exposure series. A caller knows the record is its own run by the
+    `subfolder` it sent, which ends `local_products_path`."""
 
     exposure_seconds: float | None = None
     repeats: int | None = None  # requested
-    completed: int = 0  # frames saved
-    last_frame: str | None = None
+    #: Every frame the series attempted, in order. An entry is appended whole.
+    frames: list[LatestExposureFrame] = Field(default_factory=list)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def completed(self) -> int:
+        """Frames saved."""
+        return sum(1 for frame in self.frames if frame.error is None)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def last_frame(self) -> str | None:
+        """The last frame saved, on the unit."""
+        saved = [frame for frame in self.frames if frame.error is None]
+        if not saved or self.local_products_path is None:
+            return None
+        return f"{self.local_products_path}/{saved[-1].name}"
+
+
+class GuidingSettle(StrEnum):
+    """How PHD2's settle after a guide start ended (its `SettleDone`)."""
+
+    SETTLED = "settled"
+    FAILED = "failed"
+
+
+class LatestGuiding(LatestBase):
+    """A guide start: `PUT /unit/start_guiding`, or the acquisition's handover to the guider.
+
+    `settle` is the first `SettleDone` after the start; a dither's does not rewrite it. A
+    failed settle does not end the run: PHD2 goes on guiding, and the client decides. The run
+    ends where `sky_quality.while_guiding` does, at PHD2's `GuidingStopped`, or when guiding is
+    stopped through the unit (`succeeded`); or when the guider refused to start or lost PHD2
+    (not `succeeded`). Whichever comes first."""
+
+    backend: str | None = None  # phd2 | solving
+    settle_pixels: float | None = None  # PHD2's settle criterion
+    settle_time: float | None = None  # seconds
+    settle_timeout: float | None = None  # seconds
+    settle: GuidingSettle | None = None  # None until PHD2 reports it, and for the solving guider
+    settled_at: str | None = None  # ISO UTC
+    settle_error: str | None = None  # PHD2's, for a failed settle
+
+    def settle_done(self, error: str | None) -> None:
+        """PHD2's `SettleDone`: recorded if it is the run's first, and the run is still on."""
+        if self.settle is not None or not self.running:
+            return
+        self.settle = GuidingSettle.SETTLED if error is None else GuidingSettle.FAILED
+        self.settled_at = _now()
+        self.settle_error = error
 
 
 class LatestSpiral(LatestBase):
@@ -312,6 +378,7 @@ class LatestRecords(BaseModel):
     focus_on_star: LatestFocusOnStar | None = None
     acquisition: LatestAcquisition | None = None
     exposure: LatestExposure | None = None
+    guiding: LatestGuiding | None = None
     spiral: LatestSpiral | None = None
     sky_quality: LatestSkyQuality | None = None
 
