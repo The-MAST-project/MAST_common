@@ -2,6 +2,22 @@
 
 ---
 
+## [2026-11-03] `LatestSpiral`, and no share path while the share is demoted
+
+**Why:** MAST_unit reports a manual spiral session (MAST_unit#349), and its record's shape is
+shared with its clients. Writing it showed that every latest record named a share path even
+while the share was demoted, when the products go to the local fallback and never reach it.
+
+**What:** `LatestSpiral(LatestBase)`, published as `FullUnitStatus.latest.spiral`: step sizes,
+exposure, whether step frames are saved, steps taken, the last frame, and the shift once
+measured. `products_paths` returns no share path while `SHARE` is demoted, for every latest
+record.
+
+**Implications:** a client reads `shared_products_path: null` as "the products are on the
+unit", not as an error.
+
+---
+
 ## [2026-10-22] A single failed RAM-disk revival is `FAILED` (502), not giving up
 
 **Why:** the supervisor answered `503` both for one revival that did not bring `D:` back and for reaching its give-up limit, and `SupervisorApi` maps the status to the answer, so `Filer` logged an ERROR "the supervisor has given up" after one failure. The supervisor keeps reviving on its own probe until its limit, so that was false.
