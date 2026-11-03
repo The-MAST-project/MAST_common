@@ -169,13 +169,46 @@ class LatestAcquisition(LatestBase):
     solver: str | None = None
 
 
+class LatestExposureFrame(BaseModel):
+    """One frame an exposure series attempted. Its place on the share is `name` under the
+    record's `shared_products_path`.
+
+    `date_obs` and `exposure_seconds` are the frame's `DATE-OBS` and `EXPOSURE` (`EXPTIME`)
+    as the backend wrote them. On PHD2, not guiding, `[date_obs, date_obs + exposure_seconds]`
+    is the frame's real window, in the unit's clock. While PHD2 is guiding it saves the guide
+    frame it already has, so `date_obs` can predate the request and `exposure_seconds` is the
+    guide exposure. The ASCOM and ZWO backends stamp `DATE-OBS` at save time, after the
+    exposure, so the window is wrong there."""
+
+    name: str
+    date_obs: str | None = None  # ISO UTC, aware
+    exposure_seconds: float | None = None
+    error: str | None = None  # None: the frame was saved
+
+
 class LatestExposure(LatestBase):
-    """`PUT /unit/expose`: an exposure series."""
+    """`PUT /unit/expose`: an exposure series. A caller knows the record is its own run by the
+    `subfolder` it sent, which ends `local_products_path`."""
 
     exposure_seconds: float | None = None
     repeats: int | None = None  # requested
-    completed: int = 0  # frames saved
-    last_frame: str | None = None
+    #: Every frame the series attempted, in order. An entry is appended whole.
+    frames: list[LatestExposureFrame] = Field(default_factory=list)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def completed(self) -> int:
+        """Frames saved."""
+        return sum(1 for frame in self.frames if frame.error is None)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def last_frame(self) -> str | None:
+        """The last frame saved, on the unit."""
+        saved = [frame for frame in self.frames if frame.error is None]
+        if not saved or self.local_products_path is None:
+            return None
+        return f"{self.local_products_path}/{saved[-1].name}"
 
 
 class LatestSpecExposure(LatestBase):

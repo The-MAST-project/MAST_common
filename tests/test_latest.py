@@ -14,6 +14,7 @@ from common.models.latest import (
     LatestAcquisition,
     LatestAcquisitionPhase,
     LatestExposure,
+    LatestExposureFrame,
     LatestFocusOnStar,
     LatestRecords,
     LatestSpecExposure,
@@ -110,6 +111,34 @@ class TestInTheStatus:
         wire = _status().model_dump(mode="json")
         del wire["latest"]
         assert FullUnitStatus.model_validate(wire).latest is None
+
+
+class TestTheExposureFrames:
+    def test_completed_and_last_frame_count_only_frames_without_an_error(self):
+        record = LatestExposure(repeats=3).begin("D:/MAST/2026-10-29/Exposures/cell-001")
+        record.frames.append(LatestExposureFrame(name="a.fits", date_obs="2026-10-29T20:00:00+00:00", exposure_seconds=5.0))
+        record.frames.append(LatestExposureFrame(name="b.fits", error="no file was written"))
+        record.frames.append(LatestExposureFrame(name="c.fits", date_obs="2026-10-29T20:00:07+00:00", exposure_seconds=5.0))
+
+        assert record.completed == 2
+        assert record.last_frame == "D:/MAST/2026-10-29/Exposures/cell-001/c.fits"
+
+    def test_no_frame_yet(self):
+        record = LatestExposure(repeats=2).begin("D:/MAST/2026-10-29/Exposures")
+        assert record.completed == 0 and record.last_frame is None
+
+    def test_the_wire_keeps_completed_and_last_frame(self):
+        record = LatestExposure(repeats=1).begin("D:/MAST/2026-10-29/Exposures")
+        record.frames.append(LatestExposureFrame(name="a.fits", date_obs="2026-10-29T20:00:00+00:00", exposure_seconds=5.0))
+
+        wire = _status(latest=LatestRecords(exposure=record)).model_dump(mode="json")
+        back = FullUnitStatus.model_validate(wire)
+
+        assert wire["latest"]["exposure"]["completed"] == 1
+        assert wire["latest"]["exposure"]["last_frame"] == "D:/MAST/2026-10-29/Exposures/a.fits"
+        assert back.latest is not None and back.latest.exposure is not None
+        assert back.latest.exposure.frames[0].date_obs == "2026-10-29T20:00:00+00:00"
+        assert back.latest.exposure.completed == 1
 
 
 class TestTheSpectrograph:
