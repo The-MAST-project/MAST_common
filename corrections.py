@@ -8,12 +8,25 @@ from common.utils import isoformat_zulu
 
 
 class Correction(BaseModel):
+    """One solve's offset, target minus solved, in arcsec.
+
+    ``ra_delta`` is plain RA: the difference of the RA coordinates, with no ``cos(dec)``
+    factor, as the mount offset takes it. Nights at different declinations are therefore not
+    on one scale in RA.
+    """
+
     time: str
     ra_delta: float
     dec_delta: float
 
 
 class Corrections(BaseModel):
+    """A phase's solves and the tolerance they were judged against, in arcsec.
+
+    ``tolerance_ra`` is the plain-RA value applied: the configured on-sky tolerance divided by
+    ``cos(target_dec)``, so it varies with declination and grows without bound toward the pole.
+    """
+
     phase: str
     target_ra: float
     target_dec: float
