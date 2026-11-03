@@ -181,6 +181,11 @@ unbounded poll turns it into a hung script instead of an error someone can read.
 `settled_at` and PHD2's `settle_error`. A failed settle does not stop guiding; the script
 decides. The record ends when guiding stops.
 
+**A spiral session** opened with `spiral_new_path` is `status.latest.spiral` until the next one
+opens: `steps` taken, `last_frame`, and on `spiral_end_path` the measured `shift`. Each step's
+answer carries its frame's path on the share as `image`. `shared_products_path` is `null`
+while the share is demoted: the frames are then on the unit, not lost.
+
 ## Boilerplate
 
 One dependency: `python -m pip install httpx`. (`requests` works the same way, and so does

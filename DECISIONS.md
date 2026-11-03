@@ -2,6 +2,19 @@
 
 ---
 
+## [2026-11-03] `LatestSpiral`, and no share path while the share is demoted
+
+**Why:** MAST_unit reports a manual spiral session (MAST_unit#349), and its record's shape is
+shared with its clients. Writing it showed that every latest record named a share path even
+while the share was demoted, when the products go to the local fallback and never reach it.
+
+**What:** `LatestSpiral(LatestBase)`, published as `FullUnitStatus.latest.spiral`: step sizes,
+exposure, whether step frames are saved, steps taken, the last frame, and the shift once
+measured. `products_paths` returns no share path while `SHARE` is demoted, for every latest
+record.
+
+**Implications:** a client reads `shared_products_path: null` as "the products are on the
+unit", not as an error.
 ## [2026-11-03] `LatestGuiding`: the guide start's settle outcome
 
 **Why:** MAST_unit reports whether a guide start settled (MAST_unit#384, for #383), and the
