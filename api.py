@@ -2,7 +2,7 @@ import asyncio
 import re
 import socket
 import ssl
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from enum import Enum, auto
 from threading import Lock
 from typing import ClassVar
@@ -460,7 +460,7 @@ class NotificationApi(BaseApi):
         self._initialized = True
 
 
-class SafetyApi(BaseApi):
+class SafetyApi:
     _instance = None
     _initialized = False
 
@@ -471,31 +471,102 @@ class SafetyApi(BaseApi):
 
     def __init__(
         self,
-        site_name: str | None = None,
-        hostname: str | None = None,
-        ipaddr: str | None = None,
-        port: int | None = None,
+        ipaddr: str | None = "10.23.1.25",
+        port: int | None = 80,
         timeout: float | None = 0.5,
     ):
         if self._initialized:
             return
 
-        site = resolve_site(site_name)
-        service_conf = Config().get_service(service_name="safety")
+        self.ipaddr = ipaddr
+        self.port = port
+        self.timeout = timeout
+        self.errors: list[str] = []
+        self.detected = False
+        self.base_url = "/observatory/data/api"
 
-        if port is None and service_conf is not None:
-            port = service_conf.port
-
-        if ipaddr is None:
-            if hostname is None:
-                hostname = f"{site.project}-{site.name}-safety"
-            try:
-                ipaddr = socket.gethostbyname(hostname)
-            except socket.gaierror as err:
-                raise ValueError(f"cannot get 'ipaddr' for {hostname=}") from err
-
-        super().__init__(ipaddr=ipaddr, port=port, timeout=timeout, domain=ApiDomain.Safety)
         self._initialized = True
+
+    def append_error(self, err: str):
+        self.errors.append(err)
+
+    async def _fetch(self, path: str, op: str, timeout: float | None) -> dict | None:
+        """GET ``path`` under the data API as a JSON object, or None with the reason in `errors`."""
+        url = f"http://{self.ipaddr}:{self.port}{self.base_url}/{path}"
+        self.errors = []
+        timeout = timeout or self.timeout
+        async with httpx.AsyncClient(trust_env=False) as client:
+            try:
+                response = await client.get(url=url, timeout=timeout)
+                response.raise_for_status()
+            except httpx.TimeoutException:
+                self.append_error(f"{op}({url=}): timeout after {timeout} seconds")
+                self.detected = False
+                return None
+            except httpx.HTTPStatusError as e:
+                # A wrong device or sensor name is a 404 whose body says what was tried.
+                self.append_error(f"{op}({url=}): HTTP {e.response.status_code} - {e.response.text[:300]}")
+                self.detected = True
+                return None
+            except httpx.HTTPError as e:
+                self.append_error(f"{op}({url=}): {e}")
+                self.detected = False
+                return None
+        self.detected = True
+
+        try:
+            body = response.json()
+        except ValueError as e:  # JSONDecodeError
+            self.append_error(f"{op}({url=}): malformed response: {e!r} [{response.text[:300]}]")
+            return None
+        if not isinstance(body, dict):
+            self.append_error(f"{op}({url=}): not a JSON object [{response.text[:300]}]")
+            return None
+        return body
+
+    async def get(self, device: str, sensor: str, timeout: float | None = None) -> tuple[float, timedelta] | None:
+        """One sensor of one station: ``(value, age)``, or None with the reason in `errors`.
+
+        The service answers ``{"device_uid", "sensor_id", "data": {"timestamp", "value", ...}}``,
+        not a `CanonicalResponse`. ``timestamp`` is epoch seconds and ``value`` a number, both
+        as strings. The age is against this machine's clock, so it includes any skew between
+        the two.
+        """
+        op = f"SafetyApi.get({device=}, {sensor=})"
+        body = await self._fetch(f"device/{device}/sensor/{sensor}", op, timeout)
+        if body is None:
+            return None
+
+        data = body.get("data")
+        if not isinstance(data, dict):
+            self.append_error(f"{op}: no 'data' in response [{str(body)[:300]}]")
+            return None
+        for key in ("value", "timestamp"):
+            if key not in data:
+                self.append_error(f"{op}: no '{key}' in response [{data}]")
+                return None
+        try:
+            value = float(data["value"])
+            taken = datetime.fromtimestamp(float(data["timestamp"]), tz=UTC)
+        except (ValueError, TypeError) as e:
+            self.append_error(f"{op}: malformed value or timestamp: {e!r} [{data}]")
+            return None
+
+        return value, datetime.now(UTC) - taken
+
+    async def sensors(self, device: str, timeout: float | None = None) -> dict[str, dict] | None:
+        """Every sensor of one station, by name -- each ``{"timestamp", "sensor_type",
+        "sensor_unit", "value"}`` as the service gives it -- or None with the reason in `errors`.
+        `/devices` lists the stations."""
+        op = f"SafetyApi.sensors({device=})"
+        body = await self._fetch(f"device/{device}/sensors", op, timeout)
+        if body is None:
+            return None
+        sensors = body.get("sensors")
+        if not isinstance(sensors, dict):
+            self.append_error(f"{op}: no 'sensors' in response [{str(body)[:300]}]")
+            return None
+        return sensors
 
 
 def test_bogus_unit_api():
@@ -522,43 +593,27 @@ def test_bogus_unit_api():
 
 
 def test_safety_wind_speed():
-    from common.utils import fromisoformat_zulu
-
-    try:
-        safety = SafetyApi(ipaddr="10.23.1.25", port=8001, timeout=10)
-        url = "mast/sensor/wind-speed"
-        response: CanonicalResponse = asyncio.run(safety.get(url))
-        if response.succeeded and response.value is not None:
-            if (
-                "sensor" in response.value
-                and "readings" in response.value["sensor"]
-                and isinstance(response.value["sensor"]["readings"], list)
-            ):
-                readings = response.value["sensor"]["readings"]
-                if len(readings) > 0:
-                    latest_reading = readings[-1]
-                    wind_speed = latest_reading["value"]
-                    logger.info(f"wind speed tstamp:'{latest_reading['time']}'")
-                    age = datetime.now(UTC) - fromisoformat_zulu(latest_reading["time"])
-
-            print(f"{wind_speed=}, age='{humanfriendly.format_timespan(age.total_seconds())}'")
-
-    except Exception as e:  # noqa: BLE001 -- demo entry point: report whatever went wrong
-        logger.error(f"Error accessing safety API: {e}")
+    safety = SafetyApi(ipaddr="10.23.1.25", port=80, timeout=10)
+    result = asyncio.run(safety.get(device="davis", sensor="wind_speed"))
+    if result is None:
+        logger.error(f"Error accessing safety API: {safety.errors}")
+        return
+    wind_speed, age = result
+    print(f"{wind_speed=}, age='{humanfriendly.format_timespan(age.total_seconds())}'")
 
 
 def test_safety_sensors():
-    import json
-
-    try:
-        safety = SafetyApi(ipaddr="10.23.1.25", port=8001, timeout=10)
-        url = "mast/sensors"
-        response: CanonicalResponse = asyncio.run(safety.get(url))
-        if response.succeeded and response.value is not None:
-            print(json.dumps(response.value, indent=2))
-
-    except Exception as e:  # noqa: BLE001 -- demo entry point: report whatever went wrong
-        logger.error(f"Error accessing safety API: {e}")
+    safety = SafetyApi(ipaddr="10.23.1.25", port=80, timeout=10)
+    sensors = asyncio.run(safety.sensors(device="davis"))
+    if sensors is None:
+        logger.error(f"Error accessing safety API: {safety.errors}")
+        return
+    for name, reading in sorted(sensors.items()):
+        age = datetime.now(UTC) - datetime.fromtimestamp(float(reading["timestamp"]), tz=UTC)
+        print(
+            f"{name:28} {reading['value']:>22} {reading.get('sensor_unit', ''):8} "
+            f"age={humanfriendly.format_timespan(age.total_seconds())}"
+        )
 
 
 if __name__ == "__main__":
