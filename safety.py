@@ -5,9 +5,7 @@ import humanfriendly
 from pydantic import BaseModel
 
 from common.api import SafetyApi
-from common.config import Config
 from common.mast_logging import get_logger
-from common.utils import fromisoformat_zulu
 
 
 class SensorSettingsBaseModel(BaseModel):
@@ -60,61 +58,49 @@ logger = get_logger(__name__)
 
 
 def safety_get_sensor(
+    weather_station_name: str,
     sensor_name: str,
-    project_name: str | None = None,
     timeout: float = 1.0,
     max_age: datetime.timedelta = datetime.timedelta(seconds=3),
-) -> tuple[float, bool, list[str] | None] | None:
+) -> float | None:
+    """One sensor's latest value from the observatory's data service, or None.
+
+    - `weather_station_name`: the device, e.g. "davis" (`/observatory/data/api/devices` lists them)
+    - `sensor_name`: its sensor, e.g. "wind_speed", "outside_humidity", "dew_point"
+      (`/observatory/data/api/device/<device>/sensors` lists them)
+    - `timeout`: seconds for the request
+    - `max_age`: a reading older than this is ignored
+
+    None when the reading cannot be had or is too old, logged. The service gives values, not
+    a safety verdict: there is no `is_safe` or `reasons_for_not_safe` any more.
     """
-    Fetches a sensor reading from the safety system.
-    - `sensor_name`: the name of the sensor to fetch (e.g. "wind-speed", "humidity", "dew-point")
-    - `project_name`: the project name to use (if None, uses the local site's project name)
-    - `timeout`: the timeout in seconds to use for the API call
-    - `max_age`: the maximum age of the sensor reading to consider it valid
-
-    Returns a tuple of (`value`, `is_safe`, `reasons_for_not_safe`) or None if there were errors
-
-    """
-    if project_name is None:
-        local_site = Config().local_site
-        assert local_site is not None
-        project_name = local_site.project
-
+    op = "safety_get_sensor"
     try:
-        safety_api = SafetyApi(ipaddr="10.23.1.25", port=8001, timeout=timeout)
-        response = asyncio.run(safety_api.get(f"{project_name}/sensor/{sensor_name}"))
-        if response.succeeded and response.value is not None:
-            sensor: SensorModel = SensorModel(**response.value["sensor"])
-
-            if not isinstance(sensor.readings, list):
-                sensor.readings = [sensor.readings]
-
-            latest_reading = sensor.readings[-1]
-            age = datetime.datetime.now(datetime.UTC) - fromisoformat_zulu(latest_reading.time)
-            if age > max_age:
-                logger.warning(
-                    f"safety_get_sensor: ignoring '{sensor.name}' reading, too old "
-                    f"'{humanfriendly.format_timespan(age)}' > '{humanfriendly.format_timespan(max_age)}'"
-                )
-                return None
-            else:
-                return latest_reading.value, sensor.safe, sensor.reasons_for_not_safe
-        else:
-            for error in response.errors or []:
-                logger.error(error)
+        safety_api = SafetyApi(ipaddr="10.23.1.25", port=80, timeout=timeout)
+        result = asyncio.run(safety_api.get(device=weather_station_name, sensor=sensor_name, timeout=timeout))
+        if result is None:
+            for error in safety_api.errors:
+                logger.error(f"{op}: {error}")
             return None
+
+        value, age = result
+        if age > max_age:
+            logger.warning(
+                f"{op}: ignoring {weather_station_name}/{sensor_name}, too old "
+                f"'{humanfriendly.format_timespan(age.total_seconds())}' > "
+                f"'{humanfriendly.format_timespan(max_age.total_seconds())}'"
+            )
+            return None
+        return value
     except Exception:
         # Broad on purpose -- a sensor read must never take the caller down -- but it
         # used to return None in silence, so a malformed reading looked exactly like a
         # sensor that had nothing to say. logger.exception keeps the traceback.
-        logger.exception("safety_get_sensor: failed")
+        logger.exception(f"{op}: failed")
         return None
 
 
 if __name__ == "__main__":
-    for sensor_name in ["wind-speed", "humidity", "dew-point", "sun"]:
-        result = safety_get_sensor(sensor_name, timeout=60, max_age=datetime.timedelta(minutes=10))
-
-        if result is not None:
-            value, is_safe, reasons = result
-            print(f"{sensor_name}: {value=}, {is_safe=}, {reasons=}")
+    for station, sensor_name in [("davis", "wind_speed"), ("davis", "outside_humidity"), ("davis", "dew_point")]:
+        value = safety_get_sensor(station, sensor_name, timeout=60, max_age=datetime.timedelta(minutes=10))
+        print(f"{station}/{sensor_name}: {value=}")
