@@ -333,6 +333,8 @@ class SkyQualityWindow(BaseModel):
     frame -- a cosmic ray, a gust -- moves them by one sample, not by its size."""
 
     seconds: int
+    #: ISO UTC the window reaches up to: it covers the `seconds` before this.
+    ends_at: str | None = None
     samples: int = 0  # guide frames measured
     #: First to last sample: short of `seconds` early in a session, or after a gap.
     span_seconds: float = 0.0
@@ -369,10 +371,56 @@ class LatestGuidingSkyQuality(LatestBase):
     windows: list[SkyQualityWindow] = Field(default_factory=list)  # shortest first
 
 
+class LatestMeasuredSkyQuality(LatestBase):
+    """The sky in one frame at best focus, taken by a solved `focus_on_star` straight after it.
+
+    Same exposure, binning and box as the run, on the run's star at the fibre pixel.
+
+    - **Image quality** is the star's FWHM (the standard seeing figure) and HFD, in
+      arcseconds. Delivered image size, optics included; ``hfd_over_fwhm`` says how much
+      light is in the wings (about 1.13 for atmospheric seeing, more with scatter or coma).
+    - **Zero point**, ``G + 2.5 log10(counts / s)``, the median over the box's unsaturated
+      stars matched to Gaia DR3. With ``airmass`` it is what transparency and extinction
+      will be reckoned from, once a unit has a clear-night baseline to compare against.
+    - **Background** in raw ADU, the camera's bias included: no bias level is configured,
+      so it is not converted to a sky brightness.
+    """
+
+    #: ISO UTC of the frame's mid-exposure: when the values below describe the sky.
+    observed_at: str | None = None
+    exposure_seconds: float | None = None
+    binning: int | None = None
+    plate_scale_arcsec: float | None = None  # per pixel, binning included
+    altitude_degs: float | None = None
+    airmass: float | None = None
+
+    star_mag: float | None = None  # the focus star's Gaia G
+    fwhm_px: float | None = None
+    fwhm_arcsec: float | None = None
+    hfd_px: float | None = None
+    hfd_arcsec: float | None = None
+    hfd_over_fwhm: float | None = None
+
+    #: Gaia stars expected in the box, detections in it, and how many of those matched.
+    catalog_stars: int = 0
+    detected_stars: int = 0
+    matched_stars: int = 0
+    #: The field's orientation the match found: the rotation from the sky's east-north axes
+    #: to the frame's x-y, and whether the frame is mirrored. None when there was no match.
+    rotation_degs: float | None = None
+    mirrored: bool | None = None
+    zero_point_mag: float | None = None
+    zero_point_spread_mag: float | None = None  # MAD scaled to a standard deviation
+    zero_point_stars: int = 0  # matched, unsaturated, with positive flux
+
+    background_adu: float | None = None  # median of the box, bias included
+
+
 class LatestSkyQuality(BaseModel):
     """`FullUnitStatus.latest.sky_quality`."""
 
     while_guiding: LatestGuidingSkyQuality | None = None
+    measured: LatestMeasuredSkyQuality | None = None
 
 
 class LatestRecords(BaseModel):
