@@ -269,9 +269,12 @@ class PHD2GuiderStatus(BaseModel):
     #: was last sent, and not what the configuration asks for. A consumer that needs
     #: to know the instrument's state reads these and nothing else (#245).
     #:
-    #: The two rectangles are in unbinned FULL-SENSOR pixels; `lock_position` is in
-    #: the coordinates of the image PHD2 is delivering, which is `limit_frame` when
-    #: one is in force. Comparing them without adding the crop origin is wrong by
+    #: `exclude_region` is in unbinned FULL-SENSOR pixels. `limit_frame` is in the
+    #: current binning's full-sensor pixels: PHD2 keeps a copy per binning, so at
+    #: binning 2 it reads back halved. `lock_position` is in the coordinates of the
+    #: image PHD2 is delivering, which is `limit_frame` when one is in force.
+    #: Comparing the lock with `exclude_region` takes the limit frame's origin added,
+    #: then the sum multiplied by the binning. Without the crop origin it is wrong by
     #: 520 px on the derived frame and 6363 on the strip, and does not look wrong
     #: (#234).
     limit_frame: "ImagerRoi | None" = None
