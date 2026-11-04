@@ -273,6 +273,11 @@ class EndpointDeclaration:
     #: How the caller learns the operation finished. `None` means undeclared, and publishes
     #: nothing, so a consumer reading the schema can tell it apart from a classified route.
     completion: Completion | NotificationChannel | IntFlag | None = None
+    #: The route starts its machine up before running, when it is not started up. Declared
+    #: here, **acted on by the consumer**: this module knows nothing of opstates, so it only
+    #: records the flag, publishes it as `x-autostartup`, and has `add_api_route` insist on the
+    #: consumer's `autostarter` for it. MAST_unit's is `Unit._autostarted`.
+    autostartup: bool = False
 
 
 class UndeclaredEndpointError(TypeError):
@@ -286,6 +291,7 @@ def endpoint(
     factory: bool = False,
     methods: tuple[str, ...] | None = None,
     completion: Completion | NotificationChannel | IntFlag | None = None,
+    autostartup: bool = False,
 ) -> Callable:
     """Declare a method as part of the HTTP surface, at its definition site.
 
@@ -315,8 +321,19 @@ def endpoint(
     is stamped with it, so `add_api_route` accepts what it is handed. One `@endpoint(` grep
     still finds this, which is why it is a flag on the existing decorator rather than a second
     decorator with a name of its own.
+
+    `autostartup=True` declares a route that starts its machine up first, when it is not
+    started up -- see `EndpointDeclaration.autostartup`. It is the same token for the same
+    reason. Refused on an `INTERFACE` route (a component lifecycle verb starting its own unit
+    up is circular) and on a `Completion.IMMEDIATE` one (a read must never start hardware).
     """
-    declaration = EndpointDeclaration(tier=tier, stability=stability, methods=methods, completion=completion)
+    if autostartup and tier is Tier.INTERFACE:
+        raise UndeclaredEndpointError("autostartup=True on an INTERFACE route: a lifecycle verb cannot start its machine.")
+    if autostartup and completion is Completion.IMMEDIATE:
+        raise UndeclaredEndpointError("autostartup=True on a Completion.IMMEDIATE route: a read must never start hardware.")
+    declaration = EndpointDeclaration(
+        tier=tier, stability=stability, methods=methods, completion=completion, autostartup=autostartup
+    )
 
     def mark(function: Callable) -> Callable:
         if not factory:
@@ -472,6 +489,7 @@ def add_api_route(
     *,
     endpoint: Callable,
     methods: list[str] | None = None,
+    autostarter: Callable[[Callable], Callable] | None = None,
     **kwargs: Any,
 ) -> None:
     """Register a route, refusing any handler that has not declared itself.
@@ -494,14 +512,26 @@ def add_api_route(
     a bare value, a `None` or an escaping exception (invariant 4, MAST_unit#34 stage 3). Doing
     it here rather than in 32 handler bodies is also what makes the parked HTTP-status-code
     decision (guidelines §4) tractable: it collapses ~70 error-construction sites to one.
+
+    `autostarter` is how a consumer acts on `autostartup=True`: it takes the handler and returns
+    one that starts the machine up first (`functools.wraps` it, so the signature and the
+    declaration carry through). Required exactly when the handler declares `autostartup`, and
+    refused otherwise -- a declared route left unwrapped would silently not start anything, and
+    a wrapper on an undeclared one would start hardware the declaration says it does not.
     """
     declaration = declaration_of(endpoint)
+    name = getattr(endpoint, "__qualname__", repr(endpoint))
     if declaration is None:
-        name = getattr(endpoint, "__qualname__", repr(endpoint))
         raise UndeclaredEndpointError(
             f"{path}: '{name}' is routed but declares no tier. "
             f"Add @endpoint(tier=Tier.<TIER>) at its definition (MAST_unit#42 invariant 10)."
         )
+    if declaration.autostartup and autostarter is None:
+        raise UndeclaredEndpointError(f"{path}: '{name}' declares autostartup=True but is registered with no autostarter.")
+    if autostarter is not None and not declaration.autostartup:
+        raise UndeclaredEndpointError(f"{path}: '{name}' has an autostarter but does not declare autostartup.")
+    if autostarter is not None:
+        endpoint = autostarter(endpoint)
 
     if "tags" in kwargs:
         logger.warning("%s: the tag is the tier, read from the declaration -- ignoring tags=%r.", path, kwargs.pop("tags"))
@@ -532,6 +562,8 @@ def _register(
     }
     if declaration.completion is not None:
         kwargs["openapi_extra"]["x-completion"] = completion_token(declaration.completion)
+    if declaration.autostartup:
+        kwargs["openapi_extra"]["x-autostartup"] = True
 
     # Additive: it puts `deprecated: true` on this operation and changes nothing else.
     if declaration.stability is Stability.DEPRECATED or declaration.tier is Tier.DEMO:

@@ -120,6 +120,24 @@ class UnitConfig(BaseModel):
         },
     )
 
+    # Seconds an `autostartup` route waits for the unit's startup to complete before it answers
+    # with the unit's `why_not_operational`. The startup is left running either way. 120 is 2.5x
+    # the slowest startup on record (94 startups on mast00-mast04, 2026-10/11: median 34 s,
+    # max 48 s). Read live.
+    seconds_to_autostartup: int = Field(
+        default=120,
+        gt=0,
+        json_schema_extra={
+            "ui": {
+                "editable": True,
+                "widget": "number",
+                "unit": "s",
+                "label": "Autostartup Wait",
+                "tooltip": "Seconds a route that starts the unit up waits for the startup to complete",
+            },
+        },
+    )
+
     @field_validator("minutes_to_autoshutdown_on_idle")
     @classmethod
     def _zero_or_at_least_five(cls, minutes: int) -> int:
