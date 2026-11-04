@@ -263,23 +263,31 @@ class FocusOnStarSettings(BaseModel):
 
     # Star search.  The radius grows by search_growth until a candidate is found
     # or max_search_radius_deg is passed.  The isolation check is a circle around
-    # the candidate: the fov box's half-diagonal plus isolation_margin_px, because
-    # the camera's position angle on the sky is not known.
+    # the candidate with nothing brighter in it.  Only the chosen star is measured,
+    # so the circle need only keep its stamp clean: the largest HFD aperture
+    # (r_max 70 px) plus padding.  It replaced the fov box's half-diagonal, which at
+    # G 11-13 rarely held no brighter star.  Pixels at bin 1.
     search_radius_deg: float = 0.5
     search_growth: float = 2.0
     max_search_radius_deg: float = 4.0
-    isolation_margin_px: int = 80  # about one HFD stamp, so a neighbour's wings stay out
+    isolation_radius_px: int = 100
+    # The chosen star is the brightest source within this many pixels: of the fibre
+    # pixel on the probe, of where it was on the frame before during the sweep.
+    star_search_px: int = 30
 
     # Endpoint defaults (each may be overridden per call).
     fov_percent: float = 10.0  # LINEAR percent of the frame's width and height
-    star_magnitude: float = 10.0  # the star must be no brighter than this (G >= limit)
-    steps: int = 5  # V-curve points; MUST be odd so a point sits on the seed
-    ticks_per_step: int = 50
+    # The star must be no brighter than this (G >= limit).  At 5 s a G 10 star near focus
+    # peaks ~250k ADU (mast03, 2026-10: 33-47k ADU at 0.75 s), so G 11 still saturates on a
+    # good night; the probe then estimates a fainter limit and picks again, once.
+    star_magnitude: float = 11.0
+    steps: int = 7  # V-curve points; MUST be odd so a point sits on the seed
+    ticks_per_step: int = 75  # 7 x 75 spans +-225 ticks
 
-    # Exposure and analysis.
-    exposure: float = 3.0  # seconds; halved on saturation, up to max_saturation_retries times
+    # Exposure and analysis.  The exposure is fixed: a star that saturates is replaced by a
+    # fainter one, never measured with a shorter exposure.
+    exposure: float = Field(default=5.0, gt=0, le=5.0)  # seconds
     binning: ASI_294MM_SUPPORTED_BINNINGS_LITERAL = 1
-    max_saturation_retries: int = 2
     max_tries: int = 1  # 1 = one sweep, exactly as asked; 2 allows one re-centred sweep
     # Plate-solve tries to put the star on the fibre pixel. Its own limit, not the unit's
     # acquisition.tries (20 on mast00): at ~20 s a try, a run that cannot solve -- dome
@@ -287,10 +295,10 @@ class FocusOnStarSettings(BaseModel):
     acquisition_tries: int = 5
     tolerance_frac: float = 0.025
     #
-    # The shape gate, looser than /calibrate/focuser's: a 5 x 50-tick sweep spans
-    # only +-100 ticks, over which HFD rises ~1.1-1.2x on recorded sweeps, so the
-    # calibration's min_edge_rise of 1.25 would reject good runs.  ESTIMATES --
-    # re-check against on-sky runs.
+    # The shape gate, looser than /calibrate/focuser's.  Set when the sweep was 5 x 50
+    # ticks (+-100), over which HFD rose ~1.1-1.2x on recorded sweeps; the 7 x 75 sweep
+    # (+-225) rises more, so 1.10 only got easier to pass.  ESTIMATES -- re-check
+    # against on-sky runs.
     min_fit_r2: float = 0.85
     min_edge_rise: float = 1.10
     max_best_hfd_px: float = 35.0

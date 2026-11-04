@@ -1,5 +1,8 @@
 """focus_on_star's shared pieces: its settings block, its activity flag, its folder."""
 
+import pytest
+from pydantic import ValidationError
+
 from common.activities import UnitActivities
 from common.config.calibration import CalibrationConfig, CalibrationSettings, FocusOnStarSettings
 from common.paths import CALIBRATION_PHASE_FOLDERS
@@ -10,10 +13,28 @@ def test_defaults_are_the_agreed_ones():
     assert s.catalog_root == r"\\last0\catalogs\GAIA\DR3"
     assert s.mag_column == "phot_g_mean_mag"
     assert s.fov_percent == 10.0
-    assert s.steps == 5
+    assert s.steps == 7
     assert s.steps % 2 == 1  # a V-curve point must sit on the seed
-    assert s.ticks_per_step == 50
+    assert s.ticks_per_step == 75
     assert s.acquisition_tries == 5  # its own limit, not the unit's acquisition.tries
+    assert s.star_magnitude == 11.0
+    assert s.exposure == 5.0
+    assert s.isolation_radius_px == 100
+    assert s.star_search_px == 30
+
+
+def test_the_exposure_is_at_most_5_seconds():
+    with pytest.raises(ValidationError):
+        FocusOnStarSettings(exposure=6.0)
+    assert FocusOnStarSettings(exposure=5.0).exposure == 5.0
+
+
+def test_a_stored_block_with_retired_keys_still_loads():
+    # The DB copies on mast01 / mast03 still carry max_saturation_retries and
+    # isolation_margin_px; unknown keys are ignored, not refused.
+    s = FocusOnStarSettings.model_validate({"max_saturation_retries": 2, "isolation_margin_px": 80, "steps": 5})
+    assert s.steps == 5
+    assert not hasattr(s, "max_saturation_retries")
 
 
 def test_a_stored_focus_on_star_block_without_acquisition_tries_still_loads():
@@ -34,7 +55,7 @@ def test_a_stored_block_without_focus_on_star_still_loads():
 def test_per_unit_override_is_honoured():
     settings = CalibrationSettings.model_validate({"focus_on_star": {"star_magnitude": 11.5}})
     assert settings.focus_on_star.star_magnitude == 11.5
-    assert settings.focus_on_star.steps == 5
+    assert settings.focus_on_star.steps == 7
 
 
 def test_flag_is_appended_after_aborting():
