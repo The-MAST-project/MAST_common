@@ -2,6 +2,8 @@
 
 This file is part of `MAST_common`, which each MAST project consumes. It is imported by each project's own `CLAUDE.md` via `@../common/CLAUDE.md`.
 
+**Operational how-tos live in the [MAST wiki](https://github.com/The-MAST-project/MAST/wiki), not in the repos.** A file carrying a `# How-to:` pointer, or covered by a wiki page's `triggers`, updates that page in the same change; run `/wiki-sweep` before opening a PR. The wiki is public.
+
 ## What is MAST?
 
 **MAsters of Spectra** — a distributed telescope control system for the Multiple Aperture Spectroscopic Telescope. Several Python services communicate over HTTP (FastAPI), coordinated by a central controller.

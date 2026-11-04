@@ -30,6 +30,8 @@ Changing the operating mode:
 
 """
 
+# How-to: https://github.com/The-MAST-project/MAST/wiki/Running-a-unit
+
 from __future__ import annotations
 
 import os
