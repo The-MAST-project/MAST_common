@@ -10,6 +10,7 @@ def test_no_measurement_yet_is_none_beside_while_guiding():
 
 def test_a_measurement_round_trips():
     record = LatestMeasuredSkyQuality(
+        observed_at="2026-11-04T19:30:02.500000+00:00",
         exposure_seconds=5.0,
         binning=1,
         plate_scale_arcsec=0.2616,
