@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 from enum import IntFlag, auto
 
 import pytest
@@ -581,3 +582,95 @@ def test_a_zero_valued_idle_is_refused():
 
     with pytest.raises(ValueError, match="exactly one activity flag"):
         completion_token(WithIdle.Idle)
+
+
+class Autostarting:
+    @endpoint(tier=Tier.OPERATION, autostartup=True)
+    def acquire(self):
+        return {}
+
+    @endpoint(tier=Tier.OPERATION)
+    def plain(self):
+        return {}
+
+
+def _autostarting_operation(name: str) -> dict:
+    router = APIRouter()
+    handler = getattr(Autostarting(), name)
+    starter = _starter([]) if declaration_of(handler).autostartup else None
+    add_api_route(router, f"/{name}", endpoint=handler, methods=["PUT"], autostarter=starter)
+    app = FastAPI()
+    app.include_router(router)
+    return app.openapi()["paths"][f"/{name}"]["put"]
+
+
+def test_autostartup_defaults_to_off():
+    assert EndpointDeclaration(tier=Tier.OPERATION).autostartup is False
+    assert declaration_of(Autostarting.plain).autostartup is False
+
+
+def test_an_autostartup_route_is_declared_and_published():
+    assert declaration_of(Autostarting.acquire).autostartup is True
+    assert _autostarting_operation("acquire")["x-autostartup"] is True
+
+
+def test_a_route_without_autostartup_publishes_nothing():
+    assert "x-autostartup" not in _autostarting_operation("plain")
+
+
+def test_autostartup_rides_on_a_factory_built_handler():
+    class Factory:
+        @endpoint(tier=Tier.OPERATION, factory=True, autostartup=True)
+        def build(self):
+            def handler():
+                return {}
+
+            return handler
+
+    assert declaration_of(Factory().build()).autostartup is True
+
+
+def test_autostartup_is_refused_on_an_interface_route():
+    with pytest.raises(UndeclaredEndpointError, match="INTERFACE"):
+        endpoint(tier=Tier.INTERFACE, autostartup=True)
+
+
+def test_autostartup_is_refused_on_an_immediate_route():
+    with pytest.raises(UndeclaredEndpointError, match="IMMEDIATE"):
+        endpoint(tier=Tier.OPERATION, completion=Completion.IMMEDIATE, autostartup=True)
+
+
+def _starter(calls: list[str]):
+    def autostarter(handler):
+        @functools.wraps(handler)
+        def wrapper(*args, **kwargs):
+            calls.append("started")
+            return handler(*args, **kwargs)
+
+        return wrapper
+
+    return autostarter
+
+
+def test_the_autostarter_runs_before_the_handler():
+    calls: list[str] = []
+    router = APIRouter()
+    add_api_route(router, "/acquire", endpoint=Autostarting().acquire, methods=["PUT"], autostarter=_starter(calls))
+    app = FastAPI()
+    app.include_router(router)
+
+    response = TestClient(app).put("/acquire")
+
+    assert response.json()["value"] == {}
+    assert calls == ["started"]
+    assert app.openapi()["paths"]["/acquire"]["put"]["x-autostartup"] is True
+
+
+def test_a_declared_autostartup_route_needs_an_autostarter():
+    with pytest.raises(UndeclaredEndpointError, match="no autostarter"):
+        add_api_route(APIRouter(), "/acquire", endpoint=Autostarting().acquire, methods=["PUT"])
+
+
+def test_an_autostarter_on_an_undeclared_route_is_refused():
+    with pytest.raises(UndeclaredEndpointError, match="does not declare autostartup"):
+        add_api_route(APIRouter(), "/plain", endpoint=Autostarting().plain, methods=["PUT"], autostarter=_starter([]))

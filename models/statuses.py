@@ -798,6 +798,19 @@ class FluxMeteringStatus(BaseModel):
 COOLING_DOWN_REASON = "imager: cooling down"
 
 
+def operational_but_for_cooling(operational: bool, why_not_operational: list[str] | None) -> bool:
+    """Whether a unit is fit to work: operational, or kept from it **only** by cooling.
+
+    The one statement of the rule, for the unit's autostartup gate and MAST_control's readiness
+    check alike. Not operational with no reason given is not fit: nothing says it is only
+    cooling.
+    """
+    if operational:
+        return True
+    reasons = why_not_operational or []
+    return bool(reasons) and all(str(reason).startswith(COOLING_DOWN_REASON) for reason in reasons)
+
+
 # The acquisition's state and record are in `common.models.latest` (`LatestAcquisition`,
 # `FullUnitStatus.latest.acquisition`); `AcquisitionState` is re-exported here.
 
