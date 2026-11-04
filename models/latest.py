@@ -333,6 +333,8 @@ class SkyQualityWindow(BaseModel):
     frame -- a cosmic ray, a gust -- moves them by one sample, not by its size."""
 
     seconds: int
+    #: ISO UTC the window reaches up to: it covers the `seconds` before this.
+    ends_at: str | None = None
     samples: int = 0  # guide frames measured
     #: First to last sample: short of `seconds` early in a session, or after a gap.
     span_seconds: float = 0.0
@@ -384,6 +386,8 @@ class LatestMeasuredSkyQuality(LatestBase):
       so it is not converted to a sky brightness.
     """
 
+    #: ISO UTC of the frame's mid-exposure: when the values below describe the sky.
+    observed_at: str | None = None
     exposure_seconds: float | None = None
     binning: int | None = None
     plate_scale_arcsec: float | None = None  # per pixel, binning included
