@@ -490,6 +490,40 @@ class SafetyApi:
     def append_error(self, err: str):
         self.errors.append(err)
 
+    async def _fetch(self, path: str, op: str, timeout: float | None) -> dict | None:
+        """GET ``path`` under the data API as a JSON object, or None with the reason in `errors`."""
+        url = f"http://{self.ipaddr}:{self.port}{self.base_url}/{path}"
+        self.errors = []
+        timeout = timeout or self.timeout
+        async with httpx.AsyncClient(trust_env=False) as client:
+            try:
+                response = await client.get(url=url, timeout=timeout)
+                response.raise_for_status()
+            except httpx.TimeoutException:
+                self.append_error(f"{op}({url=}): timeout after {timeout} seconds")
+                self.detected = False
+                return None
+            except httpx.HTTPStatusError as e:
+                # A wrong device or sensor name is a 404 whose body says what was tried.
+                self.append_error(f"{op}({url=}): HTTP {e.response.status_code} - {e.response.text[:300]}")
+                self.detected = True
+                return None
+            except httpx.HTTPError as e:
+                self.append_error(f"{op}({url=}): {e}")
+                self.detected = False
+                return None
+        self.detected = True
+
+        try:
+            body = response.json()
+        except ValueError as e:  # JSONDecodeError
+            self.append_error(f"{op}({url=}): malformed response: {e!r} [{response.text[:300]}]")
+            return None
+        if not isinstance(body, dict):
+            self.append_error(f"{op}({url=}): not a JSON object [{response.text[:300]}]")
+            return None
+        return body
+
     async def get(self, device: str, sensor: str, timeout: float | None = None) -> tuple[float, timedelta] | None:
         """One sensor of one station: ``(value, age)``, or None with the reason in `errors`.
 
@@ -498,47 +532,41 @@ class SafetyApi:
         as strings. The age is against this machine's clock, so it includes any skew between
         the two.
         """
-        url = f"http://{self.ipaddr}:{self.port}{self.base_url}/device/{device}/sensor/{sensor}"
-        op = f"SafetyApi.get({url=})"
-        self.errors = []
-        timeout = timeout or self.timeout
-        async with httpx.AsyncClient(trust_env=False) as client:
-            try:
-                response = await client.get(url=url, timeout=timeout)
-                response.raise_for_status()
-            except httpx.TimeoutException:
-                self.append_error(f"{op}: timeout after {timeout} seconds")
-                self.detected = False
-                return None
-            except httpx.HTTPStatusError as e:
-                # A wrong device or sensor name is a 404 whose body says what was tried.
-                self.append_error(f"{op}: HTTP {e.response.status_code} - {e.response.text[:300]}")
-                self.detected = True
-                return None
-            except httpx.HTTPError as e:
-                self.append_error(f"{op}: {e}")
-                self.detected = False
-                return None
-        self.detected = True
+        op = f"SafetyApi.get({device=}, {sensor=})"
+        body = await self._fetch(f"device/{device}/sensor/{sensor}", op, timeout)
+        if body is None:
+            return None
 
-        try:
-            data = response.json().get("data")
-            if not isinstance(data, dict):
-                self.append_error(f"{op}: no 'data' in response [{response.text[:300]}]")
+        data = body.get("data")
+        if not isinstance(data, dict):
+            self.append_error(f"{op}: no 'data' in response [{str(body)[:300]}]")
+            return None
+        for key in ("value", "timestamp"):
+            if key not in data:
+                self.append_error(f"{op}: no '{key}' in response [{data}]")
                 return None
-            for key in ("value", "timestamp"):
-                if key not in data:
-                    self.append_error(f"{op}: no '{key}' in response [{data}]")
-                    return None
+        try:
             value = float(data["value"])
             taken = datetime.fromtimestamp(float(data["timestamp"]), tz=UTC)
-        except (ValueError, TypeError, AttributeError) as e:
-            # Bad JSON (JSONDecodeError is a ValueError), a body that is not an object, or a
-            # value or timestamp that is not a number.
-            self.append_error(f"{op}: malformed response: {e!r} [{response.text[:300]}]")
+        except (ValueError, TypeError) as e:
+            self.append_error(f"{op}: malformed value or timestamp: {e!r} [{data}]")
             return None
 
         return value, datetime.now(UTC) - taken
+
+    async def sensors(self, device: str, timeout: float | None = None) -> dict[str, dict] | None:
+        """Every sensor of one station, by name -- each ``{"timestamp", "sensor_type",
+        "sensor_unit", "value"}`` as the service gives it -- or None with the reason in `errors`.
+        `/devices` lists the stations."""
+        op = f"SafetyApi.sensors({device=})"
+        body = await self._fetch(f"device/{device}/sensors", op, timeout)
+        if body is None:
+            return None
+        sensors = body.get("sensors")
+        if not isinstance(sensors, dict):
+            self.append_error(f"{op}: no 'sensors' in response [{str(body)[:300]}]")
+            return None
+        return sensors
 
 
 def test_bogus_unit_api():
@@ -575,17 +603,17 @@ def test_safety_wind_speed():
 
 
 def test_safety_sensors():
-    import json
-
-    try:
-        safety = SafetyApi(ipaddr="10.23.1.25", port=8001, timeout=10)
-        url = "mast/sensors"
-        response: CanonicalResponse = asyncio.run(safety.get(url))
-        if response.succeeded and response.value is not None:
-            print(json.dumps(response.value, indent=2))
-
-    except Exception as e:  # noqa: BLE001 -- demo entry point: report whatever went wrong
-        logger.error(f"Error accessing safety API: {e}")
+    safety = SafetyApi(ipaddr="10.23.1.25", port=80, timeout=10)
+    sensors = asyncio.run(safety.sensors(device="davis"))
+    if sensors is None:
+        logger.error(f"Error accessing safety API: {safety.errors}")
+        return
+    for name, reading in sorted(sensors.items()):
+        age = datetime.now(UTC) - datetime.fromtimestamp(float(reading["timestamp"]), tz=UTC)
+        print(
+            f"{name:28} {reading['value']:>22} {reading.get('sensor_unit', ''):8} "
+            f"age={humanfriendly.format_timespan(age.total_seconds())}"
+        )
 
 
 if __name__ == "__main__":
