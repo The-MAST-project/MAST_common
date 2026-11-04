@@ -266,9 +266,10 @@ def completion_token(completion: Completion | NotificationChannel | IntFlag) -> 
 class EndpointDeclaration:
     tier: Tier
     stability: Stability = Stability.STABLE
-    #: HTTP verbs, for a route that is **generated** rather than written in an `api_router`
-    #: body. Hand-registered routes keep their verb at the registration site, where the path
-    #: is; `register_component_endpoints` has no such site, so the verb travels here.
+    #: HTTP verbs. A hand-registered route keeps its verb at the `add_api_route` call, where
+    #: the path is, and that wins; this is the fallback when the call gives none, so a declared
+    #: verb is never served as GET. `register_component_endpoints` has no call site, so for a
+    #: generated route this is the only place the verb lives.
     methods: tuple[str, ...] | None = None
     #: How the caller learns the operation finished. `None` means undeclared, and publishes
     #: nothing, so a consumer reading the schema can tell it apart from a classified route.
@@ -547,7 +548,8 @@ def _register(
     # filtering the payload inside it.
     kwargs.setdefault("response_model", CanonicalResponse)
 
-    router.add_api_route(path, endpoint=enveloped(endpoint), methods=methods or ["GET"], **kwargs)
+    methods = methods or list(declaration.methods or ("GET",))
+    router.add_api_route(path, endpoint=enveloped(endpoint), methods=methods, **kwargs)
 
 
 def register_component_endpoints(router: APIRouter, component: Any, base_path: str) -> None:
@@ -578,7 +580,6 @@ def register_component_endpoints(router: APIRouter, component: Any, base_path: s
             f"{base_path}/{name}",
             endpoint=handler,
             declaration=_with_component_completion(declaration, handler, name),
-            methods=list(declaration.methods or ("GET",)),
         )
 
 
