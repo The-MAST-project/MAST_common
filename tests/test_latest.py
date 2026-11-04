@@ -136,6 +136,12 @@ class TestInTheStatus:
         assert wire["latest"]["spiral"]["frames"] is False
         assert wire["latest"]["spiral"]["exposure_seconds"] is None
 
+    def test_a_spiral_session_reports_the_ra_step_it_commanded(self):
+        record = LatestSpiral(frames=False, x_step_arcsec=10.0, ra_step_commanded_arcsec=20.0, dec_for_ra_step_degs=60.0)
+        wire = _status(latest=LatestRecords(spiral=record.begin())).model_dump(mode="json")
+        assert wire["latest"]["spiral"]["ra_step_commanded_arcsec"] == 20.0
+        assert wire["latest"]["spiral"]["dec_for_ra_step_degs"] == 60.0
+
     def test_a_unit_that_reports_no_latest_reads_as_not_reported(self):
         wire = _status().model_dump(mode="json")
         del wire["latest"]

@@ -182,7 +182,9 @@ unbounded poll turns it into a hung script instead of an error someone can read.
 decides. The record ends when guiding stops.
 
 **A spiral session** opened with `spiral_new_path` is `status.latest.spiral` until the next one
-opens: `steps` taken, `last_frame`, and on `spiral_end_path` the measured `shift`. Each step's
+opens: `steps` taken, `last_frame`, the RA step given to PWI4 (`ra_step_commanded_arcsec`, the
+on-sky `x_step_arcsec` widened by 1/cos(dec) at `dec_for_ra_step_degs`), and on
+`spiral_end_path` the measured `shift`. Each step's
 answer carries its frame's path on the share as `image`. `shared_products_path` is `null`
 while the share is demoted: the frames are then on the unit, not lost. A session opened with
 `frames=false` takes no frames and measures nothing: its `frames` is `false`, and it has

@@ -262,6 +262,9 @@ class LatestSpiral(LatestBase):
     frames: bool | None = None
     x_step_arcsec: float | None = None
     y_step_arcsec: float | None = None
+    #: What PWI4 was told: `x_step_arcsec` widened by 1/cos(dec) at the session's declination.
+    ra_step_commanded_arcsec: float | None = None
+    dec_for_ra_step_degs: float | None = None
     exposure_seconds: float | None = None  # None for a frameless session
     save_intermediate_exposures: bool | None = None
     steps: int = 0  # taken, the reference not counted
