@@ -240,6 +240,14 @@ class PointingSample(BaseModel):
     #: pixels; None for the full sensor. With a crop the fiber position may lie outside
     #: the frame, and the offset is then extrapolated from the frame's solution.
     frame_crop: tuple[int, int, int, int] | None = None
+    #: From the latest GuideStep when the frame was saved, in camera pixels: the primary
+    #: star's own offset from the lock (PHD2 mastbuild6 or later) and the offset PHD2
+    #: guided on (the multi-star average when refinement is on). `guide_step_paired` is
+    #: False when a newer step arrived while the frame was saved, so the offsets may
+    #: belong to the next frame.
+    primary_offset_px: tuple[float, float] | None = None
+    guide_offset_px: tuple[float, float] | None = None
+    guide_step_paired: bool | None = None
 
 
 class PointingCheckStatus(BaseModel):
