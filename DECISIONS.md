@@ -2,6 +2,21 @@
 
 ---
 
+## [2026-11-05] A sky verdict on the lock nudge, and the guide-step offsets on pointing samples
+
+**Why:** MAST_unit judges an applied lock nudge by the pointing check's solves, because PHD2's
+GuideStep offset is the multi-star average after a lock move and cannot say whether the target
+reached the fiber (MAST_unit#401). The record and its knobs are shared with clients.
+
+**What:** `NudgeSkyVerdict` (Pending, Confirmed, Unconfirmed, Unverified). `LockNudgeOutcome` gains
+`residual_primary_px`, `lock_moved_at`, `confirmed_at`, `sky_verdict` and `sky_offset_arcsec`;
+`residual_px` is documented as the guided-on distance. `LockNudgeConfig` gains `verify_samples` (2)
+and `verify_arcsec` (0.5"). `PointingSample` gains `primary_offset_px`, `guide_offset_px` and
+`guide_step_paired`.
+
+**Implications:** every field is optional or defaulted, so a stored `lock_nudge` section and an older
+unit's status still parse. `sky_verdict` None means no nudge was watched (refused, off, or an older
+unit).
 ## [2026-11-03] `LatestSpiral`, and no share path while the share is demoted
 
 **Why:** MAST_unit reports a manual spiral session (MAST_unit#349), and its record's shape is

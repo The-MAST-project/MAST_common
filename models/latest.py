@@ -161,12 +161,27 @@ class LatestAcquisitionPhase(BaseModel):
         return abs(self.last_ra_delta) <= self.tolerance_ra and abs(self.last_dec_delta) <= self.tolerance_dec  # type: ignore[operator]
 
 
+class NudgeSkyVerdict(StrEnum):
+    """Whether an applied nudge put the target on the fiber, judged by the pointing check."""
+
+    #: Fewer than `verify_samples` usable solves since the nudge was confirmed.
+    Pending = "Pending"
+    Confirmed = "Confirmed"
+    Unconfirmed = "Unconfirmed"
+    #: Final without a verdict: the session ended, the pointing check is off, or the
+    #: solves kept failing.
+    Unverified = "Unverified"
+
+
 class LockNudgeOutcome(BaseModel):
     """What the lock nudge did on the acquisition's handover (``phd2.lock_nudge``).
 
     Applied or refused, and why, so an operator sees a refused nudge without reading the
-    unit's log. Offsets are the mean over the solved frames; `residual_px` is PHD2's
-    guide distance once the moved lock was confirmed.
+    unit's log. Offsets are the mean over the solved frames. `residual_px` is PHD2's
+    guide distance (GuideStep dx/dy, the multi-star average when refinement is on) once
+    the moved lock was confirmed; `residual_primary_px` is the primary star's own distance
+    from the lock on the same step. Whether the target reached the fiber is
+    `sky_verdict`, set afterwards from the pointing check's solves.
     """
 
     applied: bool
@@ -176,6 +191,13 @@ class LockNudgeOutcome(BaseModel):
     spread_arcsec: float | None = None
     frames_used: int | None = None
     residual_px: float | None = None
+    residual_primary_px: float | None = None
+    #: UTC, ISO 8601. `confirmed_at` is None when the confirmation timed out.
+    lock_moved_at: str | None = None
+    confirmed_at: str | None = None
+    sky_verdict: NudgeSkyVerdict | None = None
+    #: Median on-sky offset of the solves the verdict was taken from.
+    sky_offset_arcsec: float | None = None
 
 
 class LatestAcquisition(LatestBase):

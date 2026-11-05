@@ -404,6 +404,12 @@ class LockNudgeConfig(BaseModel):
     #: Give up collecting `solve_frames` usable frames after this long; no nudge then.
     frames_timeout: float = 90.0
 
+    #: The pointing check judges an applied nudge from this many solved guide frames
+    #: taken after the confirmation: Confirmed when their median on-sky offset is within
+    #: `verify_arcsec`. Two keep one solve's 0.56" scatter from deciding alone.
+    verify_samples: int = 2
+    verify_arcsec: float = 0.5
+
     @model_validator(mode="after")
     def _positive_knobs(self):
         if self.max_offset_px <= 0:
@@ -416,6 +422,10 @@ class LockNudgeConfig(BaseModel):
             raise ValueError("phd2.lock_nudge: max_spread_arcsec must be positive")
         if self.frames_timeout <= 0:
             raise ValueError("phd2.lock_nudge: frames_timeout must be positive")
+        if self.verify_samples < 1:
+            raise ValueError("phd2.lock_nudge: verify_samples must be at least 1")
+        if self.verify_arcsec <= 0:
+            raise ValueError("phd2.lock_nudge: verify_arcsec must be positive")
         return self
 
 
