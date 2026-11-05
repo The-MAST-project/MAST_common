@@ -367,8 +367,9 @@ class LockNudgeConfig(BaseModel):
 
     It runs once per acquisition handover, after settle: on the mirror-first handover
     with the fold mirror already in, on the bracketed one before the mirror
-    moves. A manually started guide session is never nudged -- the operator has
-    tuned the pointing by other means.
+    moves, or after it with ``handover.bracketed.nudge_after_insertion``. A manually
+    started guide session is never nudged -- the operator has tuned the pointing by
+    other means.
 
     Off by default. With the mirror in, the solve measures the target against the
     fiber through the mirror, and a mirror-induced shift of the image cannot be
@@ -456,6 +457,27 @@ class HandoverStyle(StrEnum):
     BRACKETED = "bracketed"
 
 
+class BracketedOptions(BaseModel):
+    """How the bracketed handover inserts the fold mirror.
+
+    The defaults are the bracketed handover as first built: guiding paused for the
+    stage travel, the nudge before it. Turning ``pause`` off keeps guiding through
+    the insertion, for a guide star on area the insertion leaves unchanged -- a strip
+    beside the mirror's travel, kept by the exclusion region. With the mirror in,
+    ``nudge_after_insertion`` then corrects what the insertion did as well as the
+    acquisition drift.
+    """
+
+    #: Pause guiding for the stage travel and resume at SPEC, with no settle gate after.
+    #: Off: guiding runs through the travel, and the handover waits for
+    #: ``steady_frames`` guide frames in a row within ``phd2.settle.pixels`` (up to
+    #: ``phd2.settle.timeout``) before the unit is ready.
+    pause: bool = True
+    #: Nudge the lock after the insertion instead of before it.
+    nudge_after_insertion: bool = False
+    steady_frames: int = Field(default=2, ge=1)
+
+
 class HandoverConfig(BaseModel):
     """How starting to guide gets an FCU v2 unit to ready-for-exposure.
 
@@ -467,7 +489,8 @@ class HandoverConfig(BaseModel):
     - ``bracketed``: the stage stays at SKY; the handover waits for settle,
       nudges, pauses, moves the stage to SPEC and resumes. On 2026-10-20 it lost
       its guide star at insertion on 3 of 13 arms, where the star was picked on
-      area the mirror then vignetted.
+      area the mirror then vignetted. ``bracketed`` options change the pause and
+      when the nudge runs.
 
     ``auto_insert`` off hands the insertion to the caller and runs no handover:
     nothing moves the stage to SPEC unless something asks. It is a measurement
@@ -478,6 +501,7 @@ class HandoverConfig(BaseModel):
 
     style: HandoverStyle = HandoverStyle.MIRROR_FIRST
     auto_insert: bool = True
+    bracketed: BracketedOptions = Field(default_factory=BracketedOptions)
 
 
 class PHD2Config(BaseModel):

@@ -44,3 +44,24 @@ def test_mirror_first_parses():
 def test_an_unknown_style_is_refused():
     with pytest.raises(ValidationError):
         HandoverConfig.model_validate({"style": "sideways"})
+
+
+def test_bracketed_defaults_are_the_paused_insertion_with_the_nudge_before_it():
+    options = HandoverConfig.model_validate({"style": "bracketed"}).bracketed
+    assert (options.pause, options.nudge_after_insertion, options.steady_frames) == (True, False, 2)
+
+
+def test_bracketed_options_parse():
+    conf = HandoverConfig.model_validate(
+        {"style": "bracketed", "bracketed": {"pause": False, "nudge_after_insertion": True, "steady_frames": 3}}
+    )
+    assert (conf.bracketed.pause, conf.bracketed.nudge_after_insertion, conf.bracketed.steady_frames) == (
+        False,
+        True,
+        3,
+    )
+
+
+def test_steady_frames_must_be_at_least_one():
+    with pytest.raises(ValidationError):
+        HandoverConfig.model_validate({"bracketed": {"steady_frames": 0}})

@@ -2,6 +2,21 @@
 
 ---
 
+## [2026-11-05] `phd2.handover.bracketed`: options on the bracketed handover
+
+**Why:** MAST_unit runs the bracketed handover without its pause, and with the lock nudge after
+the insertion, for a guide strip that the fold mirror's insertion leaves unchanged (mast01, next
+night, after the 2026-11-04 geometry analysis).
+
+**What:** `BracketedOptions` under `HandoverConfig.bracketed`: `pause` (true), `nudge_after_insertion`
+(false) and `steady_frames` (2, at least 1), the guide frames in a row within `phd2.settle.pixels`
+that an unpaused insertion waits for. Options on the style, not a third `HandoverStyle`.
+
+**Implications:** The defaults are the bracketed handover as it was; a document without the block
+is unchanged. Unknown keys are ignored, as elsewhere in the config.
+
+---
+
 ## [2026-11-03] `LatestSpiral`, and no share path while the share is demoted
 
 **Why:** MAST_unit reports a manual spiral session (MAST_unit#349), and its record's shape is
