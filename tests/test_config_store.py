@@ -153,7 +153,8 @@ def test_a_declared_dependency_invalidates_too():
 @pytest.mark.parametrize(
     "accessor,expected",
     [
-        ("get_sites", ("sites",)),
+        ("get_sites", ("sites", "safety")),  # its sites get their sun limits from `safety`
+        ("get_safety", ("safety",)),
         ("get_specs", ("specs",)),
         ("get_services", ("services",)),
         ("get_unit", ("units", "sites")),

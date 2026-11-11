@@ -26,13 +26,19 @@ from ._snapshot import ConfigSnapshot
 from ._source import ConfigSource, MongoConfigSource
 from ._watcher import ConfigWatcher
 from .local import ConfigError, LocalConfig, load_local_config
-from .site import Site
+from .safety import SafetyConfig
+from .site import Site, SunLimits
 from .unit import UnitConfig
 from .vault import VaultConfig, load_vault
 
 # The collections that make up the MAST configuration database. This is the DB
 # schema/layout (not a per-deployment setting), so it stays a module constant.
-DEFAULT_COLLECTIONS = ("services", "sites", "specs", "units")
+DEFAULT_COLLECTIONS = ("services", "sites", "specs", "units", "safety")
+
+#: What a boot cache must hold to be usable. `safety` is left out on purpose: it was added after
+#: the others, so every cache written before it lacks it, and rejecting those would stop a machine
+#: that boots while MongoDB is down. A missing `safety` is the same as an empty one (`get_safety`).
+REQUIRED_COLLECTIONS = ("services", "sites", "specs", "units")
 
 #: Fail fast rather than at pymongo's 30 s default. A unit whose controller is down
 #: would otherwise block half a minute at startup discovering that, and every later
@@ -297,7 +303,7 @@ class Config:
                 self.local.config_cache_dir,
                 mongo_uri=self.local.mongo_uri,
                 database=self.local.database,
-                required=DEFAULT_COLLECTIONS,
+                required=REQUIRED_COLLECTIONS,
             )
             if cached is None:
                 raise
@@ -867,13 +873,35 @@ class Config:
         self.set_unit(site_name=site_name, unit_name=unit_name, unit_conf=draft)
         return draft
 
-    @by_generation("sites")
+    @by_generation("sites", "safety")
     def get_sites(self, *, _snapshot: ConfigSnapshot | None = None) -> list[Site]:
         """
         Get all sites from MongoDB configuration
         Returns list of Site objects
+
+        A site's `location.sun_limits` is not in its `sites` document: it is filled in from the
+        site's `safety` document (`sun_elevation.dusk` / `.dawn`), which is where those limits live.
+        A site whose safety document has none keeps `sun_limits = None`.
         """
-        return [Site(**site) for site in self._section("sites", _snapshot)]
+        snapshot = _snapshot or self.snapshot
+        sites = []
+        for doc in self._section("sites", snapshot):
+            site = Site(**doc)
+            site.location.sun_limits = self._sun_limits(site.name, snapshot)
+            sites.append(site)
+        return sites
+
+    def _sun_limits(self, site_name: str, snapshot: ConfigSnapshot) -> SunLimits | None:
+        # Not through `get_safety`: an invalid safety document must not take every site down with
+        # it. It is reported by `get_safety` itself, to the one consumer that asks for it.
+        try:
+            safety = self.get_safety(site_name, _snapshot=snapshot)
+        except ConfigError as e:
+            logger.error(f"sun limits of site '{site_name}' unavailable: {e}")
+            return None
+        if safety is None or safety.sun_elevation is None:
+            return None
+        return SunLimits(dusk=safety.sun_elevation.dusk, dawn=safety.sun_elevation.dawn)
 
     @by_generation("specs")
     def get_thar_filters(self, *, _snapshot: ConfigSnapshot | None = None) -> list[str]:
@@ -925,6 +953,25 @@ class Config:
             return None
 
         return found[0]
+
+    @by_generation("safety")
+    def get_safety(self, site_name: str | None = None, *, _snapshot: ConfigSnapshot | None = None) -> SafetyConfig | None:
+        """The safety settings of `site_name` (default: this machine's site), or None if it has none.
+
+        A missing `safety` collection is the same as an empty one -- a boot cache written before the
+        collection existed has no such key -- so this does not go through `_section`, which refuses.
+        An invalid document raises `ConfigError` naming the problem.
+        """
+        snapshot = _snapshot or self.snapshot
+        site_name = site_name or self.local.site
+        for doc in deepcopy(snapshot.collections.get("safety") or []):
+            if doc.get("site") != site_name:
+                continue
+            try:
+                return SafetyConfig(**doc)
+            except ValueError as e:
+                raise ConfigError(f"the 'safety' document for site '{site_name}' is invalid: {e}") from e
+        return None
 
     @property
     def vault(self) -> "VaultConfig":

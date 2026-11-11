@@ -15,7 +15,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from common.config import DEFAULT_COLLECTIONS, Config, ConfigChange
+from common.config import REQUIRED_COLLECTIONS, Config, ConfigChange
 from common.config import _cache as cache_mod
 from common.config._watcher import ConfigWatcher
 from common.config.local import ConfigError
@@ -34,6 +34,7 @@ BASE = {
     "services": [{"name": "control", "port": 8002}],
     "specs": [{"marker": 1}],
     "units": [{"name": "common"}],
+    "safety": [],
 }
 URI = "mongodb://mast-ns-control.weizmann.ac.il:27017"
 DB = "mast"
@@ -589,7 +590,15 @@ def test_a_cache_holding_retired_collections_is_accepted(tmp_path):
     still boot a machine whose code no longer loads them (MAST_common#147)."""
     write_cache(tmp_path, collections={**BASE, "users": [{"name": "arie"}], "groups": [{"name": "everybody"}]})
 
-    assert cache_mod.load(str(tmp_path), mongo_uri=URI, database=DB, required=DEFAULT_COLLECTIONS) is not None
+    assert cache_mod.load(str(tmp_path), mongo_uri=URI, database=DB, required=REQUIRED_COLLECTIONS) is not None
+
+
+def test_a_cache_from_before_the_safety_collection_is_accepted(tmp_path):
+    """`safety` was added after the cache format: a cache without it must still boot a machine."""
+    old = {k: v for k, v in BASE.items() if k != "safety"}
+    write_cache(tmp_path, collections=old)
+
+    assert cache_mod.load(str(tmp_path), mongo_uri=URI, database=DB, required=REQUIRED_COLLECTIONS) is not None
 
 
 def test_a_corrupt_copy_is_skipped_for_an_older_good_one(tmp_path):

@@ -26,8 +26,10 @@ class Building(BaseModel):
 
 
 class SunLimits(BaseModel):
-    dusk: float = -18
-    dawn: float = -18
+    """The sun's elevation, in degrees, at which the observing night starts (dusk) and ends (dawn)."""
+
+    dusk: float
+    dawn: float
 
 
 class Location(BaseModel):
@@ -35,7 +37,10 @@ class Location(BaseModel):
     latitude: float | None = None
     longitude: float | None = None
     elevation: float | None = None
-    sun_limits: SunLimits = SunLimits()
+    #: Not part of the `sites` document. `Config.get_sites()` fills it from the site's `safety`
+    #: document (`sun_elevation.dusk` / `.dawn`), the one place those limits are kept. None when
+    #: that document has none -- there is deliberately no default: the old -18 was applied silently.
+    sun_limits: SunLimits | None = None
 
 
 class Site(BaseModel):
@@ -94,6 +99,25 @@ class Site(BaseModel):
         # "highspec": doc["highspec"],
         # "lamps": doc["lamps"],
 
+    def sun_elevation(self, when: datetime) -> float:
+        """The sun's elevation above the horizon at this site, in degrees, at `when`.
+
+        Needs the site's coordinates (`ValueError` without them) and, like `observing_window`, the
+        IERS policy, which it applies if the application has not.
+        """
+        if self.location.latitude is None or self.location.longitude is None:
+            raise ValueError(f"site '{self.name}' has no latitude/longitude")
+        if not iers_policy.is_configured():
+            iers_policy.configure_astropy()
+        observer = Observer(
+            location=EarthLocation(
+                lat=self.location.latitude * u.deg,  # type: ignore
+                lon=self.location.longitude * u.deg,  # type: ignore
+                height=(self.location.elevation or 0) * u.m,  # type: ignore
+            )
+        )
+        return float(observer.sun_altaz(Time(when)).alt.deg)
+
     def observing_window(self, day: date | None = None) -> TimeWindow | None:
         """
         The dusk-to-dawn window of an observing night, or None without coordinates.
@@ -115,6 +139,12 @@ class Site(BaseModel):
         `watchdog`'s, an unrelated name collision.)
         """
         if self.location.latitude is None or self.location.longitude is None:
+            return None
+        if self.location.sun_limits is None:
+            logger.error(
+                f"observing_window: site '{self.name}' has no sun limits; they come from the "
+                f"'sun_elevation' entry (dusk, dawn) of the site's document in the 'safety' collection"
+            )
             return None
 
         # Apply the IERS policy if the application has not. `sun_set_time` transforms the Sun

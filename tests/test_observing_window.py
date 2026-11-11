@@ -17,7 +17,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 import common.config.site
-from common.config.site import Location, Site
+from common.config.site import Location, Site, SunLimits
 from common.mast_logging import observing_night, observing_night_date
 
 # Neot Smadar. Any mid-latitude site shows the same split; these coordinates make the
@@ -33,7 +33,9 @@ def site() -> Site:
         controller_host="controller",
         spec_host="spec",
         unit_ids="1-2",
-        location=Location(latitude=LATITUDE, longitude=LONGITUDE, elevation=ELEVATION),
+        location=Location(
+            latitude=LATITUDE, longitude=LONGITUDE, elevation=ELEVATION, sun_limits=SunLimits(dusk=-18, dawn=-18)
+        ),
     )
 
 
@@ -217,3 +219,11 @@ def test_a_site_without_coordinates_needs_no_policy(_restore_iers, caplog):
     with caplog.at_level("WARNING"):
         assert nowhere.observing_window() is None
     assert "IERS policy was not applied" not in caplog.text
+
+
+def test_without_sun_limits_there_is_no_window_and_the_reason_is_logged(site, caplog):
+    """No silent default: the limits come from the 'safety' collection, and a site without them says so."""
+    site.location.sun_limits = None
+    with caplog.at_level("ERROR"):
+        assert site.observing_window() is None
+    assert "no sun limits" in caplog.text
