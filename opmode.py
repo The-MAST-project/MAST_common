@@ -105,31 +105,35 @@ class OpState(StrEnum):
 
 
 OPMODE_ENV = "MAST_OPMODE"
+LAUNCH_OPMODE_ENV = "MAST_LAUNCH_OPMODE"
 DEFAULT_OPMODE = OpMode.DEVELOPMENT
 
 
-def opmode_from_env() -> OpMode | None:
-    """The mode named by ``MAST_OPMODE``, or ``None`` when it is unset.
+def opmode_from_env(variable: str = OPMODE_ENV) -> OpMode | None:
+    """The mode named by ``variable`` (``MAST_OPMODE`` by default), or ``None`` when it is unset.
 
     An unrecognized value raises rather than falling back: ``MAST_OPMODE=prodution``
     silently becoming ``development`` would have a unit run its startup while its supervisor
     believes it is waiting. A pre-2026-10-12 value is accepted, with a WARNING.
     """
-    raw = os.environ.get(OPMODE_ENV)
+    raw = os.environ.get(variable)
     if raw is None:
         return None
     try:
         return OpMode(raw.strip().lower())
     except ValueError:
         legal = ", ".join(mode.value for mode in OpMode)
-        raise ValueError(f"{OPMODE_ENV}={raw!r} is invalid; expected one of {legal}") from None
+        raise ValueError(f"{variable}={raw!r} is invalid; expected one of {legal}") from None
 
 
 def resolve_opmode() -> OpMode:
     """The effective mode: the environment, then this machine's configuration, then the default.
 
     A configuration that cannot be read yields the default with a WARNING, never an
-    exception -- the mode is asked for early, and the caller must still come up.
+    exception -- the mode is asked for early, and the caller must still come up. On a unit,
+    the mode the supervisor launched it under (``MAST_LAUNCH_OPMODE``) stands in for the
+    default, so a production unit restarted while its configuration cannot answer stays
+    production rather than starting its hardware (MAST_common#228).
     """
     return resolve_opmode_with_source()[0]
 
@@ -151,17 +155,25 @@ def resolve_opmode_with_source() -> tuple[OpMode, str]:
         match load_local_config().machine_role:
             case "unit":
                 unit = Config().get_unit()
-                if unit is None:
-                    logger.warning(f"resolve_opmode: no configuration for this unit; using {DEFAULT_OPMODE}")
-                    return DEFAULT_OPMODE, "default, no configuration for this unit"
-                return unit.opmode, "unit configuration"
             case "spec":
                 return Config().get_specs().opmode, "specs configuration"
             case role:
                 return DEFAULT_OPMODE, f"default, machine_role {role}"
     except Exception:  # noqa: BLE001 -- an unreadable configuration is a reported, defaulted state
-        logger.warning(f"resolve_opmode: configuration unreadable; using {DEFAULT_OPMODE}", exc_info=True)
-        return DEFAULT_OPMODE, "default, configuration unreadable"
+        return _fallback("configuration unreadable", exc_info=True)
+    if unit is None:
+        return _fallback("no configuration for this unit")
+    return unit.opmode, "unit configuration"
+
+
+def _fallback(reason: str, *, exc_info: bool = False) -> tuple[OpMode, str]:
+    """The mode when the configuration cannot say: the supervisor's launch mode, else the default."""
+    launched = opmode_from_env(LAUNCH_OPMODE_ENV)
+    if launched is not None:
+        logger.warning(f"resolve_opmode: {reason}; using {launched} from {LAUNCH_OPMODE_ENV}", exc_info=exc_info)
+        return launched, f"supervisor launch, {reason}"
+    logger.warning(f"resolve_opmode: {reason}; using {DEFAULT_OPMODE}", exc_info=exc_info)
+    return DEFAULT_OPMODE, f"default, {reason}"
 
 
 class OpmodeBase:
