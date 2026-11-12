@@ -65,7 +65,12 @@ def daily_leaves(lg: logging.Logger) -> list[str]:
 
 @pytest.mark.parametrize(
     ("program", "expected"),
-    [(LogProgram.APP, "mast-spec-log.txt"), (LogProgram.SUPERVISOR, "mast-spec-supervisor-log.txt")],
+    [
+        (LogProgram.APP, "mast-spec-log.txt"),
+        (LogProgram.SUPERVISOR, "mast-spec-supervisor-log.txt"),
+        ("safety-monitor", "mast-spec-safety-monitor-log.txt"),  # no member needed for a new program
+        ("app", "mast-spec-log.txt"),  # the plain spelling of the default
+    ],
 )
 def test_the_file_is_named_from_the_role_and_the_program(role, logger, program, expected):
     init_log(logger, program=program)
@@ -109,3 +114,25 @@ def test_configure_logging_passes_the_program_through(role, monkeypatch):
     configure_logging(program=LogProgram.SUPERVISOR)
 
     assert calls[0]["program"] is LogProgram.SUPERVISOR
+
+
+@pytest.mark.parametrize("name", ["../x", "a/b", "Safety", "two words", "", "-x", "x-", "a--b", "x.txt"])
+def test_a_program_name_that_is_not_hyphenated_words_is_refused(role, logger, name):
+    with pytest.raises(ValueError, match="lower-case"):
+        init_log(logger, program=name)
+
+    assert daily_leaves(logger) == []
+
+
+def test_a_member_and_its_plain_name_are_the_same_program(role, logger):
+    init_log(logger, program=LogProgram.SUPERVISOR)
+    init_log(logger, program="supervisor")  # no conflict, no second handler
+
+    assert daily_leaves(logger) == ["mast-spec-supervisor-log.txt"]
+
+
+def test_another_plain_name_conflicts_like_any_other_program(role, logger):
+    init_log(logger, program="safety-monitor")
+
+    with pytest.raises(ValueError, match="already writes"):
+        init_log(logger, program="something-else")

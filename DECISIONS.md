@@ -1081,3 +1081,22 @@ sidecar is non-critical and continuing. Do not reintroduce a bare `except` here:
 new failure path must log and return `None`. When adding new sidecars, pick a
 `startup_wait_s` matched to the process's real startup time -- the default 30s is tuned
 for ps3cli/PWI4-class binaries.
+
+## [2026-11-12] A log program is a plain name, not an enum member
+
+**Why:** the 2026-10-11 entry made `LogProgram` a closed set, and said a new long-lived program
+gets a member. That puts a change in `common` between an engineer and a new program that only
+wants its own log file (the standalone safety monitor was the occasion).
+
+**What:** `init_log()` / `configure_logging()` take `program` as a string: any lower-case words
+joined by hyphens, `init_log(program="safety-monitor")`. `program_file_name(program, role)`
+derives the name, `mast-<role>-<program>-log.txt`, and `mast-<role>-log.txt` for `app`. A name
+that does not fit that pattern raises `ValueError`: it becomes part of a file name, so a path
+separator or `..` must not pass. `LogProgram` stays, for the two names already in use, and
+members and plain strings are the same program. The role still comes from config.toml and the
+caller still never names the file.
+
+**Implications:** nothing to add to `common` for a new program. Two programs of the same name on
+one machine still share a file, so the name has to be unique per machine.
+
+---

@@ -3,6 +3,7 @@ import io
 import logging
 import os
 import platform
+import re
 import sys
 import threading
 import time
@@ -18,20 +19,38 @@ default_log_level = logging.DEBUG
 
 
 class LogProgram(StrEnum):
-    """Which program on a machine is logging. The machine itself is ``machine_role`` in config.toml.
+    """The programs MAST already names. The machine itself is ``machine_role`` in config.toml.
 
-    The caller names the program and never the file: the name stays derived from the configured
-    role, so two programs on one machine each get their own daily file without either stating
-    the machine's identity.
+    A program is a plain string, not a member of this enum: any new long-lived program just passes
+    its own name (``init_log(program="safety-monitor")``), and these two are the ones that were
+    named before that was so. The caller names the program and never the file: the name stays
+    derived from the configured role, so two programs on one machine each get their own daily
+    file without either stating the machine's identity.
     """
 
     APP = "app"
     SUPERVISOR = "supervisor"
 
     def file_name(self, role: str) -> str:
-        if self is LogProgram.APP:
-            return f"mast-{role}-log.txt"
-        return f"mast-{role}-{self}-log.txt"
+        return program_file_name(self, role)
+
+
+# A program name becomes part of a file name, so it is held to lower-case words joined by hyphens:
+# no path separator, no "..", nothing that could name a file outside the night's folder.
+_PROGRAM_NAME = re.compile(r"[a-z0-9]+(-[a-z0-9]+)*")
+
+
+def program_file_name(program: str, role: str) -> str:
+    """The daily log file of `program` on a machine of this `role`.
+
+    ``mast-<role>-log.txt`` for the default ``app``, else ``mast-<role>-<program>-log.txt``.
+    `ValueError` for a name that is not lower-case words joined by hyphens.
+    """
+    if not _PROGRAM_NAME.fullmatch(program):
+        raise ValueError(f"log program {program!r}: use lower-case words joined by hyphens, e.g. 'safety-monitor'")
+    if program == LogProgram.APP:
+        return f"mast-{role}-log.txt"
+    return f"mast-{role}-{program}-log.txt"
 
 
 class UtcFormatter(logging.Formatter):
@@ -157,7 +176,7 @@ class DailyFileHandler(logging.FileHandler):
         encoding=None,
         delay=True,
         errors=None,
-        program: LogProgram = LogProgram.APP,
+        program: str = LogProgram.APP,
         follow_share: bool = False,
     ):
         self.leaf = filename
@@ -448,7 +467,7 @@ def resolve_log_level(cli_level: str | None = None) -> int:
     return default_log_level
 
 
-def configure_logging(cli_level: str | None = None, program: LogProgram = LogProgram.APP) -> int:
+def configure_logging(cli_level: str | None = None, program: str = LogProgram.APP) -> int:
     """
     Configure logging for a process.  Call once, from the application entry
     point, BEFORE anything logs.
@@ -460,7 +479,7 @@ def configure_logging(cli_level: str | None = None, program: LogProgram = LogPro
 
     `cli_level` is whatever a --log-level flag produced (None if absent);
     precedence is CLI > MAST_LOG_LEVEL > default. `program` names the daily file
-    (see LogProgram). Returns the level applied.
+    (see `init_log`). Returns the level applied.
     """
     level = resolve_log_level(cli_level)
     init_log(level=level, program=program)
@@ -471,7 +490,7 @@ def configure_logging(cli_level: str | None = None, program: LogProgram = LogPro
 def init_log(
     logger_: logging.Logger | None = None,
     level: int | None = None,
-    program: LogProgram = LogProgram.APP,
+    program: str = LogProgram.APP,
 ):
     """
     Attach the MAST handlers (rich console + daily file).
@@ -485,7 +504,8 @@ def init_log(
     converted. That path also keeps propagate=False, as it always did, so a
     logger with its own handlers cannot emit twice.
 
-    `program` names which program on the machine this is (see LogProgram). A
+    `program` names which program on the machine this is: any name of lower-case words joined by
+    hyphens (see `program_file_name`), e.g. "safety-monitor"; `ValueError` otherwise. A
     second call for a different program than the daily file already attached
     raises: ignoring it would put two processes in one file.
     """
@@ -507,7 +527,7 @@ def init_log(
         role = load_local_config().machine_role
     except Exception:  # noqa: BLE001 -- runs at import; any config problem must degrade, not raise
         role = "STARTUP"
-    file_name = program.file_name(role)
+    file_name = program_file_name(program, role)
 
     formatter = UtcFormatter(
         "%(asctime)s - %(levelname)-8s - {%(name)s:%(funcName)s:%(threadName)s:%(thread)s} -  %(message)s"
@@ -541,7 +561,7 @@ def init_log(
         logger_.addHandler(rich_handler)
 
     daily_handlers = [h for h in logger_.handlers if isinstance(h, DailyFileHandler)]
-    conflicting = [h.leaf for h in daily_handlers if h.program is not program]
+    conflicting = [h.leaf for h in daily_handlers if h.program != program]
     if conflicting:
         raise ValueError(f"init_log({program=}): this logger already writes {conflicting[0]}")
     if not daily_handlers:
