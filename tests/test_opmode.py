@@ -9,6 +9,7 @@ import pytest
 
 from common.opmode import (
     DEFAULT_OPMODE,
+    LAUNCH_OPMODE_ENV,
     OPMODE_ENV,
     OpMode,
     OpState,
@@ -21,6 +22,7 @@ from common.opmode import (
 @pytest.fixture
 def no_env(monkeypatch):
     monkeypatch.delenv(OPMODE_ENV, raising=False)
+    monkeypatch.delenv(LAUNCH_OPMODE_ENV, raising=False)
 
 
 def _machine(monkeypatch, role: str, *, unit=None, specs=None):
@@ -140,6 +142,65 @@ class TestResolve:
         monkeypatch.setenv(OPMODE_ENV, "controled")
         with pytest.raises(ValueError):
             resolve_opmode()
+
+
+class TestLaunchFallback:
+    """``MAST_LAUNCH_OPMODE``: the mode the supervisor launched the app under, used only where
+    the configuration cannot say, so a production unit never falls back to `development` (#228)."""
+
+    def test_a_missing_unit_configuration_uses_the_launch_mode(self, monkeypatch, no_env, caplog):
+        monkeypatch.setenv(LAUNCH_OPMODE_ENV, "production")
+        _machine(monkeypatch, "unit", unit=None)
+        with caplog.at_level(logging.WARNING):
+            assert resolve_opmode_with_source() == (
+                OpMode.PRODUCTION,
+                "supervisor launch, no configuration for this unit",
+            )
+        assert "no configuration for this unit" in caplog.text
+
+    def test_an_unreadable_configuration_uses_the_launch_mode(self, monkeypatch, no_env, tmp_path, caplog):
+        import common.config.local
+
+        monkeypatch.setenv(LAUNCH_OPMODE_ENV, "production")
+        monkeypatch.setenv("MAST_CONFIG", str(tmp_path / "absent.toml"))
+        common.config.local.load_local_config.cache_clear()
+        try:
+            with caplog.at_level(logging.WARNING):
+                assert resolve_opmode_with_source() == (OpMode.PRODUCTION, "supervisor launch, configuration unreadable")
+            assert "configuration unreadable" in caplog.text
+        finally:
+            common.config.local.load_local_config.cache_clear()
+
+    def test_without_it_the_fallbacks_stay_the_default(self, monkeypatch, no_env):
+        _machine(monkeypatch, "unit", unit=None)
+        assert resolve_opmode_with_source() == (DEFAULT_OPMODE, "default, no configuration for this unit")
+
+    def test_a_readable_unit_configuration_ignores_it(self, monkeypatch, no_env):
+        monkeypatch.setenv(LAUNCH_OPMODE_ENV, "production")
+        _machine(monkeypatch, "unit", unit=SimpleNamespace(opmode=OpMode.DEVELOPMENT))
+        assert resolve_opmode_with_source() == (OpMode.DEVELOPMENT, "unit configuration")
+
+    def test_a_non_unit_role_ignores_it(self, monkeypatch, no_env):
+        monkeypatch.setenv(LAUNCH_OPMODE_ENV, "production")
+        _machine(monkeypatch, "control")
+        assert resolve_opmode_with_source() == (DEFAULT_OPMODE, "default, machine_role control")
+
+    def test_mast_opmode_outranks_it(self, monkeypatch):
+        monkeypatch.setenv(OPMODE_ENV, "development")
+        monkeypatch.setenv(LAUNCH_OPMODE_ENV, "production")
+        _machine(monkeypatch, "unit", unit=None)
+        assert resolve_opmode_with_source() == (OpMode.DEVELOPMENT, OPMODE_ENV)
+
+    def test_an_unrecognized_value_raises_rather_than_defaulting(self, monkeypatch, no_env):
+        monkeypatch.setenv(LAUNCH_OPMODE_ENV, "prodution")
+        _machine(monkeypatch, "unit", unit=None)
+        with pytest.raises(ValueError, match=LAUNCH_OPMODE_ENV):
+            resolve_opmode()
+
+    def test_an_unrecognized_value_is_not_read_while_the_configuration_answers(self, monkeypatch, no_env):
+        monkeypatch.setenv(LAUNCH_OPMODE_ENV, "prodution")
+        _machine(monkeypatch, "unit", unit=SimpleNamespace(opmode=OpMode.PRODUCTION))
+        assert resolve_opmode() is OpMode.PRODUCTION
 
 
 class TestSource:

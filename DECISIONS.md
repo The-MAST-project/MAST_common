@@ -2,6 +2,26 @@
 
 ---
 
+## [2026-11-12] `MAST_LAUNCH_OPMODE`: a unit whose configuration cannot say keeps its launch mode
+
+**Why:** `resolve_opmode_with_source()` fell back to `development` when a unit had no
+configuration (no document, or not in its site's `unit_ids`) or the configuration could not be
+read. Under `development` the unit runs its full startup, so a `production` unit restarted by its
+supervisor while the configuration could not answer would open its covers with nobody there.
+Injecting `MAST_OPMODE` from the supervisor would fix it but break supervisor-design §8: a
+database value would masquerade as a hand-set override, and the log could no longer tell them
+apart. #228; team decision, 2026-11-12.
+
+**What:** a second variable, `MAST_LAUNCH_OPMODE` (`LAUNCH_OPMODE_ENV`), read only in those two
+fallback branches. When set it replaces `DEFAULT_OPMODE` there, with the source phrase
+"supervisor launch, <reason>". `MAST_OPMODE` still outranks everything, a readable
+configuration ignores the launch variable, non-unit roles ignore it, and an unrecognized value
+raises as an unrecognized `MAST_OPMODE` does. `DEFAULT_OPMODE` is unchanged: it is also the
+default of every document's `opmode` field.
+
+**Implications:** the supervisor sets the variable on every app launch (MAST_supervision). A
+deliberate edit of a running unit's document to `development` is still followed at the app's
+next restart; reporting that mismatch is the supervisor's job.
 ## [2026-11-03] `LatestSpiral`, and no share path while the share is demoted
 
 **Why:** MAST_unit reports a manual spiral session (MAST_unit#349), and its record's shape is
