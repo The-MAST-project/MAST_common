@@ -5,7 +5,13 @@ from common.models.events import EventModel
 # One implementation, beside the FastAPI patterns that guard the same grammar, so a
 # coordinate cannot mean one thing to a plan and another to an endpoint.
 from common.models.science import ScienceModel
-from common.parsers import sexagesimal_degrees_to_decimal, sexagesimal_hours_to_decimal, target_coordinates
+from common.parsers import (
+    DEC_PATTERN,
+    RA_PATTERN,
+    sexagesimal_degrees_to_decimal,
+    sexagesimal_hours_to_decimal,
+    target_coordinates,
+)
 
 
 class Target(BaseModel):
@@ -34,13 +40,14 @@ class Target(BaseModel):
         json_schema_extra={
             "ui": {
                 "label": "RA",
-                "pattern": r"^([01]?\d|2[0-3])[: ][0-5]\d[: ][0-5]\d(?:\.\d+)?$|^([01]?\d|2[0-3])(?:\.\d+)?$",
-                "error_message": "Sexagesimal (colon or space separated) or decimal hours [0:24]",
+                "pattern": RA_PATTERN,
+                "error_message": "Sexagesimal (colon or space separated, or 5h34m32.5s) or decimal hours [0:24]",
                 "widget": "text",
                 "unit": "hours",
                 "summary": True,
                 "required": True,
-                "tooltip": "Sexagesimal:<ul><li>&nbsp;<b>05:34:32.5</b><li>&nbsp;<b>05 34 32.5</b></li></ul>"
+                "tooltip": "Sexagesimal:<ul><li>&nbsp;<b>05:34:32.5</b><li>&nbsp;<b>05 34 32.5</b></li>"
+                "<li>&nbsp;<b>05h34m32.5s</b></li></ul>"
                 "&nbsp;or decimal hours <ul><li>&nbsp;<b>5.575</b></li></ul>",
             },
             "searchable": "range",
@@ -51,14 +58,15 @@ class Target(BaseModel):
         json_schema_extra={
             "ui": {
                 "label": "Dec",
-                "pattern": r"^[+-]?([0-8]?\d|90)[: ][0-5]\d[: ][0-5]\d(?:\.\d+)?$|^[+-]?([0-8]?\d|90)(?:\.\d+)?$",
+                "pattern": DEC_PATTERN,
                 "widget": "text",
                 "unit": "degrees",
                 "summary": True,
                 "required": True,
-                "tooltip": "Sexagesimal:<ul><li>&nbsp;<b>+22:00:52.5</b></li><li>&nbsp;<b>-22 00 52.5</b></li></ul>"
+                "tooltip": "Sexagesimal:<ul><li>&nbsp;<b>+22:00:52.5</b></li><li>&nbsp;<b>-22 00 52.5</b></li>"
+                "<li>&nbsp;<b>-22d00m52.5s</b></li></ul>"
                 "&nbsp;or decimal degrees <ul><li>&nbsp;<b>22.014</b></li></ul>",
-                "error_message": "Sexagesimal (colon or space separated) or decimal degrees [-90:90]",
+                "error_message": "Sexagesimal (colon or space separated, or 22d00m52.5s) or decimal degrees [-90:90]",
             },
             "searchable": "range",
         },

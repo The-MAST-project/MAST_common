@@ -2,6 +2,42 @@
 
 ---
 
+## [2026-11-13] One coordinate grammar, with the range checks spelled out
+
+**Why:** coordinates were parsed by four things that disagreed. `RA_PATTERN` / `DEC_PATTERN`
+guarded the FastAPI endpoints (MAST_unit#88's fix); `Target.ui.pattern`, which the GUI's
+Alpine validation compiles as a JS `RegExp`, was a second, hand-written pair that demanded two-digit
+minutes and seconds, so `5:7:3` passed the guard and failed the form; `common/validators.py`
+was a third, with the `{1,3}` decimal cap #88 had removed (nothing imported it). Behind
+the guards, `parse_angle` leaned on astropy, which rolls minute or second 60 over into the next
+unit with a warning (`5:60:00` read as 6.0 h) and never range-checks the total.
+
+**What:** `common/parsers.py` is the single definition. `RA_PATTERN` / `DEC_PATTERN` are the
+grammar, and `Target.ui.pattern` imports them, so the GUI gets the same string; `parse_angle`
+reads that same grammar itself and checks every bound itself, with no astropy:
+
+- forms: sexagesimal `5:34:32.5` / `05 34 32.5`, lettered `5h34m32.5s` (RA) / `+22d00m52.5s`
+  (Dec), and decimal `5.575`. One or two digits per component, any number of decimals on the
+  seconds, the sign on the whole value (`-0:30:00` is -0.5);
+- leading and trailing whitespace is ignored; whitespace inside is not;
+- the separator is one `:` or one space, **the same both times** (no `5:34 32`), a backreference
+  that relies on the separator being the pattern's only capture group;
+- the lettered form needs all three letters, all lower case or all upper case (`5H34M32S`),
+  never mixed, and the letter belongs to the field: RA takes `h`, Dec takes `d`;
+- minutes and seconds must be in [0, 60): `5:60:00` is rejected, not rolled over. The total
+  is range-checked as before, RA [0, 24) and Dec [-90, 90].
+
+`common/validators.py` is gone. The patterns stay free of range and of inline flags: the range
+belongs to `parse_angle`, and the patterns must compile in Python `re` and JS `RegExp` alike,
+which is why case is two alternatives and not `(?i)`.
+
+**Implications:** a coordinate in a form astropy tolerated but this grammar does not is now refused,
+by guard and parser alike: `5:34` (two components), `5.` and `.5`, `5:34 32`, `5H34m32s`. Nothing in
+the unit logs of 2026-08-03..06 used one. `parse_angle` takes a required `unit` ("h" or "d"); only
+`parsers.py` calls it. `tests/test_coordinate_patterns.py` pins the grammar and runs the same
+pattern strings through Node, so the GUI's engine and Python's cannot drift apart; that needed `node`
+in `tests/conftest.py`'s subprocess allowlist.
+
 ## [2026-11-12] `MAST_LAUNCH_OPMODE`: a unit whose configuration cannot say keeps its launch mode
 
 **Why:** `resolve_opmode_with_source()` fell back to `development` when a unit had no

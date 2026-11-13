@@ -360,8 +360,9 @@ if __name__ == "__main__":
 
 **Slew the mount, then expose.** `mount/goto_ra_dec_j2000` declares
 `completion=activity:Slewing`, so it returns on acceptance and the `Slewing` flag says when the
-telescope arrived. Both coordinates are required, and each takes either sexagesimal or decimal
-form (RA in hours, Dec in degrees):
+telescope arrived. Both coordinates are required, and each takes sexagesimal (`14:39:36`, `14 39 36`),
+lettered (`14h39m36s`, `-60d50m02s`) or decimal form (RA in hours, Dec in degrees). Minutes and
+seconds must be below 60, and the form is rejected otherwise:
 
 ```python
 unit = MastService.unit("mast01")
