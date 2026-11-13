@@ -59,7 +59,11 @@ _filer_testing.isolate_filer(prefix="mast-common-tests-")
 # openssl -- the stdlib cannot verify a certificate chain without a live handshake, and
 # checking that the pinned CA signs the control machine's certificate is not driving
 # hardware either.
-ALLOWED = {"fc-list", "fc-match", "openssl"}
+#
+# node -- evaluates a regex in a JS engine, to prove the coordinate patterns the GUI
+# compiles as `new RegExp(...)` give the same verdicts as Python's `re`
+# (tests/test_coordinate_patterns.py). A pure function of its stdin; not hardware.
+ALLOWED = {"fc-list", "fc-match", "openssl", "node", "node.exe"}
 
 
 class ProcessLaunchError(RuntimeError):

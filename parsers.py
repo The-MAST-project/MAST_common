@@ -1,8 +1,6 @@
 import math
 import re
 
-import astropy.coordinates
-
 from common.config import Config
 from common.mast_logging import get_logger
 from common.utils import function_name
@@ -192,42 +190,88 @@ def parse_unit_ids(units_spec: str) -> list[str]:
     return ret
 
 
-# Coordinate patterns for FastAPI `Query(pattern=...)` guards, kept here -- beside
-# the parsers they guard -- because the two must agree. They did not: MAST_unit
-# carried two divergent copies (one allowing ':' or space, one only ':'), each
-# stricter than these parsers, so every coordinate error in the unit logs of
-# 2026-08-04 was the guard rejecting input the parser was written to accept
-# (MAST_unit#88).
+# Coordinate grammar, one definition for every layer that reads a coordinate: the
+# FastAPI `Query(pattern=...)` guards, `Target.ui.pattern` (which the GUI's Alpine
+# validation compiles as a JS RegExp), and the parsers below. The guards and the
+# parsers must agree; they did not, and every coordinate error in the unit logs of
+# 2026-08-04 was the guard rejecting input the parser accepted (MAST_unit#88).
 #
-# Deliberately permissive, matching what astropy accepts and Target validates:
-# ':' or whitespace between components, one or two digits per component, any
-# number of decimals on the seconds, and surrounding whitespace (the parsers
-# strip; the previous '$'-anchored patterns rejected a trailing space outright).
+# Keep these in the subset Python `re` and JS `RegExp` share: no inline flags, no
+# named groups, no lookbehind.
 #
-# Range is NOT expressed here. A regex that also bounded 0-23h/0-59m would be
-# unreadable and would duplicate a check that belongs to one layer -- parse_angle
-# owns it.
-_SEXAGESIMAL = r"\d{1,2}[: ]\d{1,2}[: ]\d{1,2}(?:\.\d+)?"
+# Leading and trailing whitespace is ignored. Between components there is exactly one
+# ':' or one space, and the same one both times (no '5:34 32'). The backreference
+# `\1` relies on the separator being the pattern's only capture group, which holds
+# in both RA_PATTERN and DEC_PATTERN. One or two digits per component; any number of
+# decimals on the seconds.
+#
+# The lettered form is `5h34m32.5s` for RA and `22d00m52.5s` for Dec: all three letters
+# present, no whitespace inside, and all lower case or all upper case (`5H34M32.5S`),
+# never mixed (`5H34m32s`). Case is spelled as two alternatives because the patterns
+# may not carry an inline `(?i)` flag. The letter pairs with the field: RA takes h, Dec
+# takes d, so `22d00m52s` is not an RA.
+#
+# Range is NOT in the patterns. A regex that also bounded 0-23h / 0-59m would be
+# unreadable and would duplicate a check that belongs to one layer: `parse_angle`
+# owns it, and does it itself -- astropy rolls minute/second 60 over into the next
+# unit (with a warning) and never range-checks the total, so it is not used.
+_SEXAGESIMAL = r"\d{1,2}([: ])\d{1,2}\1\d{1,2}(?:\.\d+)?"
 _DECIMAL = r"\d{1,2}(?:\.\d+)?"
 
-RA_PATTERN = rf"^\s*(?:{_SEXAGESIMAL}|{_DECIMAL})\s*$"
-DEC_PATTERN = rf"^\s*[+-]?(?:{_SEXAGESIMAL}|{_DECIMAL})\s*$"
 
-_ACCEPTED_FORMS = "sexagesimal ('5:34:32.5', '05 34 32.5') or decimal ('5.575')"
+def _lettered(degrees_or_hours: str) -> str:
+    """The pattern for `5h34m32.5s` / `22d00m52.5s`, in one case or the other."""
+    lower = degrees_or_hours
+    upper = degrees_or_hours.upper()
+    return (
+        rf"\d{{1,2}}{lower}\d{{1,2}}m\d{{1,2}}(?:\.\d+)?s"
+        rf"|\d{{1,2}}{upper}\d{{1,2}}M\d{{1,2}}(?:\.\d+)?S"
+    )
+
+
+RA_PATTERN = rf"^\s*(?:{_SEXAGESIMAL}|{_lettered('h')}|{_DECIMAL})\s*$"
+DEC_PATTERN = rf"^\s*[+-]?(?:{_SEXAGESIMAL}|{_lettered('d')}|{_DECIMAL})\s*$"
+
+_ACCEPTED_FORMS = {
+    "h": "sexagesimal ('5:34:32.5', '05 34 32.5'), lettered ('5h34m32.5s') or decimal ('5.575')",
+    "d": "sexagesimal ('+22:00:52.5', '-22 00 52.5'), lettered ('+22d00m52.5s') or decimal ('22.014')",
+}
+
+# The parser's own reading of a string. The sign is accepted for RA too, so that '-1'
+# is reported as out of range, not as unparseable; RA_PATTERN is what refuses it up front.
+_SEXAGESIMAL_RE = re.compile(r"^([+-]?)(\d{1,2})([: ])(\d{1,2})\3(\d{1,2}(?:\.\d+)?)$")
+_DECIMAL_RE = re.compile(r"^([+-]?)(\d{1,2}(?:\.\d+)?)$")
+
+
+def _lettered_res(unit: str) -> tuple[re.Pattern[str], re.Pattern[str]]:
+    """`5h34m32.5s` and `5H34M32.5S` -- each letter case separately, so cases never mix."""
+
+    def build(u: str, m: str, s: str) -> re.Pattern[str]:
+        return re.compile(rf"^([+-]?)(\d{{1,2}}){u}(\d{{1,2}}){m}(\d{{1,2}}(?:\.\d+)?){s}$")
+
+    return build(unit, "m", "s"), build(unit.upper(), "M", "S")
+
+
+_LETTERED_RES = {"h": _lettered_res("h"), "d": _lettered_res("d")}
 
 
 def parse_angle(value: str | float, *, unit: str, low: float, high: float, high_included: bool, kind: str) -> float:
     """
-    Parse a sexagesimal or decimal angle and range-check it. No normalisation.
+    Parse a sexagesimal, lettered or decimal angle and range-check it. No normalisation.
 
-    Angle is used rather than Longitude/Latitude because both of those answer the
-    range question themselves, and so hid the check. Longitude WRAPS: it turned an
-    RA of 25 into 1.0 and -1 into 23.0, so the unit endpoints accepted a mistyped
-    coordinate and slewed hours away from the target, with nothing in the log.
-    Latitude raises before any check of ours is reached, so its message reached the
-    operator instead of one naming the field. Angle does neither -- it parses and
-    stops -- which makes the bounds passed in here the only thing deciding what is
-    acceptable, for decimal and sexagesimal alike.
+    `unit` is 'h' (hours: `5h34m32s`) or 'd' (degrees: `22d00m52s`); it selects the
+    letter the lettered form must use.
+
+    Every check is spelled out here, none is left to a library:
+
+    - minutes and seconds must be in [0, 60). '5:60:00' is a typo, not 6 hours, and is
+      refused rather than rolled over;
+    - the total must be in the bounds passed in. Longitude WRAPS (it turned an RA of 25
+      into 1.0 and -1 into 23.0, so the unit endpoints slewed hours away from the
+      target with nothing in the log) and Latitude raises before any check of ours runs,
+      so neither is used. The bounds passed in are the only thing deciding what is
+      acceptable, for decimal and sexagesimal alike;
+    - the result is finite.
 
     Raises ValueError, having logged it: a coordinate this service refused is worth
     a line in the log whether or not the caller reports it (MAST_unit#88).
@@ -235,16 +279,29 @@ def parse_angle(value: str | float, *, unit: str, low: float, high: float, high_
     if isinstance(value, str):
         value = value.strip()
         if not value:
-            raise _rejected(kind, f"{kind} is empty; expected {_ACCEPTED_FORMS}")
-    try:
-        angle = float(astropy.coordinates.Angle(value, unit=unit).value)
-    except ValueError as e:
-        # Every astropy angle error (IllegalHourError and friends) subclasses
-        # ValueError. Its own wording is about parser columns; say what we wanted.
-        raise _rejected(kind, f"{kind}: cannot parse {value!r} -- expected {_ACCEPTED_FORMS} ({e})") from e
+            raise _rejected(kind, f"{kind} is empty; expected {_ACCEPTED_FORMS[unit]}")
+        sexagesimal = _SEXAGESIMAL_RE.match(value)
+        decimal = _DECIMAL_RE.match(value)
+        lettered = next((m for rx in _LETTERED_RES[unit] if (m := rx.match(value))), None)
+        if clock := sexagesimal or lettered:
+            sign, whole, *_separator, minutes, seconds = clock.groups()
+            for name, component in (("minutes", float(minutes)), ("seconds", float(seconds))):
+                if not 0 <= component < 60:
+                    raise _rejected(kind, f"{kind}: {name} {component:g} in {value!r} is out of range [0, 60)")
+            angle = int(whole) + int(minutes) / 60 + float(seconds) / 3600
+        elif decimal:
+            sign, number = decimal.groups()
+            angle = float(number)
+        else:
+            raise _rejected(kind, f"{kind}: cannot parse {value!r} -- expected {_ACCEPTED_FORMS[unit]}")
+        if sign == "-":
+            angle = -angle
+    else:
+        try:
+            angle = float(value)
+        except (TypeError, ValueError) as e:
+            raise _rejected(kind, f"{kind}: cannot parse {value!r} -- expected {_ACCEPTED_FORMS[unit]}") from e
     if not math.isfinite(angle):
-        # inf parses to nan rather than raising, and every comparison against nan is
-        # False, so an unguarded range test would report it as merely out of range.
         raise _rejected(kind, f"{kind}: {value!r} is not a finite number")
     if not (low <= angle <= high if high_included else low <= angle < high):
         raise _rejected(kind, f"{kind} {angle} is out of range [{low}, {high}{']' if high_included else ')'}")
@@ -258,12 +315,12 @@ def _rejected(kind: str, message: str) -> ValueError:
 
 def sexagesimal_hours_to_decimal(value: str | float) -> float:
     """Right Ascension, in decimal hours [0, 24)."""
-    return parse_angle(value, unit="hour", low=0.0, high=24.0, high_included=False, kind="RA")
+    return parse_angle(value, unit="h", low=0.0, high=24.0, high_included=False, kind="RA")
 
 
 def sexagesimal_degrees_to_decimal(value: str | float) -> float:
     """Declination, in decimal degrees [-90, 90]."""
-    return parse_angle(value, unit="deg", low=-90.0, high=90.0, high_included=True, kind="Dec")
+    return parse_angle(value, unit="d", low=-90.0, high=90.0, high_included=True, kind="Dec")
 
 
 def parse_target(

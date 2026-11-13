@@ -238,6 +238,19 @@ written (`resolve_target`), never in a validator. Executing a plan is MAST_contr
 `PlanExecution`; each execution's products are linked under `plans/products/PLAN_<ulid>/<UTC
 start>/` (`PlanProducts`). See `plans/control_acquisition_design.md` in mast-claude-config.
 
+## Coordinates (`common/parsers.py`)
+
+Never write a coordinate regex or an astropy `Angle` call in a consumer. `RA_PATTERN` /
+`DEC_PATTERN` are the grammar (FastAPI `Query(pattern=...)`, `Target.ui.pattern`, and through it
+the GUI's JS `RegExp`) and `sexagesimal_hours_to_decimal` / `sexagesimal_degrees_to_decimal` /
+`parse_target` / `target_coordinates` are the parsers; they agree, and `tests/test_coordinate_patterns.py`
+holds them to it, JS engine included. Forms: `5:34:32.5`, `05 34 32.5` (one separator, used twice),
+`5h34m32.5s` / `+22d00m52.5s` (all lower or all upper case), `5.575`; leading and trailing whitespace
+is ignored. Minutes and seconds `>= 60` are rejected, never rolled over, and the total is range-checked
+by us (RA [0, 24), Dec [-90, 90]). Keep the patterns inside what Python `re` and JS `RegExp` share
+(no inline flags, no named groups, no lookbehind), and keep the separator the only capture group.
+Range belongs to `parse_angle`, not to the patterns.
+
 ## Conventions
 
 ### Activity flags (`common/activities.py`)
