@@ -36,8 +36,7 @@ by guard and parser alike: `5:34` (two components), `5.` and `.5`, `5:34 32`, `5
 the unit logs of 2026-08-03..06 used one. `parse_angle` takes a required `unit` ("h" or "d"); only
 `parsers.py` calls it. `tests/test_coordinate_patterns.py` pins the grammar and runs the same
 pattern strings through Node, so the GUI's engine and Python's cannot drift apart; that needed `node`
-in `tests/conftest.py`'s subprocess allowlist. Open: whatever emitted `'22:04:47.9378328000 '`
-in MAST_unit#88 with a trailing space is still unidentified; the guard no longer minds it.
+in `tests/conftest.py`'s subprocess allowlist.
 
 ## [2026-11-12] `MAST_LAUNCH_OPMODE`: a unit whose configuration cannot say keeps its launch mode
 
