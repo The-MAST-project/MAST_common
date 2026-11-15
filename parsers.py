@@ -196,13 +196,14 @@ def parse_unit_ids(units_spec: str) -> list[str]:
 # parsers must agree; they did not, and every coordinate error in the unit logs of
 # 2026-08-04 was the guard rejecting input the parser accepted (MAST_unit#88).
 #
-# Keep these in the subset Python `re` and JS `RegExp` share: no inline flags, no
-# named groups, no lookbehind.
+# Keep these in the subset Python `re`, JS `RegExp` and Pydantic's Rust regex engine share
+# (Pydantic v2 compiles `pattern=` with Rust, so FastAPI `Query(pattern=...)` and
+# `Field(pattern=...)` fail at schema-build time on anything else): no inline flags, no
+# named groups, no lookbehind, no lookaround, no backreferences.
 #
 # Leading and trailing whitespace is ignored. Between components there is exactly one
-# ':' or one space, and the same one both times (no '5:34 32'). The backreference
-# `\1` relies on the separator being the pattern's only capture group, which holds
-# in both RA_PATTERN and DEC_PATTERN. One or two digits per component; any number of
+# ':' or one space, and the same one both times (no '5:34 32'). That is spelled as
+# two alternatives, not a backreference, which Rust regex does not support. One or two digits per component; any number of
 # decimals on the seconds.
 #
 # The lettered form is `5h34m32.5s` for RA and `22d00m52.5s` for Dec: all three letters
@@ -215,7 +216,7 @@ def parse_unit_ids(units_spec: str) -> list[str]:
 # unreadable and would duplicate a check that belongs to one layer: `parse_angle`
 # owns it, and does it itself -- astropy rolls minute/second 60 over into the next
 # unit (with a warning) and never range-checks the total, so it is not used.
-_SEXAGESIMAL = r"\d{1,2}([: ])\d{1,2}\1\d{1,2}(?:\.\d+)?"
+_SEXAGESIMAL = r"\d{1,2}:\d{1,2}:\d{1,2}(?:\.\d+)?|\d{1,2} \d{1,2} \d{1,2}(?:\.\d+)?"
 _DECIMAL = r"\d{1,2}(?:\.\d+)?"
 
 

@@ -247,8 +247,10 @@ the GUI's JS `RegExp`) and `sexagesimal_hours_to_decimal` / `sexagesimal_degrees
 holds them to it, JS engine included. Forms: `5:34:32.5`, `05 34 32.5` (one separator, used twice),
 `5h34m32.5s` / `+22d00m52.5s` (all lower or all upper case), `5.575`; leading and trailing whitespace
 is ignored. Minutes and seconds `>= 60` are rejected, never rolled over, and the total is range-checked
-by us (RA [0, 24), Dec [-90, 90]). Keep the patterns inside what Python `re` and JS `RegExp` share
-(no inline flags, no named groups, no lookbehind), and keep the separator the only capture group.
+by us (RA [0, 24), Dec [-90, 90]). Keep the patterns inside what Python `re`, JS `RegExp` and Pydantic's Rust regex engine share
+(no inline flags, no named groups, no lookaround, no backreferences -- Pydantic v2 compiles `pattern=`
+with Rust, so FastAPI `Query(pattern=...)` fails at schema build on a backreference); the
+"same separator twice" rule is two alternatives.
 Range belongs to `parse_angle`, not to the patterns.
 
 ## Conventions

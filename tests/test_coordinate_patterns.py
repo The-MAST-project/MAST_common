@@ -335,3 +335,39 @@ class TestJavaScriptAgrees:
         for value, (js_ra, js_dec) in zip(self.INPUTS, js, strict=True):
             assert js_ra == guard("ra", value), f"RA pattern disagrees on {value!r}"
             assert js_dec == guard("dec", value), f"Dec pattern disagrees on {value!r}"
+
+
+class TestPydanticAgrees:
+    """FastAPI `Query(pattern=...)` / `Field(pattern=...)` are compiled by pydantic-core's
+    Rust regex engine, which has no backreferences or lookaround. Building the validator
+    fails outright on such a pattern, so this runs both patterns through Pydantic over
+    the same inputs as `re` and requires the same verdict."""
+
+    @pytest.mark.parametrize("kind", ["ra", "dec"])
+    def test_same_verdict_as_python(self, kind):
+        from typing import Annotated
+
+        from pydantic import Field, TypeAdapter, ValidationError
+
+        adapter = TypeAdapter(Annotated[str, Field(pattern=RA_PATTERN if kind == "ra" else DEC_PATTERN)])
+        for value in TestJavaScriptAgrees.INPUTS:
+            try:
+                adapter.validate_python(value)
+                accepted = True
+            except ValidationError:
+                accepted = False
+            assert accepted == guard(kind, value), f"{kind} pattern: Pydantic disagrees with re on {value!r}"
+
+    def test_fastapi_query_builds(self):
+        from fastapi import FastAPI, Query
+        from fastapi.testclient import TestClient
+
+        app = FastAPI()
+
+        @app.get("/t")
+        def t(ra: str = Query(pattern=RA_PATTERN), dec: str = Query(pattern=DEC_PATTERN)):
+            return {"ra": ra, "dec": dec}
+
+        client = TestClient(app)
+        assert client.get("/t", params={"ra": "5 34 32.5", "dec": "-22:00:52"}).status_code == 200
+        assert client.get("/t", params={"ra": "5:34 32", "dec": "-22:00:52"}).status_code == 422
