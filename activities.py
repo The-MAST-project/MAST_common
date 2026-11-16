@@ -320,16 +320,14 @@ class UnitActivities(IntFlag):
     Correcting = auto()
     Dancing = auto()
     Exposing = auto()  # do_expose: the whole repeat series, not one frame
-    # Retired: never raised since flux metering left the unit (MAST_common#232). Kept, not
-    # deleted, because removing it would shift every member after it by one bit.
-    FluxMetering = auto()
     # AT THE END, per the rule above -- these were authored mid-enum, right after the
     # Calibrating umbrella, and a rebase onto master carried that position with them. That
     # shifted every member from PreGuiding on by three bits: 8192 stopped meaning Exposing
     # and started meaning Solving, which is precisely the silent renumbering the rule above
     # guards against. Safe to place here instead: these flags have never been on master,
     # so nothing numeric has ever read them.
-    CalibratingFocus = auto()
+    # Pinned: bit 14 was FluxMetering, removed (MAST_common#232), and stays unused.
+    CalibratingFocus = 1 << 15
     CalibratingOpticalCenter = auto()
     CalibratingStage = auto()
     PoweringDown = auto()
