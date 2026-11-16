@@ -37,7 +37,6 @@ def _folders() -> list[str]:
         pm.make_acquisition_folder(),
         pm.make_guidings_folder(),
         pm.make_spirals_folder(),
-        pm.make_flux_metering_folder(),
         PathMaker.make_spec_acquisitions_folder("highspec"),
         PathMaker.make_spec_exposures_folder("deepspec", band="U"),
     ]
