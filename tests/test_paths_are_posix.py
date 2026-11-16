@@ -30,7 +30,6 @@ def _every_path() -> dict[str, str]:
         "make_acquisition_folder(phase, tags)": pm.make_acquisition_folder(phase="sky", tags={"target": "12.5,20.2"}),
         "make_guidings_folder": pm.make_guidings_folder(),
         "make_spirals_folder": pm.make_spirals_folder(),
-        "make_flux_metering_folder": pm.make_flux_metering_folder(),
         "make_plans_folder": PathMaker.make_plans_folder(),
         "make_plans_files_folder": PathMaker.make_plans_files_folder(),
         "make_plan_products_folder": PathMaker.make_plan_products_folder(),

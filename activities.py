@@ -320,20 +320,14 @@ class UnitActivities(IntFlag):
     Correcting = auto()
     Dancing = auto()
     Exposing = auto()  # do_expose: the whole repeat series, not one frame
-    # AFTER Exposing, deliberately. Both branches appended here and both claimed 8192;
-    # Exposing keeps it because it is already on master and shared with MAST_control and
-    # MAST_gui, where a renumbering would silently change what a numeric comparison means.
-    # FluxMetering therefore moves 8192 -> 16384. Safe to move because it has never been on
-    # master: the only records carrying it are engineering shakedown logs, and those name
-    # the flag rather than printing the bare number.
-    FluxMetering = auto()  # acquire_and_find_max_flux: spiralling for peak fibre throughput
     # AT THE END, per the rule above -- these were authored mid-enum, right after the
     # Calibrating umbrella, and a rebase onto master carried that position with them. That
     # shifted every member from PreGuiding on by three bits: 8192 stopped meaning Exposing
-    # and started meaning Solving, which is precisely the silent renumbering the comment on
-    # Exposing describes. Safe to place here instead: these flags have never been on master,
+    # and started meaning Solving, which is precisely the silent renumbering the rule above
+    # guards against. Safe to place here instead: these flags have never been on master,
     # so nothing numeric has ever read them.
-    CalibratingFocus = auto()
+    # Pinned: bit 14 was FluxMetering, removed (MAST_common#232), and stays unused.
+    CalibratingFocus = 1 << 15
     CalibratingOpticalCenter = auto()
     CalibratingStage = auto()
     PoweringDown = auto()

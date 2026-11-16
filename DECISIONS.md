@@ -2,6 +2,24 @@
 
 ---
 
+## [2026-11-16] The flux-metering models and activity flag go
+
+**Why:** MAST_unit no longer meters flux in the unit (MAST_unit#407); flux-meter-orchestrator
+does it through the unit's public API and does not import MAST_common. Nothing else read the
+flux-metering models or folder helper. MAST_common#232.
+
+**What:** `FluxMeteringExposure`, `FluxMeteringStep`, `FluxMeteringResult`,
+`SpiralStepCorrelation`, `FluxMeteringStatus`, `FullUnitStatus.flux_metering` and
+`PathMaker.make_flux_metering_folder` are removed, and so is `UnitActivities.FluxMetering`.
+`CalibratingFocus`, the member after it, is pinned to its old value (`1 << 15`), so it and
+every later `auto()` member keep their bits, and the numbers in existing logs and records keep
+their meaning. Bit 14 stays unused.
+
+**Implications:** a unit whose code still imports these models fails to start against this
+`master`, so this merges only once every unit runs MAST_unit#407's change. `FullUnitStatus`
+does not forbid extra fields, so a status that still carries `flux_metering` is accepted and
+the key ignored.
+
 ## [2026-11-13] One coordinate grammar, with the range checks spelled out
 
 **Why:** coordinates were parsed by four things that disagreed. `RA_PATTERN` / `DEC_PATTERN`

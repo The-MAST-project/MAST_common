@@ -339,8 +339,8 @@ def parse_target(
     only the unit's acquirer can do that. Note the emptiness test is explicit rather than
     truthiness, so an RA of exactly 0 hours is a coordinate and not a missing value.
 
-    Moved here from MAST_unit's `flux_metering/session.py` so MAST_control converts the
-    coordinates it validates with `RA_PATTERN` / `DEC_PATTERN` the same way.
+    Shared so MAST_control converts the coordinates it validates with `RA_PATTERN` /
+    `DEC_PATTERN` the same way the unit does.
     """
     ra = None if ra_j2000_hours is None or ra_j2000_hours == "" else sexagesimal_hours_to_decimal(ra_j2000_hours)
     dec = None if dec_j2000_degs is None or dec_j2000_degs == "" else sexagesimal_degrees_to_decimal(dec_j2000_degs)
