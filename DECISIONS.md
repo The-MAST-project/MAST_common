@@ -2,6 +2,16 @@
 
 ---
 
+## [2026-11-17] A filing-area root that cannot be resolved is compared by its absolute path
+
+**Why:** on the supervisor's dev VM the share answered SMB but refused the machine's credentials. `os.path.realpath` on the share root then raised `OSError` (WinError 1326, which `ntpath`'s non-strict mode does not tolerate), `Filer.start_product_relocation_sweep` let it escape the unit app's lifespan, and uvicorn exited: the app could not start at all, where the Filer is meant to fall back to the local disk.
+
+**What:** `_canonical` falls back to `normcase(abspath(path))` when `realpath` raises `OSError`. It serves `_overlaps` too, so the same comparison in `move` and in choosing the shared root cannot raise either.
+
+**Implications:** two roots that are the same folder only through a link that cannot be resolved compare as different; the only such root is an unreachable share, which the Filer is not using anyway.
+
+---
+
 ## [2026-11-13] One coordinate grammar, with the range checks spelled out
 
 **Why:** coordinates were parsed by four things that disagreed. `RA_PATTERN` / `DEC_PATTERN`
