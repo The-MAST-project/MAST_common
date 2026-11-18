@@ -62,6 +62,9 @@ class SolvingResult:
     errors: list[str] | None = None
     solution: SolvingSolution | None
     native_result = None
+    #: What the source selection did, when it ran: the mode, the shadow, the counts per reject
+    #: reason, the number kept, the radius used and which input solved ("xylist" or "image").
+    selection: dict | None = None
 
     def __init__(
         self,
@@ -74,9 +77,11 @@ class SolvingResult:
         self.errors = errors
         self.solution: SolvingSolution | None = solution
         self.native_result = native_result
+        self.selection: dict | None = None
 
     def to_dict(self):
         return {
+            "selection": self.selection,
             "succeeded": self.succeeded,
             "errors": self.errors,
             "solution": self.solution.model_dump() if self.solution else None,

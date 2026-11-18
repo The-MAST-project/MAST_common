@@ -1,4 +1,6 @@
-from pydantic import BaseModel, Field, field_validator, model_validator
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from common.asi import ASI_294MM_SUPPORTED_BINNINGS_LITERAL
 from common.opmode import OpMode
@@ -56,9 +58,56 @@ class GuiderConfig(BaseModel):
     valid_methods: list[str]
 
 
+class SourceSelectionConfig(BaseModel):
+    """How the solver chooses the sources it hands to astrometry.net (MAST_unit `solvers/source_selection.py`).
+
+    `mode`: ``off`` -- solve the image as before; ``shadow_only`` -- detect the fold-mirror shadow
+    and darken its band (umbra and penumbra), then solve the image; ``full`` -- select the sources
+    and solve that list, falling back to the image solve if that fails.
+
+    Every other field is a parameter of the selection. ``None`` means the unit's own default, so the
+    defaults are spelled once, in `SelectionParams`, and a unit overrides only what it has measured.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    mode: Literal["off", "shadow_only", "full"] = "off"
+    nsigma: float | None = None
+    npixels: int | None = None
+    box_size: int | None = None
+    seeing_fwhm_px: float | None = None
+    default_fwhm_px: float | None = None
+    max_shadow_deficit: float | None = None
+    sat_frac: float | None = None
+    full_scale: float | None = None
+    min_area: int | None = None
+    sharp_fwhm_frac: float | None = None
+    min_sep_fwhm: float | None = None
+    max_fwhm_ratio: float | None = None
+    blend_flux_ratio: float | None = None
+    neighbour_min_snr: float | None = None
+    blend_ignores_hot: bool | None = None
+    edge_margin_sigmas: float | None = None
+    edge_margin_extra_px: float | None = None
+    min_snr: float | None = None
+    relaxed_min_snr: float | None = None
+    max_centroid_shift_fwhm: float | None = None
+    n_target: int | None = None
+    n_max: int | None = None
+    coma_px: float | None = None
+    radius_growth: float | None = None
+    grid: tuple[int, int] | None = None
+    fail_below: int | None = None
+    geometric_low_coma_fraction: float | None = None
+    #: replaces the shadow-deficit test with a plain exclusion half-width around the band, pixels
+    exclusion_half_width: float | None = None
+
+
 class SolvingConfig(BaseModel):
     method: str
     valid_methods: list[str]
+    #: absent or ``mode = "off"``: the solver behaves as it always has
+    source_selection: SourceSelectionConfig | None = None
 
 
 class AutofocusConfig(BaseModel):
