@@ -1515,8 +1515,17 @@ def _rename_logs_as_fallback(folder: str) -> None:
 
 
 def _canonical(path) -> str:
-    """``realpath``, case-folded where the file system ignores case. The path need not exist."""
-    return os.path.normcase(os.path.realpath(path))
+    """``realpath``, case-folded where the file system ignores case. The path need not exist.
+
+    A path ``realpath`` cannot resolve -- a share that refuses the machine's credentials
+    raises WinError 1326, which ``ntpath``'s non-strict mode does not tolerate -- is compared by
+    its absolute path: the Filer falls back to the local disk then, and a comparison that
+    raised would stop the unit app in its lifespan.
+    """
+    try:
+        return os.path.normcase(os.path.realpath(path))
+    except OSError:
+        return os.path.normcase(os.path.abspath(path))
 
 
 def _overlaps(a, b) -> bool:
