@@ -61,8 +61,8 @@ class GuiderConfig(BaseModel):
 class SourceSelectionConfig(BaseModel):
     """How the solver chooses the sources it hands to astrometry.net (MAST_unit `solvers/source_selection.py`).
 
-    `mode`: ``off`` -- solve the image as before; ``shadow_only`` -- detect the fold-mirror shadow
-    and darken its band (umbra and penumbra), then solve the image; ``full`` -- select the sources
+    `mode`: ``original`` -- solve the image as before; ``shadowed`` -- detect the fold-mirror shadow
+    and darken its band (umbra and penumbra), then solve the image; ``selective`` -- select the sources
     and solve that list, falling back to the image solve if that fails.
 
     Every other field is a parameter of the selection. ``None`` means the unit's own default, so the
@@ -71,7 +71,7 @@ class SourceSelectionConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    mode: Literal["off", "shadow_only", "full"] = "off"
+    mode: Literal["original", "shadowed", "selective"] = "original"
     nsigma: float | None = None
     npixels: int | None = None
     box_size: int | None = None
@@ -106,7 +106,7 @@ class SourceSelectionConfig(BaseModel):
 class SolvingConfig(BaseModel):
     method: str
     valid_methods: list[str]
-    #: absent or ``mode = "off"``: the solver behaves as it always has
+    #: absent or ``mode = "original"``: the solver behaves as it always has
     source_selection: SourceSelectionConfig | None = None
 
 
