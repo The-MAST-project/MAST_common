@@ -29,6 +29,8 @@ def _every_path() -> dict[str, str]:
         "make_acquisition_folder": pm.make_acquisition_folder(),
         "make_acquisition_folder(phase, tags)": pm.make_acquisition_folder(phase="sky", tags={"target": "12.5,20.2"}),
         "make_guidings_folder": pm.make_guidings_folder(),
+        "make_guiding_session_folder": pm.make_guiding_session_folder(),
+        "make_guiding_session_folder(tags)": pm.make_guiding_session_folder(tags={"target": "12.5,20.2"}),
         "make_spirals_folder": pm.make_spirals_folder(),
         "make_flux_metering_folder": pm.make_flux_metering_folder(),
         "make_plans_folder": PathMaker.make_plans_folder(),

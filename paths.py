@@ -248,6 +248,24 @@ class PathMaker:
         guiding_folder.mkdir(parents=True, exist_ok=True)
         return as_posix(guiding_folder)
 
+    def make_guiding_session_folder(self, tags: dict | None = None, root: str | None = None) -> str:
+        """``<observing night>/Guidings/seq=<NNNN>,time=<UTC start>[,<tag>=<value>...]``: one folder per guiding session,
+        as an acquisition has one (`make_acquisition_folder`), created.
+
+        The session's guide log, its sampled frames and its solve results go here, and the whole folder is shipped to the
+        share when the session ends. The sequence is per night and kept in ``Guidings/seq.txt``.
+        """
+        guidings_folder = Path(self.make_guidings_folder(root=root))
+        parts: list[str] = [
+            f"seq={PathMaker.make_seq(folder=str(guidings_folder))}",
+            f"time={self.current_utc()}",
+        ]
+        for k, v in (tags or {}).items():
+            parts.append(f"{k}={v}" if v else f"{k}")
+        folder = guidings_folder / ",".join(parts)
+        folder.mkdir(parents=True, exist_ok=True)
+        return as_posix(folder)
+
     def make_spirals_folder(self, root: str | None = None, base_folder: str | None = None) -> str:
         if base_folder is not None:
             spirals_folder = Path(base_folder) / "Spirals"

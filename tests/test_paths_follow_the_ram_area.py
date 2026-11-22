@@ -36,6 +36,7 @@ def _folders() -> list[str]:
         pm.make_calibration_folder("focuser"),
         pm.make_acquisition_folder(),
         pm.make_guidings_folder(),
+        pm.make_guiding_session_folder(),
         pm.make_spirals_folder(),
         pm.make_flux_metering_folder(),
         PathMaker.make_spec_acquisitions_folder("highspec"),
