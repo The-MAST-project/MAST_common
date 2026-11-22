@@ -36,11 +36,12 @@ def test_tags_are_appended_and_an_empty_tag_is_named():
 
 def test_the_session_numbering_is_not_the_acquisitions():
     pm = PathMaker()
+    before = int(NAME.match(Path(pm.make_guiding_session_folder()).name).group(1))  # type: ignore[union-attr]
     for _ in range(3):
         pm.make_acquisition_folder()
 
-    session = pm.make_guiding_session_folder()
+    after = int(NAME.match(Path(pm.make_guiding_session_folder()).name).group(1))  # type: ignore[union-attr]
 
-    # Two counters, kept in two folders: a night with three acquisitions starts its first session at 1, not 4.
-    assert NAME.match(Path(session).name).group(1) == "0001"  # type: ignore[union-attr]
-    assert (Path(pm.make_guidings_folder()) / "seq.txt").read_text() == "1"
+    # Two counters, kept in two folders: three acquisitions in between do not move the sessions' numbering.
+    assert after == before + 1
+    assert (Path(pm.make_guidings_folder()) / "seq.txt").read_text() == str(after)
