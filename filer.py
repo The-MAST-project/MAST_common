@@ -1971,12 +1971,14 @@ class MoveGuardian:
             # Everything worth keeping is out; whatever is left is being discarded on
             # purpose. Name it anyway -- an artifact nobody protected is indistinguishable
             # from a producer that forgot to, and this line is the only warning anyone will
-            # get before it is deleted.
+            # get before it is deleted.  Not the bookkeeping (`is_bookkeeping`): a subfolder's
+            # claim `.<sub>.lock` sits in this folder, its parent, and is always here -- naming
+            # it made every acquisition log an error, and buried the real ones.
             casualties = [
                 os.path.join(root, name)
                 for root, _dirs, files in os.walk(real_folder)
                 for name in files
-                if name != "seq.txt"
+                if not is_bookkeeping(name)
             ]
             if casualties:
                 say(

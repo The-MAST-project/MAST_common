@@ -183,6 +183,49 @@ class TestGiveUpMessage:
         assert not recorder.errors, f"clean reap should log no errors, got {recorder.errors}"
 
 
+class TestDiscardMessage:
+    """The line that names what is discarded must name artifacts, not the mechanism.
+
+    A subfolder's claim `.<sub>.lock` lives in its parent, the folder being reaped, so every
+    acquisition has one (`.spec.lock`, `.spec-mirror-in.lock`...).  Logged at ERROR each time
+    -- 54 of them on mast03 in two nights -- it buried the one real casualty."""
+
+    Recorder = TestGiveUpMessage.Recorder
+
+    def _reap_acquisition(self, guardian, folder, recorder):
+        """Reap the acquisition folder (``folder``'s parent), as the acquirer does."""
+        guardian._reap_folder(os.path.realpath(str(folder.parent)), recorder, 2.0)
+
+    def test_a_subfolders_claim_is_not_reported(self, clean_registries, folder):
+        product = folder / "seq=0001.fits"
+        with clean_registries.protect(str(write(product))):
+            pass
+        product.unlink()  # the mover took it
+        assert (folder.parent / ".spec.lock").exists(), "protect() claims the subfolder beside it"
+        recorder = self.Recorder()
+
+        self._reap_acquisition(clean_registries, folder, recorder)
+
+        assert not folder.parent.exists()
+        assert not recorder.errors, f"bookkeeping is not a casualty, got {recorder.errors}"
+
+    def test_a_real_leftover_is_still_reported_without_the_claim(self, clean_registries, folder):
+        product = folder / "seq=0001.fits"
+        with clean_registries.protect(str(write(product))):
+            pass
+        product.unlink()
+        stray = write(folder.parent / "seq=0002.fits")  # never protected, never moved
+        write(folder.parent / "seq.txt", "2")
+        recorder = self.Recorder()
+
+        self._reap_acquisition(clean_registries, folder, recorder)
+
+        message = " ".join(recorder.errors)
+        assert "discarding 1 unprotected file(s)" in message
+        assert stray.name in message
+        assert ".spec.lock" not in message and "seq.txt" not in message
+
+
 class TestProductRecord:
     def test_protect_records_durably(self, clean_registries, folder):
         """The record must outlive the protect block -- that is the whole point."""
