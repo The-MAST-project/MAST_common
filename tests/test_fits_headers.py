@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import datetime
+import warnings
 
 import numpy as np
 import pytest
 from astropy.io import fits
+from astropy.io.fits.verify import VerifyWarning
 
 import common.fits_headers as fh
 from common.models.latest import (
@@ -69,6 +71,24 @@ def test_every_keyword_fits_in_eight_characters():
         plan_id="01ABC", sky_quality=LatestSkyQuality(measured=_measured(), while_guiding=_guiding()), now=NOW
     )
     assert all(len(k) <= 8 for k in cards), [k for k in cards if len(k) > 8]
+
+
+def test_every_card_fits_in_eighty_characters_with_its_comment():
+    """A card is 80 characters, comment included; astropy truncates a longer comment with a
+    `VerifyWarning` -- logged on every frame stamped while the sky quality was fresh."""
+    cards = fh.standard_fits_cards(
+        plan_id="01M7R87DK2CH9KE86DF0KVFEPX",  # a full ULID: the longest value there is
+        sky_quality=LatestSkyQuality(measured=_measured(), while_guiding=_guiding()),
+        now=NOW,
+    )
+    cards.update(OBSERVAT=("ns", "MAST site"), MACHROLE=("control", "machine role: unit, spec or control"))
+    assert "SQM-DATE" in cards and "SQG-DATE" in cards and "PLANID" in cards  # the long ones are in
+    for key, (value, comment) in cards.items():
+        header = fits.Header()
+        header[key] = (value, comment)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", VerifyWarning)
+            str(header.cards[0])
 
 
 def test_the_header_date_and_identity_are_always_there():
