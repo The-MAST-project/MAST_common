@@ -54,6 +54,11 @@ class ImagerConfig(BaseModel):
             },
         },
     )
+    # Reuse two preallocated frame buffers for the readouts, instead of a fresh array per frame (ZWO only). A frame
+    # is then valid until the exposure after the next one reads out, so a consumer must be done with it by then or copy it.
+    # Off by default: the calibration flows hold frames for as long as they like. The in-house guide loop (guiding plan,
+    # 3.1) is what needs it, at its cadence.
+    reuse_frame_buffers: bool = False
     pixel_scale_at_bin1: float = Field(gt=0.0, lt=10.0)
     format: asi.ValidOutputFormats
     gain: int
