@@ -277,6 +277,14 @@ class FocusOnStarSettings(BaseModel):
 
     # Endpoint defaults (each may be overridden per call).
     fov_percent: float = 10.0  # LINEAR percent of the frame's width and height
+    # The sky-quality frame's own field.  The sweep's box is small on purpose (the star is
+    # isolated there), which leaves the frame too few stars to match the catalog: at 10%, 3 of
+    # 6 mast03 runs (15 and 18 Nov 2026) got no zero point; at 20% all 6 did, at 30% with 7-18
+    # matched stars.  No coma bias in the zero point or the star shapes out to 30% on those frames.
+    sky_quality_fov_percent: float = Field(default=30.0, gt=0, le=100)  # LINEAR, like fov_percent
+    # Catalog stars fainter than this (G) match but stay out of the zero point: at 3 s they are
+    # noisy, and carried most of its scatter.
+    zero_point_max_mag: float = 15.5
     # The star must be no brighter than this (G >= limit).  At 5 s a G 10 star near focus
     # peaks ~250k ADU (mast03, 2026-10: 33-47k ADU at 0.75 s), so G 11 still saturates on a
     # good night; the probe then estimates a fainter limit and picks again, once.
