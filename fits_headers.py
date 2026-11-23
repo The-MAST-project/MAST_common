@@ -101,7 +101,7 @@ def sky_quality_cards(sky_quality: LatestSkyQuality | None, now: datetime.dateti
     m = sky_quality.measured
     age = _age_seconds(m.observed_at, now) if m is not None else None
     if m is not None and m.succeeded and age is not None and -60.0 <= age <= MEASURED_MAX_AGE_SECONDS:
-        cards["SQM-DATE"] = (fits_date(m.observed_at), "[UTC] focus_on_star sky-quality frame, mid-exp")
+        cards["SQM-DATE"] = (fits_date(m.observed_at), "[UTC] focus_on_star frame, mid-exposure")
         _put(cards, "SQM-AGE", max(0.0, age), "[s] its age when this header was written", 0)
         _put(cards, "SQMFWHM", m.fwhm_arcsec, "[arcsec] focus star FWHM at best focus", 3)
         _put(cards, "SQMHFD", m.hfd_arcsec, "[arcsec] focus star HFD at best focus", 3)

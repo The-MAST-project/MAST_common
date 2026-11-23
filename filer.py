@@ -1515,8 +1515,17 @@ def _rename_logs_as_fallback(folder: str) -> None:
 
 
 def _canonical(path) -> str:
-    """``realpath``, case-folded where the file system ignores case. The path need not exist."""
-    return os.path.normcase(os.path.realpath(path))
+    """``realpath``, case-folded where the file system ignores case. The path need not exist.
+
+    A path ``realpath`` cannot resolve -- a share that refuses the machine's credentials
+    raises WinError 1326, which ``ntpath``'s non-strict mode does not tolerate -- is compared by
+    its absolute path: the Filer falls back to the local disk then, and a comparison that
+    raised would stop the unit app in its lifespan.
+    """
+    try:
+        return os.path.normcase(os.path.realpath(path))
+    except OSError:
+        return os.path.normcase(os.path.abspath(path))
 
 
 def _overlaps(a, b) -> bool:
@@ -1962,12 +1971,14 @@ class MoveGuardian:
             # Everything worth keeping is out; whatever is left is being discarded on
             # purpose. Name it anyway -- an artifact nobody protected is indistinguishable
             # from a producer that forgot to, and this line is the only warning anyone will
-            # get before it is deleted.
+            # get before it is deleted.  Not the bookkeeping (`is_bookkeeping`): a subfolder's
+            # claim `.<sub>.lock` sits in this folder, its parent, and is always here -- naming
+            # it made every acquisition log an error, and buried the real ones.
             casualties = [
                 os.path.join(root, name)
                 for root, _dirs, files in os.walk(real_folder)
                 for name in files
-                if name != "seq.txt"
+                if not is_bookkeeping(name)
             ]
             if casualties:
                 say(

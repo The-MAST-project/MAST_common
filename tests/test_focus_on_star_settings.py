@@ -13,6 +13,8 @@ def test_defaults_are_the_agreed_ones():
     assert s.catalog_root == r"\\last0\catalogs\GAIA\DR3"
     assert s.mag_column == "phot_g_mean_mag"
     assert s.fov_percent == 10.0
+    assert s.sky_quality_fov_percent == 30.0  # wider than the sweep's box: the catalog match needs stars
+    assert s.zero_point_max_mag == 15.5
     assert s.steps == 7
     assert s.steps % 2 == 1  # a V-curve point must sit on the seed
     assert s.ticks_per_step == 75
@@ -67,3 +69,9 @@ def test_flag_is_appended_after_aborting():
 
 def test_folder_name():
     assert CALIBRATION_PHASE_FOLDERS["focus_on_star"] == "FocusOnStar"
+
+
+@pytest.mark.parametrize("percent", [0, -5, 101])
+def test_the_sky_quality_field_is_a_percent_of_the_frame(percent):
+    with pytest.raises(ValidationError):
+        FocusOnStarSettings(sky_quality_fov_percent=percent)
