@@ -175,7 +175,61 @@ class GuiderStatus(ActivitiesStatus):
 
 
 # Stage stuff
+class StageDrive(BaseModel):
+    """The stage controller's electrical readings at the last status read.
+
+    What a stage that "moves" without moving needs: is the supply there, is the power stage
+    on, is the motor driven, and does current flow. On mast07 (2026-11-24) a move ran with
+    the power stage off until the controller was power-cycled, and then ran at full winding
+    voltage with no current -- an open motor circuit. Neither raises a controller flag.
+    """
+
+    supply_volts: float | None = Field(
+        default=None,
+        json_schema_extra={
+            "tooltip": "Motor supply voltage at the controller; about 0 means the supply does not reach it",
+        },
+    )
+    supply_milliamps: int | None = Field(
+        default=None,
+        json_schema_extra={
+            "tooltip": "Current drawn from the motor supply; about 60-70 mA is the controller's own electronics",
+        },
+    )
+    power_state: str | None = Field(
+        default=None,
+        json_schema_extra={
+            "tooltip": "The controller's power stage: off, normal, reduced, max or unknown",
+        },
+    )
+    duty_cycle: int | None = Field(
+        default=None,
+        json_schema_extra={
+            "tooltip": "Motor drive duty cycle; 0 means the motor is not being driven",
+        },
+    )
+    winding_volts: float | None = Field(
+        default=None,
+        json_schema_extra={
+            "tooltip": "Voltage on the motor winding",
+        },
+    )
+    winding_milliamps: int | None = Field(
+        default=None,
+        json_schema_extra={
+            "tooltip": "Current through the motor winding; about 0 while driven means an open motor circuit",
+        },
+    )
+    encoder_position: int | None = Field(
+        default=None,
+        json_schema_extra={
+            "tooltip": "Raw encoder count, next to the controller's position",
+        },
+    )
+
+
 class StageStatus(PowerStatus, ComponentStatus):
+    drive: StageDrive | None = None
     info: dict | None = None
     presets: dict | None = None
     position: int | None = None
