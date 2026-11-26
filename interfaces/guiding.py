@@ -28,3 +28,4 @@ class GuiderInterface(ABC, Activities):
 class GuiderTypes(Enum):
     Phd2 = "phd2"
     Solving = "solving"
+    Mast = "mast"  # the in-house guider: tracks a fixed star set on full-frame, binning-2 ZWO frames
