@@ -147,14 +147,24 @@ class UnitConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_unit_config(self):
-        # conditions = [self.guider.method == "phd2", self.imager.imager_type == "phd2"]
-
-        # if any(conditions) and not all(conditions):
-        #     raise ValueError(
-        #         f"if any of {self.imager.imager_type=} or {self.guider.method=} is 'phd2', then BOTH must be 'phd2'"
-        #     )
-        # logger = get_logger(__name__)
-        # logger.debug(f"Validated UnitConfig for unit '{self.name}', focuser: '{self.focuser}'")
+        # The in-house 'mast' guider tracks its fixed star set on the 'zwo' imager's
+        # full-frame binning-2 frames, and that imaging path (the acquirer's
+        # _mast_full_frame_binned2) exists for it -- the two are one stack, not independent
+        # choices. A config that pairs one with a different partner can never guide:
+        #   - imager 'zwo' + guider != 'mast'  -> the zwo stack with a guider that won't drive it;
+        #   - guider 'mast' + imager != 'zwo'  -> the mast guider with no zwo frames to track.
+        # Reject it here, at parse time, so a bad *live* edit on config reload is caught too,
+        # not only a bad config at startup (app.py's verify_imager_guider_coherence catches
+        # that). The literals mirror ImagerTypes.Zwo / GuiderTypes.Mast -- the enums are not
+        # imported here to keep this low-level config model free of the imaging stack.
+        imager_is_zwo = self.imager.imager_type == "zwo"
+        guider_is_mast = self.guider.method == "mast"
+        if imager_is_zwo != guider_is_mast:
+            raise ValueError(
+                f"incoherent imager/guider configuration: {self.imager.imager_type=}, "
+                f"{self.guider.method=}. The 'zwo' imager and the 'mast' guider are one "
+                "stack -- configure both together, or neither."
+            )
         return self
 
     # NOTE: a ``focus_seed_position()`` helper used to live here, preferring
